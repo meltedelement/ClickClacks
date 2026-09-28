@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import type { AdminView, Team } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
-import { standings } from '../shared/battle.ts';
+import { allMatches, standings } from '../shared/battle.ts';
 import { groupRounds, roundPosition } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
 import { Brand, LETTERS, Status, ThemeToggle } from './ui.tsx';
@@ -264,6 +264,12 @@ export function AdminPage() {
               <button className="danger" onClick={() => confirm('Reset everything, including teams?') && act({ type: 'reset', keepTeams: false })}>
                 Reset everything
               </button>
+              <button
+                className="danger"
+                onClick={() => confirm('Clear every battle result? The table starts again from zero.') && act({ type: 'battleClear' })}
+              >
+                Clear battle results
+              </button>
               <p className="hint">
                 Catalog: {catalog.source === 'game' ? 'live from the game' : 'offline copy'} — {catalog.upgrades.length} upgrades
                 {catalog.syncedAt ? ` (read ${new Date(catalog.syncedAt).toLocaleTimeString()})` : ''}
@@ -285,29 +291,33 @@ export function AdminPage() {
   );
 }
 
-// The round-robin: start / stop it, see the table, and see what each match is
-// doing. The quiz server queues matches on the game's match API and records the
-// result the display page reports.
+// The battles. Every trip to the battle phase deals a fresh round-robin and
+// starts it, so there is nothing to press. Every battle is kept; the table adds
+// them all up.
 function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string, unknown>) => void }) {
   const { state, game } = view;
-  const battle = state.battle;
-  const rows = standings(state.teams, battle?.matches ?? []);
+  const battles = state.battles;
+  const current = battles[battles.length - 1] ?? null;
+  const running = !!current && !current.finishedAt;
+  const rows = standings(state.teams, allMatches(battles));
   const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '(deleted team)';
   const planned = state.teams.length >= 2 ? (state.teams.length * (state.teams.length - 1)) / 2 : 0;
-  const running = !!battle && !battle.finishedAt;
   const displayUrl = game.url.replace(/\/api\/?$/, '/?display');
+  const played = battles.reduce((n, battle) => n + battle.matches.filter((m) => m.status === 'done').length, 0);
+  const total = battles.reduce((n, battle) => n + battle.matches.length, 0);
 
   return (
     <section className="card stack">
       <div className="card-head" style={{ marginBottom: 0 }}>
         <h2>Battle</h2>
         <span className="muted num">
-          {battle ? `${battle.matches.filter((m) => m.status === 'done').length} / ${battle.matches.length} played` : `${planned} matches`}
+          {battles.length === 0 ? `${planned} matches each` : `battle ${battles.length} · ${played} / ${total} played`}
         </span>
       </div>
       <p className="hint">
-        Every team fights every other team once; the best record wins. The game plays one match at a time on the display page. Open{' '}
-        <code>{displayUrl}</code> and leave it visible.
+        Every time the quiz reaches the battle phase, every team fights every other team once and the matches start on
+        their own, one at a time on the display page. Points add up across battles. Open <code>{displayUrl}</code> and
+        leave it visible.
       </p>
       <div className="row start">
         <span className={game.reachable ? 'pill good' : 'pill'}>{game.reachable ? 'Game API up' : 'Game API down'}</span>
@@ -317,25 +327,19 @@ function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string,
         <span className="faint mono">{game.url}</span>
       </div>
       <div className="row start">
-        {!battle && (
-          <button className="primary" disabled={state.teams.length < 2} onClick={() => act({ type: 'battleStart' })}>
-            Start battle
-          </button>
-        )}
-        {running && (
+        {running ? (
           <button onClick={() => act({ type: 'battleStop' })}>Stop</button>
+        ) : (
+          <button className="primary" disabled={state.teams.length < 2} onClick={() => act({ type: 'battleStart' })}>
+            {battles.length === 0 ? 'Start battle' : 'Start another battle'}
+          </button>
         )}
         {running && <button onClick={() => act({ type: 'battleResync' })}>Resync loadouts</button>}
-        {battle && (
-          <button className="danger" onClick={() => confirm('Reset the battle? Every result is lost.') && act({ type: 'battleReset' })}>
-            Reset battle
-          </button>
-        )}
       </div>
-      {battle?.note && <p className="hint">{battle.note}</p>}
-      {battle?.finishedAt && <p className="hint">Battle finished. {rows[0]?.name} wins the round-robin.</p>}
+      {current?.note && <p className="hint">{current.note}</p>}
+      {!running && battles.length > 0 && rows[0] && <p className="hint">{rows[0].name} leads the table.</p>}
 
-      {battle && (
+      {battles.length > 0 && (
         <div className="scroll">
           <table>
             <thead>
@@ -370,46 +374,55 @@ function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string,
         </div>
       )}
 
-      {battle && (
-        <div className="scroll" style={{ maxHeight: 320 }}>
-          <table>
-            <thead>
-              <tr>
-                <th>Match</th>
-                <th>Status</th>
-                <th>Winner</th>
-                <th>Time</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {battle.matches.map((match) => {
-                const open = match.status === 'pending' || match.status === 'queued' || match.status === 'playing';
-                return (
-                  <tr key={match.id}>
-                    <td>
-                      <span className="faint num">{match.id}</span> {teamName(match.a)} vs {teamName(match.b)}
-                    </td>
-                    <td className={match.status === 'failed' ? 'error' : ''}>
-                      {match.status}
-                      {match.error ? ` — ${match.error}` : ''}
-                    </td>
-                    <td>{match.status === 'done' ? (match.winner ? teamName(match.winner) : 'draw') : '–'}</td>
-                    <td className="num">{match.time === null ? '–' : `${Math.round(match.time)}s`}</td>
-                    <td>
-                      {open && (
-                        <button className="small ghost" onClick={() => act({ type: 'battleSkip', matchId: match.id })}>
-                          Skip
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {battles.map((battle, i) => (
+        <div className="stack" key={battle.id}>
+          <div className="row">
+            <span className="eyebrow">Battle {i + 1}</span>
+            <span className="muted num">
+              {battle.matches.filter((m) => m.status === 'done').length} / {battle.matches.length} played ·{' '}
+              {battle.finishedAt ? 'finished' : 'playing'}
+            </span>
+          </div>
+          <div className="scroll" style={{ maxHeight: 260 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Match</th>
+                  <th>Status</th>
+                  <th>Winner</th>
+                  <th>Time</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {battle.matches.map((match) => {
+                  const open = match.status === 'pending' || match.status === 'queued' || match.status === 'playing';
+                  return (
+                    <tr key={match.id}>
+                      <td>
+                        <span className="faint num">{match.id}</span> {teamName(match.a)} vs {teamName(match.b)}
+                      </td>
+                      <td className={match.status === 'failed' ? 'error' : ''}>
+                        {match.status}
+                        {match.error ? ` — ${match.error}` : ''}
+                      </td>
+                      <td>{match.status === 'done' ? (match.winner ? teamName(match.winner) : 'draw') : '–'}</td>
+                      <td className="num">{match.time === null ? '–' : `${Math.round(match.time)}s`}</td>
+                      <td>
+                        {open && (
+                          <button className="small ghost" onClick={() => act({ type: 'battleSkip', matchId: match.id })}>
+                            Skip
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      )}
+      ))}
     </section>
   );
 }

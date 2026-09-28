@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
 import type {
   AdminView,
+  Battle,
   BattleMatch,
   BattleMatchStatus,
   Fighter,
@@ -17,7 +18,7 @@ import type {
 } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
 import { roundPosition } from '../shared/rounds.ts';
-import { standings } from '../shared/battle.ts';
+import { allMatches, standings } from '../shared/battle.ts';
 import { getCatalog } from './catalog.ts';
 import { GAME_API } from './game.ts';
 
@@ -65,7 +66,7 @@ function freshState(questions: Question[], teams: Team[] = []): State {
     teams,
     message: '',
     weaponsLocked: false,
-    battle: null,
+    battles: [],
   };
 }
 
@@ -74,8 +75,26 @@ function freshState(questions: Question[], teams: Team[] = []): State {
 export let state: State = fs.existsSync(STATE_FILE) ? readJson<State>(STATE_FILE) : freshState(loadQuestions());
 // The old 'upgrades' phase was removed: teams now pick as soon as they earn an upgrade.
 if (!PHASES.includes(state.phase)) state.phase = 'lobby';
-// A state.json from before the battle existed, or a damaged one.
-if (!state.battle || !Array.isArray(state.battle.matches)) state.battle = null;
+normalizeBattles();
+
+// An early version kept a single `battle`. Move it into the list so a state
+// file written by that version still loads.
+function normalizeBattles() {
+  const legacy = state as State & { battle?: Battle | null };
+  if (legacy.battle) {
+    state.battles = [legacy.battle];
+    delete legacy.battle;
+  }
+  if (!Array.isArray(state.battles)) state.battles = [];
+  state.battles.forEach((battle, i) => {
+    battle.id ||= `b${i + 1}`;
+    battle.note ||= '';
+    battle.matches ||= [];
+    battle.matches.forEach((match, j) => {
+      if (!match.id || !match.id.startsWith(`${battle.id}-`)) match.id = `${battle.id}-m${j + 1}`;
+    });
+  });
+}
 
 const listeners = new Set<() => void>();
 export function onChange(fn: () => void) {
@@ -192,10 +211,10 @@ export function teamView(team: Team): TeamView {
   };
 }
 
-// What one team needs to know about the round-robin: who is next, and where
-// they sit. Null until the host starts the battle.
+// What one team needs to know: who is next in the battle on screen, and where
+// they sit over every battle so far. Null until the first battle starts.
 function battleForTeam(team: Team): TeamView['battle'] {
-  const battle = state.battle;
+  const battle = lastBattle();
   if (!battle) return null;
   const mine = (m: BattleMatch) => m.a === team.id || m.b === team.id;
   const active =
@@ -203,14 +222,16 @@ function battleForTeam(team: Team): TeamView['battle'] {
     battle.matches.find((m) => m.status === 'pending' && mine(m)) ??
     null;
   const opponentId = active ? (active.a === team.id ? active.b : active.a) : null;
-  const rows = standings(state.teams, battle.matches);
+  const rows = standings(state.teams, allMatches(state.battles));
   const rank = rows.findIndex((row) => row.teamId === team.id);
   const row = rank >= 0 ? rows[rank] : null;
   return {
+    number: state.battles.length,
     opponent: opponentId ? (state.teams.find((t) => t.id === opponentId)?.name ?? null) : null,
     status: active?.status ?? null,
     rank: rank >= 0 ? rank + 1 : null,
     points: row?.points ?? 0,
+    wins: row?.wins ?? 0,
     played: row?.played ?? 0,
   };
 }
@@ -303,17 +324,35 @@ export function pick(team: Team, upgradeId: string, picksUsed?: number) {
 }
 
 // ---- Battle -----------------------------------------------------------------
-// State changes for the round-robin, used by server/battle.ts (which talks to
-// the game) and by the views. They only touch `state.battle`.
+// State changes for the round-robins, used by server/battle.ts (which talks to
+// the game) and by the views. Every trip to the battle phase adds a new battle
+// to `state.battles`; the table is the sum of all of them.
 
-function findBattleMatch(id: string): BattleMatch | undefined {
-  return state.battle?.matches.find((m) => m.id === id);
+// The battle being played now, or null when the last one has finished.
+export function currentBattle(): Battle | null {
+  const last = state.battles[state.battles.length - 1];
+  return last && !last.finishedAt ? last : null;
 }
 
-export function beginBattle(matches: BattleMatch[]) {
+// The battle on the card: the one being played, or the one that just finished.
+export function lastBattle(): Battle | null {
+  return state.battles[state.battles.length - 1] ?? null;
+}
+
+function findBattleMatch(id: string): BattleMatch | undefined {
+  for (const battle of state.battles) {
+    const match = battle.matches.find((m) => m.id === id);
+    if (match) return match;
+  }
+  return undefined;
+}
+
+// Adds a battle dealt by server/battle.ts and returns it.
+export function beginBattle(battle: Battle): Battle {
   mutate(() => {
-    state.battle = { startedAt: new Date().toISOString(), finishedAt: null, matches, note: '' };
+    state.battles.push(battle);
   });
+  return battle;
 }
 
 export function setMatchGame(id: string, gameId: string | null, status: BattleMatchStatus) {
@@ -359,21 +398,25 @@ export function failMatch(id: string, error: string) {
 }
 
 export function setBattleNote(note: string) {
-  if (state.battle?.note === note) return;
+  const battle = currentBattle();
+  if (!battle || battle.note === note) return;
   mutate(() => {
-    if (state.battle) state.battle.note = note;
+    battle.note = note;
   });
 }
 
 export function finishBattle() {
+  const battle = currentBattle();
+  if (!battle) return;
   mutate(() => {
-    if (state.battle) state.battle.finishedAt = new Date().toISOString();
+    battle.finishedAt = new Date().toISOString();
   });
 }
 
-export function resetBattle() {
+// Throw every result away and start the table again.
+export function clearBattles() {
   mutate(() => {
-    state.battle = null;
+    state.battles = [];
   });
 }
 
@@ -382,7 +425,7 @@ export function resetBattle() {
 // have the one we remember.
 export function resetUnfinishedMatches() {
   mutate(() => {
-    for (const match of state.battle?.matches ?? []) {
+    for (const match of currentBattle()?.matches ?? []) {
       if (match.status === 'queued' || match.status === 'playing') {
         match.status = 'pending';
         match.gameId = null;
@@ -395,7 +438,7 @@ export function resetUnfinishedMatches() {
 // played yet. Played matches keep the loadouts they were fought with.
 export function resyncFighters(fighters: Map<string, Fighter>) {
   mutate(() => {
-    for (const match of state.battle?.matches ?? []) {
+    for (const match of currentBattle()?.matches ?? []) {
       if (match.status !== 'pending') continue;
       const a = fighters.get(match.a);
       const b = fighters.get(match.b);

@@ -19,9 +19,13 @@ let currentRun: Promise<void> | null = null;
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-// Start the round-robin. Throws before anything is queued when the teams or
-// their loadouts are not ready, so the admin page can show the problem.
+// Deal a fresh round-robin of every team against every other team and start
+// playing it. Called every time the quiz reaches the battle phase, so a team
+// that earned upgrades since the last battle fights with them. Throws before
+// anything is queued when the teams or their loadouts are not ready, so the
+// admin page can show the problem.
 export async function start() {
+  if (store.currentBattle()) throw new store.UserError('A battle is already running.');
   const teams = store.state.teams;
   if (teams.length < 2) throw new store.UserError('A battle needs at least two teams.');
 
@@ -32,10 +36,11 @@ export async function start() {
   }
   if (problems.length > 0) throw new store.UserError(`Fix these loadouts before the battle — ${problems.join('; ')}`);
 
+  const battleId = `b${store.state.battles.length + 1}`;
   const byTeam = new Map(teams.map((team) => [team.id, team]));
   const matches: BattleMatch[] = buildSchedule(teams.map((team) => team.id), () => randomInt(0, 2 ** 32)).map(
     (pairing, i) => ({
-      id: `m${i + 1}`,
+      id: `${battleId}-m${i + 1}`,
       a: pairing.a,
       b: pairing.b,
       seed: pairing.seed,
@@ -48,7 +53,7 @@ export async function start() {
     }),
   );
 
-  store.beginBattle(matches);
+  store.beginBattle({ id: battleId, startedAt: new Date().toISOString(), finishedAt: null, matches, note: '' });
   stopRequested = false;
   run();
 }
@@ -56,29 +61,50 @@ export async function start() {
 // Called when the quiz server starts: a battle that was interrupted continues,
 // and the match that was on screen is queued again.
 export function resume() {
-  const battle = store.state.battle;
-  if (!battle || battle.finishedAt) return;
+  if (!store.currentBattle()) return;
   store.resetUnfinishedMatches();
   stopRequested = false;
   run();
 }
 
-// Stop the battle. The match on screen is cancelled on the game server too.
-export function stop() {
+// True while a battle has not finished. The driver may be between matches, so
+// this is about the battle, not about a request being in flight.
+export function running(): boolean {
+  return store.currentBattle() !== null;
+}
+
+// End the battle on screen, cancelling whatever has not been played. Matches
+// already played keep their results. The next trip to the battle phase deals a
+// fresh round-robin.
+export function stop(reason = 'Battle stopped.') {
+  stopRequested = true;
+  const battle = store.currentBattle();
+  if (!battle) return;
+  const active = activeMatch();
+  if (active?.gameId) cancelQuietly(active.gameId);
+  for (const match of battle.matches) {
+    if (match.status === 'pending' || match.status === 'queued' || match.status === 'playing') {
+      store.cancelMatch(match.id, reason);
+    }
+  }
+  store.setBattleNote(reason);
+  store.finishBattle();
+}
+
+// Stop the driver without ending the battle, so resync() can pick the same one
+// up again.
+function halt() {
   stopRequested = true;
   const active = activeMatch();
-  if (active) {
-    if (active.gameId) cancelQuietly(active.gameId);
-    store.cancelMatch(active.id, 'Stopped');
-  }
-  store.setBattleNote('Battle stopped.');
+  if (active?.gameId) cancelQuietly(active.gameId);
+  if (active) store.setMatchGame(active.id, null, 'pending');
 }
 
 // Give up on one match so the schedule can move on. It is cancelled rather than
 // drawn, so it never counts in the standings.
 export function skip(matchId: string) {
-  const match = store.state.battle?.matches.find((m) => m.id === matchId);
-  if (!match) throw new store.UserError('Unknown match.');
+  const match = store.currentBattle()?.matches.find((m) => m.id === matchId);
+  if (!match) throw new store.UserError('That match is not in the battle on screen.');
   if (match.status === 'done') throw new store.UserError('That match is already played.');
   if (match.gameId) cancelQuietly(match.gameId);
   store.cancelMatch(match.id, 'Skipped by the host');
@@ -87,8 +113,8 @@ export function skip(matchId: string) {
 // Start again with the teams' current loadouts. Played matches keep their
 // results; the match on screen is dropped and queued again with a new snapshot.
 export async function resync() {
-  if (!store.state.battle) throw new store.UserError('No battle has been started.');
-  stop();
+  if (!store.currentBattle()) throw new store.UserError('No battle is running.');
+  halt();
   await currentRun?.catch(() => {});
   store.resetUnfinishedMatches();
   const byTeam = new Map(store.state.teams.map((team) => [team.id, team]));
@@ -109,8 +135,8 @@ function run() {
 async function drive() {
   for (;;) {
     if (stopRequested) return;
-    const battle = store.state.battle;
-    if (!battle || battle.finishedAt) return;
+    const battle = store.currentBattle();
+    if (!battle) return;
 
     const next = battle.matches.find((match) => match.status === 'pending');
     if (!next) {
@@ -201,7 +227,7 @@ async function awaitResult(match: BattleMatch, gameId: string): Promise<'next' |
 }
 
 function activeMatch(): BattleMatch | undefined {
-  return store.state.battle?.matches.find((match) => match.status === 'queued' || match.status === 'playing');
+  return store.currentBattle()?.matches.find((match) => match.status === 'queued' || match.status === 'playing');
 }
 
 function nameOf(teamId: string): string {

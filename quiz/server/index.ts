@@ -145,19 +145,27 @@ async function adminAction(body: any) {
       return battle.resync();
     case 'battleSkip':
       return battle.skip(String(body.matchId));
-    case 'battleReset':
+    case 'battleClear':
       battle.stop();
-      return store.resetBattle();
+      return store.clearBattles();
     case 'refreshCatalog':
       return refreshCatalog();
   }
   store.adminAction(body);
-  // Moving the quiz into the battle starts it, so the presenter's last Next
-  // button is all the host needs. A loadout the game would refuse comes back as
-  // a 400 with the reason, which both the admin and the presenter pages show.
-  if (body?.type === 'setPhase' && body.phase === 'battle' && !store.state.battle && store.state.teams.length >= 2) {
-    await battle.start();
+
+  if (body?.type !== 'setPhase') return;
+
+  // Every trip to the battle phase deals and starts a fresh round-robin, so the
+  // flow needs no buttons: the presenter's last Next is the start. A loadout the
+  // game would refuse comes back as a 400 with the reason, which both the admin
+  // and the presenter pages show.
+  if (body.phase === 'battle') {
+    if (!store.currentBattle() && store.state.teams.length >= 2) await battle.start();
+    return;
   }
+  // Leaving the battle phase ends the battle on screen. Matches already played
+  // stay in the table.
+  if (battle.running()) battle.stop('Stopped: the quiz moved on.');
 }
 
 // The catalog comes from the game, so the quiz always offers upgrades by their

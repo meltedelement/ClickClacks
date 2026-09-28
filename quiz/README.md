@@ -88,12 +88,23 @@ The quiz stores only upgrade ids and counts. The game decides what each upgrade 
 
 ## Battle
 
-When the quiz reaches the `battle` phase the quiz server runs a round-robin
-through the game's match API: every team fights every other team once, one match
-at a time, and the standings rank by most wins.
+Every time the quiz reaches the `battle` phase the quiz server deals a fresh
+round-robin through the game's match API and starts it: every team fights every
+other team once, one match at a time, and the standings rank by most wins.
 
-- Start it with the presenter's **Start battle** button, or **Start battle** on
-  the admin page. Moving the phase to `battle` starts it automatically.
+- There is nothing to press. The presenter's **Start battle** button (and the
+  phase button on the admin page) is what moves the quiz into `battle`, and that
+  is what deals the battle. If the quiz goes back into questions and reaches the
+  battle again — a battle per round — a new round-robin is dealt and started.
+- Every battle is kept and the table adds them up: points, wins and the HP
+  difference carry over from one battle to the next. Leaving the battle phase
+  ends the battle on screen and cancels whatever has not been played; matches
+  already played keep their results. **Clear battle results** (Dev controls)
+  throws the whole table away.
+- Loadouts are copied when each battle is dealt, so a team that picked up
+  upgrades since the last battle fights with them. A later change on the admin
+  page does not change a match that is already set; **Resync loadouts** copies
+  the current loadouts into the matches that have not been played yet.
 - The game server must be running and its display page must be open and visible
   on the big screen: `http://localhost:3002/?display` after
   `npm run build && npm start` in the repo root, or `http://localhost:5173/?display`
@@ -101,17 +112,14 @@ at a time, and the standings rank by most wins.
   the admin page shows how many are.
 - Point the quiz at the game with `GAME_API` (default `http://localhost:3002/api`).
   The admin page shows the address and whether it answers.
-- Loadouts are copied when the battle starts, so a later change on the admin
-  page does not change a match that is already set. **Resync loadouts** copies
-  the current loadouts into the matches that have not been played yet.
 - A win is 1 point, a draw 0.5. Ties are broken by HP difference, then team
   name. A match still going at the game's time limit is a draw.
 - Results are kept in `state.json`, so restarting the quiz server does not lose
   them and an interrupted battle carries on. The game keeps its matches in
   memory only, so if the game server restarts the match on screen is queued
   again with the same seed — the same fight.
-- **Stop** cancels the match on screen. **Skip** gives up on one match; it is
-  cancelled, not drawn, so it never counts in the table.
+- **Stop** ends the battle on screen early. **Skip** gives up on one match; it
+  is cancelled, not drawn, so it never counts in the table.
 
 The quiz takes its weapons and upgrades from the game's `GET /api/catalog`, so
 an offer can never name an upgrade the game does not know. If the game is not

@@ -2,7 +2,7 @@
 // one the game will accept. Shared by the quiz server (which queues the
 // matches) and the React pages (which show the standings), so it must not
 // import anything from either side.
-import type { BattleMatch, Catalog } from './types.ts';
+import type { Battle, BattleMatch, Catalog } from './types.ts';
 
 // A team as this file needs it.
 export interface LoadoutTeam {
@@ -38,6 +38,12 @@ export function buildSchedule(teamIds: string[], seedOf: () => number): Pairing[
     ids.splice(1, 0, ids.pop() as string);
   }
   return pairings;
+}
+
+// Every match from every battle, oldest first. The table adds all of them up,
+// so each trip to the battle phase keeps its results.
+export function allMatches(battles: Battle[]): BattleMatch[] {
+  return battles.flatMap((battle) => battle.matches);
 }
 
 export interface Standing {

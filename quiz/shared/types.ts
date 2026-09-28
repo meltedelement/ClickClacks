@@ -58,7 +58,10 @@ export interface State {
   teams: Team[];
   message: string;
   weaponsLocked: boolean;
-  battle: Battle | null; // the round-robin, once the host starts it
+  // One battle per trip to the battle phase, oldest first. The quiz flow can go
+  // back into questions and reach the battle again (a battle per round), so the
+  // results of every battle are kept and the table adds them up.
+  battles: Battle[];
 }
 
 // What the game receives for one team.
@@ -82,7 +85,7 @@ export type BattleMatchStatus = 'pending' | 'queued' | 'playing' | 'done' | 'can
 
 // One match in the round-robin. `a` and `b` are team ids.
 export interface BattleMatch {
-  id: string; // quiz-side id, e.g. "m3"
+  id: string; // "<battle id>-m3", unique across every battle
   a: string;
   b: string;
   seed: number; // fixed by the quiz so a re-queue is the same fight
@@ -95,7 +98,10 @@ export interface BattleMatch {
   error?: string;
 }
 
+// One round-robin: a fresh one is dealt every time the quiz reaches the battle
+// phase, so a team that picked up upgrades in between fights with them.
 export interface Battle {
+  id: string; // "b1", "b2"...
   startedAt: string;
   finishedAt: string | null;
   matches: BattleMatch[];
@@ -142,12 +148,14 @@ export interface TeamView {
     picksUsed: number;
     offer: string[] | null;
   };
-  // Set once the battle has started. Null before that.
+  // Set once the first battle has started. Null before that.
   battle: {
+    number: number; // which battle is on (1-based)
     opponent: string | null; // name of the team they are fighting now or next
     status: BattleMatchStatus | null;
-    rank: number | null; // 1-based place in the round-robin
+    rank: number | null; // 1-based place over every battle so far
     points: number;
+    wins: number;
     played: number;
   } | null;
 }

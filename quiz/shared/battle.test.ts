@@ -2,8 +2,8 @@
 // (or `npm test` in quiz/). No server or game needed.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSchedule, standings, validateLoadout } from './battle.ts';
-import type { BattleMatch, Catalog } from './types.ts';
+import { allMatches, buildSchedule, standings, validateLoadout } from './battle.ts';
+import type { Battle, BattleMatch, Catalog } from './types.ts';
 
 const catalog: Catalog = {
   upgradesPerCorrect: 1,
@@ -68,6 +68,10 @@ function match(a: string, b: string, winner: string | null, hp: [number, number]
   };
 }
 
+function battle(id: string, matches: BattleMatch[]): Battle {
+  return { id, startedAt: '2026-01-01T00:00:00.000Z', finishedAt: null, matches, note: '' };
+}
+
 test('standings count a win, a draw and a loss', () => {
   const teams = [
     { id: 'a', name: 'Alpha' },
@@ -108,6 +112,33 @@ test('standings break a points tie on HP difference', () => {
   ]);
   const order = rows.map((r) => r.name);
   assert.deepEqual(order.slice(0, 2), ['Alpha', 'Beta']);
+});
+
+test('allMatches joins every battle in order', () => {
+  const battles = [battle('b1', [match('a', 'b', 'a')]), battle('b2', [match('a', 'b', 'b')])];
+  assert.deepEqual(
+    allMatches(battles).map((m) => m.winner),
+    ['a', 'b'],
+  );
+});
+
+test('standings add up across battles', () => {
+  const teams = [
+    { id: 'a', name: 'Alpha' },
+    { id: 'b', name: 'Beta' },
+  ];
+  const battles = [
+    battle('b1', [match('a', 'b', 'a', [80, 0])]),
+    battle('b2', [match('a', 'b', 'b', [0, 20])]),
+  ];
+  const rows = standings(teams, allMatches(battles));
+  assert.deepEqual(
+    rows.map((r) => [r.name, r.points, r.wins, r.losses, r.played]),
+    [
+      ['Alpha', 1, 1, 1, 2],
+      ['Beta', 1, 1, 1, 2],
+    ],
+  );
 });
 
 test('validateLoadout accepts a loadout the game would take', () => {

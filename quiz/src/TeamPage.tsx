@@ -264,7 +264,8 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
                   )}
                 </p>
                 <p className="muted">
-                  Place <strong>{view.battle.rank ?? '–'}</strong> · {view.battle.played} played · {view.battle.points} points
+                  Battle {view.battle.number} · place <strong>{view.battle.rank ?? '–'}</strong> · {view.battle.wins}W of{' '}
+                  {view.battle.played} · {view.battle.points} points
                 </p>
               </>
             ) : (
