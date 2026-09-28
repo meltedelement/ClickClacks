@@ -10,6 +10,12 @@ npm run dev     # API server (port 3001) + Vite client (port 5174), with reload
 npm run build && npm start   # one server on port 3001 that serves the built client
 ```
 
+From the repo root, `npm run dev:all` (or `npm run start:all`, which builds both
+first) runs the quiz and the game together and points the quiz at the match API
+for you — see the [main README](../README.md#running). Running it on its own
+here works too; just set `GAME_API` so the battle can reach the game
+(`GAME_API=http://localhost:5173/api npm run dev`, or the built `:3002`).
+
 - Teams open `http://<your-ip>:5174/` (dev) or `http://<your-ip>:3001/` (start).
 - The host opens `/admin` and enters the admin key.
 - The host shows `/present` on the big screen. It uses the same admin key.

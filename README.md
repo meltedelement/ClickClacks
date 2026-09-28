@@ -10,6 +10,25 @@ npm install
 npm run dev      # opens a dev server with hot reload
 ```
 
+To run the game and the [quiz](quiz/README.md) together, one command starts
+both and points the quiz at the match API for you:
+
+```sh
+npm install && (cd quiz && npm install)
+npm run dev:all    # hot reload: game 5173 (display), quiz client 5174, quiz API 3001
+npm run start:all  # builds both, then serves: game 3002, quiz 3001
+```
+
+Either server stopping stops the other, and Ctrl-C stops everything. Opening
+the game's display page and the quiz admin page is then all that is left:
+
+- Display page (big screen): `http://localhost:5173/?display` (`:3002` when built)
+- Quiz admin and presenter: `http://localhost:5174/admin`, `/present` (`:3001` when built)
+
+Starting the two by hand works too; the only thing to remember is that the quiz
+server needs `GAME_API` pointed at the game (`GAME_API=http://localhost:5173/api
+npm run dev` in `quiz/`, or the built `:3002`).
+
 Each fighter is a random weapon by default (rerolled every match, never a mirror
 match). The menu button in the top right can pin a specific weapon per fighter, add and
 remove upgrades per fighter (a Random fighter can only take upgrades that fit any weapon),

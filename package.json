@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:all": "node tools/run-all.js",
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server/index.js",
+    "start:all": "node tools/run-all.js --built",
     "balance": "node tools/balance.js"
   },
   "devDependencies": {
