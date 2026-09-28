@@ -33,7 +33,7 @@ To start a new quiz, delete `state.json` or use a reset button on the admin page
 
 The host moves through these phases on the admin page:
 
-1. **lobby**: Teams join with a name and a weapon.
+1. **lobby**: Teams join with a name and a weapon. Teams can change their weapon only in this phase.
 2. **question**: Teams answer. A team can change its answer until the host closes answers.
 3. **locked**: Answers are closed.
 4. **reveal**: Teams see the correct answer. Each team that got it right sees `offerSize` random upgrades and picks one immediately.
@@ -48,7 +48,8 @@ Picks are calculated again from the answers each time. Picks left = correct reve
 - Mark a question as revealed or not revealed.
 - Edit a team: name, weapon, bonus picks, and upgrade counts.
 - Reroll a team's upgrade offer. Delete a team.
-- Show a banner message to all teams. Lock the weapon choice.
+- Show a banner message to all teams. Lock the weapon choice in the lobby.
+- Change a team's weapon at any time (teams can change it only in the lobby).
 - Reload the questions. Reset the quiz, with or without the teams.
 - See the raw state. Copy the loadouts JSON.
 

@@ -147,7 +147,7 @@ export function AdminPage() {
         </form>
         <label>
           <input type="checkbox" checked={state.weaponsLocked} onChange={(e) => act({ type: 'setWeaponsLocked', locked: e.target.checked })} /> Lock weapon
-          choice
+          choice in the lobby (teams can only change weapons in the lobby)
         </label>
       </section>
 

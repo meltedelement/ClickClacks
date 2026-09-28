@@ -117,20 +117,23 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
       {error && <p className="error">{error}</p>}
 
       <section>
-        <label>
-          Weapon{' '}
-          <select value={team.weapon} disabled={view.weaponsLocked} onChange={(e) => act('/api/weapon', { weapon: e.target.value })}>
-            {view.weapons.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-          {view.weaponsLocked && ' (locked)'}
-        </label>
+        {view.phase === 'lobby' && !view.weaponsLocked ? (
+          <label>
+            Weapon{' '}
+            <select value={team.weapon} onChange={(e) => act('/api/weapon', { weapon: e.target.value })}>
+              {view.weapons.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <p>Weapon: {view.weapons.find((w) => w.id === team.weapon)?.name ?? team.weapon}</p>
+        )}
       </section>
 
-      {view.phase === 'lobby' && <p>Waiting for the host to start.</p>}
+      {view.phase === 'lobby' && <p>Waiting for the host to start. You can change your weapon until the quiz starts.</p>}
 
       {view.question && (
         <section>

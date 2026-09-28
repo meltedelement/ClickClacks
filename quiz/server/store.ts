@@ -206,7 +206,7 @@ export function answer(team: Team, choice: number) {
 }
 
 export function chooseWeapon(team: Team, weapon: string) {
-  if (state.weaponsLocked) throw new UserError('Weapons are locked');
+  if (state.phase !== 'lobby' || state.weaponsLocked) throw new UserError('Weapons can only be changed in the lobby');
   checkWeapon(weapon);
   mutate(() => {
     team.weapon = weapon;
