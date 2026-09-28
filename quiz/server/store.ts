@@ -200,7 +200,7 @@ export function join(name: string, weapon: string, code: string): Team {
 
 export function answer(team: Team, choice: number) {
   const q = currentQuestion();
-  if (state.phase !== 'question' || !q) throw new UserError('Answers are closed');
+  if (state.phase !== 'question' || !q || state.revealed.includes(q.id)) throw new UserError('Answers are closed');
   if (!Number.isInteger(choice) || choice < 0 || choice >= q.options.length) throw new UserError('Invalid choice');
   mutate(() => {
     state.answers[q.id] ??= {};
@@ -254,7 +254,8 @@ export function adminAction(a: Action) {
       if (!(index >= 0 && index < state.questions.length)) throw new UserError('No such question');
       return mutate(() => {
         state.questionIndex = index;
-        state.phase = 'question';
+        // A revealed question stays revealed, so teams cannot change to the shown answer.
+        state.phase = state.revealed.includes(state.questions[index].id) ? 'reveal' : 'question';
       });
     }
     case 'setAnswer':

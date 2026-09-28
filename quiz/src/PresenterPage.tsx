@@ -46,9 +46,14 @@ export function PresenterPage() {
   }
 
   // Space, Enter or the right arrow does the next step (for a clicker or a keyboard).
+  // Space and Enter already press a focused button, so skip them there. The
+  // arrow and Page Down must still work after a click leaves the focus on a button.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!step || e.repeat || (e.target as HTMLElement).closest('input, select, textarea, button')) return;
+      if (!step || e.repeat) return;
+      const target = e.target as HTMLElement;
+      if (target.closest('input, select, textarea')) return;
+      if ((e.key === ' ' || e.key === 'Enter') && target.closest('button')) return;
       if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'PageDown') {
         e.preventDefault();
         run(step);

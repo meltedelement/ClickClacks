@@ -210,7 +210,7 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
                 } else if (view.correct === null && view.myAnswer === i) classes.push('selected');
                 else if (view.correct !== null) classes.push('dim');
                 return (
-                  <button key={i} className={classes.join(' ')} disabled={busy || view.phase !== 'question'} onClick={() => act('/api/answer', { choice: i })}>
+                  <button key={i} className={classes.join(' ')} disabled={busy || view.phase !== 'question' || view.correct !== null} onClick={() => act('/api/answer', { choice: i })}>
                     <span className="letter">{LETTERS[i]}</span>
                     <span className="text">{option}</span>
                     {mark && <span className="mark">{mark}</span>}
