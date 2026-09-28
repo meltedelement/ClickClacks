@@ -11,8 +11,9 @@ npm run dev      # opens a dev server with hot reload
 ```
 
 Each fighter is a random weapon by default (rerolled every match, never a mirror
-match). The menu button in the top right can pin a specific weapon per fighter, and has restart, pause, speed,
-hitboxes, auto rematch, sound, and fullscreen.
+match). The menu button in the top right can pin a specific weapon per fighter, add and
+remove upgrades per fighter (a Random fighter can only take upgrades that fit any weapon),
+and has restart, pause, speed, hitboxes, auto rematch, sound, and fullscreen.
 
 Shortcuts: **Space** pause, **R** restart, **H** hitboxes, **M** mute, **F** fullscreen, **Esc** close menu.
 
@@ -39,6 +40,12 @@ src/
     ChargeDash.js      Spear: stop, aim, lunge for bonus damage
     DropSlam.js        Mace: from high up, plunge to the floor; damage grows with the fall
     DashFlurry.js      Daggers: gather both blades, then three rapid dashes
+  upgrades/
+    Upgrade.js         Base class for roguelike upgrades applied from a loadout
+    common.js          Small upgrades any weapon can take
+    sword.js, spear.js, daggers.js, mace.js
+                       Small upgrades for one weapon
+    index.js           Registry of upgrades (menu order), plus loadout validation
   game/                Browser-only
     Game.js            Fixed-timestep loop, pause/speed/hitstop, sim events -> effects
     Renderer.js        Draws the arena, balls, weapons, banners
@@ -150,6 +157,7 @@ every step:
 | `unblockable`         | When true, the weapon can't be parried and passes through other weapons |
 | `unstoppable`         | When true, other balls can't push this one; it shoves them aside |
 | `bladeSpread`         | For multi-blade weapons: 1 = evenly spaced, 0 = gathered side by side at the front |
+| `damageTakenMultiplier` | Multiplies damage the ball takes from weapon hits |
 
 Hooks: `shouldActivate`, `onStart`, `onUpdate`, `onEnd`, `onHit`, `onParry`,
 `onOwnerHit` (the ability's ball got hit), and `draw(ctx)` for visuals, which are drawn
@@ -157,6 +165,74 @@ underneath the balls. `nearestEnemy(sim)` is a handy helper for targeting, and
 `target.clearHitCooldown(this.weapon)` lets a rapid multi-hit move land every hit.
 `ChargeDash.js` is the most complete example, with multiple phases, aiming,
 movement control, and cancelling.
+
+Keep an ability's gameplay numbers as fields set in its constructor (like
+`this.dashSpeed = 950`), not module constants, so upgrades can change them.
+
+## Upgrades
+
+Upgrades are the roguelike layer's way of changing a fighter. The sim knows nothing
+about runs or choices: each match is set up from one loadout per fighter, which is
+plain data so it can be saved or sent to a worker.
+
+```js
+new Simulation([
+  { weapon: 'sword', upgrades: ['damage', 'damage', 'lifesteal'] },
+  { weapon: 'mace', upgrades: [] },
+], { onEvent });
+```
+
+Upgrades stack: listing an id twice gives one upgrade with `stacks = 2`. An
+unknown id, one that doesn't fit the weapon, one over its `maxStacks`, or one
+missing an upgrade it `requires` throws. `upgradesFor(weaponId, owned)` in
+`src/upgrades/index.js` lists what could be added next.
+
+To add one, write the class in `src/upgrades/common.js` (any weapon) or the
+weapon's own file, and add it to `UPGRADES` in `src/upgrades/index.js`:
+
+```js
+export class Longsword extends Upgrade {
+  static id = 'longsword';
+  static displayName = 'Longsword';
+  static description = 'Your sword is 25% longer.'; // per copy
+  static weapons = ['sword']; // or leave out for any weapon
+  static requires = []; // other upgrade ids that must be taken first
+  static maxStacks = Infinity;
+
+  // Runs once per copy, so it stacks by itself. Adding a share of the starting
+  // value stacks linearly instead of compounding.
+  apply() {
+    this.base ??= this.weapon.length;
+    this.weapon.length += this.base * 0.25;
+  }
+
+  drawBlade(ctx, start) {
+    // Extra detail on each blade, in the same space as Weapon.drawLocal.
+  }
+}
+```
+
+Modifier getters and hooks run once however many copies there are, so scale them
+with `this.stacks` (e.g. `return 1 + 0.2 * this.stacks`).
+
+After the weapon, its ability and its shield are built, upgrades are applied in
+loadout order. Then the ball's HP is filled to `maxHp`. An upgrade can do any mix of these:
+
+| What                       | How                                                           |
+| -------------------------- | ------------------------------------------------------------- |
+| Change starting stats      | `apply()`: `this.weapon.blades += 1`, `this.owner.maxHp += 20`, `this.ability.windup *= 0.5` |
+| Combat stats               | `weapon.critChance`, `weapon.critMultiplier`, `owner.armor`, `owner.dodgeChance`, `shield.contactDamage`, `weapon.widthScale` (draw width, set it with `thickness`) |
+| Change behaviour live      | The same modifier getters as abilities. Multipliers multiply together; flags are on if anything turns them on |
+| React to things            | `onUpdate`, `onHit(target, sim, damage)`, `onParry`, `onOwnerHit(attacker, sim, damage)`, `onBlock(attacker, sim)`, `onWallBounce(sim)`, `onAbilityStart`, `onAbilityEnd` |
+| Deal extra damage          | `sim.dealDamage(this.owner, target, amount, { reason, color })`: no knockback, ignores armor and dodge |
+| Replace the ability        | `apply()`: `this.weapon.ability = new OtherAbility(this.weapon)` |
+| Show that it's there       | `drawUnder(ctx)`, `drawBlade(ctx, start)`, `drawOver(ctx)` (browser only) |
+| Show that something happened | `this.emit(sim, phase, { shake, burst, text, color })`, sent as an `upgrade` event |
+
+Upgrade hooks run after the ability's and the weapon's own, so they see this hit's
+scaling. If an upgrade changes the ability's `cooldown`, set `cooldownLeft` too, since the
+first cooldown was already worked out. If an upgrade emits a new phase and should make a sound, add a case to
+`Sound.upgrade`.
 
 ## Balancing
 
@@ -168,6 +244,9 @@ npm run balance                          # 500 matches per pairing
 npm run balance -- 5000                  # more matches, tighter error bars
 npm run balance -- -g 2000 -w sword,mace # only some weapons
 npm run balance -- -g 1000 --mirror      # include sword vs sword etc.
+npm run balance -- -w sword,sword+lifesteal,mace   # fighters with upgrades
+npm run balance -- -w sword,sword+damage:3+crit    # :N stacks an upgrade
+npm run balance -- --list                # weapon and upgrade ids
 npm run balance -- -s 42 --json a.json   # fixed seed: rerun after a tweak and compare
 npm run balance -- --csv matches.csv     # one row per match for your own analysis
 npm run balance -- --help                # all options
@@ -179,7 +258,8 @@ It prints:
   when it's clearly outside 45–55%, plus HP left on wins, comeback wins and how
   often it lands the first hit.
 - **Combat**: damage dealt/taken, DPS, hits, average and max hit, parries,
-  shield blocks, ability uses and the share of damage done by abilities.
+  shield blocks, ability uses, the share of damage done by abilities and by
+  non-weapon sources (thorns, spikes), crits and dodges.
 - **Scaling**: average weapon stats at the end of a match vs. at the start.
 - **Win matrix** and **Matchups**: every pairing's win rates, match length
   (average, median, p10–p90), and how often the first hit decides the fight.

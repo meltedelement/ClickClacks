@@ -1,9 +1,6 @@
 import { Weapon } from './Weapon.js';
 import { ChargeDash } from '../abilities/ChargeDash.js';
 
-const REACH_PER_HIT = 6;
-const DAMAGE_PER_HIT = 0.5;
-
 // Slow and long. Grows longer with every hit, so it controls more of the arena over time.
 export class Spear extends Weapon {
   static id = 'spear';
@@ -16,12 +13,14 @@ export class Spear extends Weapon {
     this.spinSpeed = 2.6;
     this.length = 110;
     this.thickness = 4;
+    this.reachPerHit = 6; // px of length gained per hit
+    this.damagePerHit = 0.5;
     this.ability = new ChargeDash(this);
   }
 
   onHit() {
-    this.length += REACH_PER_HIT;
-    this.damage += DAMAGE_PER_HIT;
+    this.length += this.reachPerHit;
+    this.damage += this.damagePerHit;
   }
 
   drawLocal(ctx, start) {

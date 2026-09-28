@@ -4,7 +4,11 @@
 //
 // Usage: npm run balance -- [games] [options]
 //   -g, --games N         matches per pairing (default 500, sides alternate)
-//   -w, --weapons a,b,c   only test these weapon ids (default: all)
+//   -w, --weapons a,b,c   fighters to test (default: every weapon, no upgrades).
+//                         A fighter is a weapon id, optionally with upgrades:
+//                         sword+extra-blade+lifesteal. Upgrades stack: repeat
+//                         an id or add :N, e.g. sword+damage:3+crit
+//   -l, --list            list weapon and upgrade ids (by weapon)
 //   -m, --mirror          also run mirror matches (sword vs sword, ...)
 //   -t, --time-limit S    simulated seconds before a match is called a draw (default 180)
 //   -s, --seed N          base seed; the same seed and options give the same results
@@ -17,6 +21,8 @@
 //   npm run balance -- 2000
 //   npm run balance -- -g 5000 -w sword,mace --csv matches.csv
 //   npm run balance -- -g 1000 --seed 42 --json before.json
+//   npm run balance -- -g 2000 -w sword,sword+extra-blade,spear,mace,daggers
+//   npm run balance -- -g 1000 -w spear,spear+crit:2+crit-damage,mace
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
@@ -25,6 +31,7 @@ import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import { CONFIG } from '../src/config.js';
 import { Simulation } from '../src/sim/Simulation.js';
 import { WEAPONS, getWeaponById } from '../src/weapons/index.js';
+import { UPGRADES, getUpgradeById, resolveUpgrades } from '../src/upgrades/index.js';
 
 const CHUNK_SIZE = 25; // matches handed to a worker at a time
 const COMEBACK_HP = 25; // a win counts as a comeback if the winner was ever this many HP behind
@@ -35,18 +42,17 @@ const DT = 1 / CONFIG.physicsHz;
 
 // ---- Worker: running matches -------------------------------------------------
 
-function runTask({ pairIndex, aId, bId, start, count, seed, timeLimit }) {
-  const A = getWeaponById(aId);
-  const B = getWeaponById(bId);
+function runTask({ pairIndex, a, b, start, count, seed, timeLimit }) {
   const records = [];
   for (let game = start; game < start + count; game++) {
-    const matchSeed = mixSeed(seed, hashString(`${aId}|${bId}`), game);
-    const lineup = game % 2 === 0 ? [A, B] : [B, A];
+    const matchSeed = mixSeed(seed, hashString(`${a}|${b}`), game);
+    const lineup = game % 2 === 0 ? [a, b] : [b, a];
     records.push({ pairIndex, game, ...runMatch(lineup, matchSeed, timeLimit) });
   }
   return records;
 }
 
+// `lineup` is fighter specs, e.g. ['sword+lifesteal', 'mace'].
 function runMatch(lineup, seed, timeLimit) {
   // Everything random in the sim goes through Math.random, so seeding it makes matches reproducible.
   Math.random = mulberry32(seed);
@@ -61,31 +67,41 @@ function runMatch(lineup, seed, timeLimit) {
     abilityUses: 0,
     abilityHits: 0,
     abilityDamage: 0,
+    otherDamage: 0, // HP removed by thorns, spikes and so on rather than weapon hits
+    crits: 0,
+    dodges: 0, // enemy hits this fighter dodged
     worstDeficit: 0, // biggest HP lead the opponent ever had
   }));
   let firstHit = -1;
 
-  const sim = new Simulation(lineup, { onEvent });
+  const sim = new Simulation(lineup.map(parseFighter), { onEvent });
   const slot = (ball) => sim.balls.indexOf(ball);
-  const hpSeen = sim.balls.map((b) => b.hp);
+  const weaponStats = ({ weapon }) => ({ damage: weapon.damage, spinSpeed: weapon.spinSpeed, length: weapon.length });
+  const start = sim.balls.map(weaponStats);
 
   function onEvent(type, e) {
     if (type === 'hit') {
       const a = slot(e.attacker);
       const t = slot(e.target);
-      const dealt = hpSeen[t] - e.target.hp;
-      hpSeen[t] = e.target.hp;
-
       const f = fighters[a];
       f.hits++;
-      f.damageDealt += dealt;
+      f.damageDealt += e.dealt;
       f.maxHit = Math.max(f.maxHit, e.damage);
+      if (e.crit) f.crits++;
       if (e.attacker.weapon.ability?.active) {
         f.abilityHits++;
-        f.abilityDamage += dealt;
+        f.abilityDamage += e.dealt;
       }
       if (firstHit < 0) firstHit = a;
       fighters[t].worstDeficit = Math.max(fighters[t].worstDeficit, e.attacker.hp - e.target.hp);
+    } else if (type === 'damage') {
+      const s = slot(e.source);
+      const t = slot(e.target);
+      fighters[s].damageDealt += e.dealt;
+      fighters[s].otherDamage += e.dealt;
+      fighters[t].worstDeficit = Math.max(fighters[t].worstDeficit, e.source.hp - e.target.hp);
+    } else if (type === 'dodge') {
+      fighters[slot(e.target)].dodges++;
     } else if (type === 'parry') {
       fighters[slot(e.a)].parries++;
       fighters[slot(e.b)].parries++;
@@ -111,10 +127,11 @@ function runMatch(lineup, seed, timeLimit) {
     winner: sim.over && sim.winner ? slot(sim.winner) : -1,
     firstHit,
     fighters: sim.balls.map((ball, i) => ({
-      id: lineup[i].id,
+      id: lineup[i],
       hpLeft: ball.hp,
       ...fighters[i],
-      final: { damage: ball.weapon.damage, spinSpeed: ball.weapon.spinSpeed, length: ball.weapon.length },
+      start: start[i],
+      final: weaponStats(ball),
     })),
   };
 }
@@ -159,6 +176,7 @@ function readOptions() {
     options: {
       games: { type: 'string', short: 'g' },
       weapons: { type: 'string', short: 'w' },
+      list: { type: 'boolean', short: 'l', default: false },
       mirror: { type: 'boolean', short: 'm', default: false },
       'time-limit': { type: 'string', short: 't', default: '180' },
       seed: { type: 'string', short: 's' },
@@ -174,10 +192,20 @@ function readOptions() {
     process.exit(0);
   }
 
-  const known = WEAPONS.map((W) => W.id);
-  const weapons = values.weapons
-    ? values.weapons.split(',').map((id) => WEAPONS.find((W) => W.id === id.trim()) ?? fail(`Unknown weapon "${id}". Pick from: ${known.join(', ')}`))
-    : WEAPONS;
+  if (values.list) {
+    console.log(readList());
+    process.exit(0);
+  }
+
+  const weapons = values.weapons ? values.weapons.split(',').map((spec) => spec.trim()) : WEAPONS.map((W) => W.id);
+  for (const spec of weapons) {
+    try {
+      parseFighter(spec);
+    } catch (err) {
+      fail(`Bad fighter "${spec}": ${err.message}. Run with --list to see ids.`);
+    }
+  }
+  if (new Set(weapons).size !== weapons.length) fail('A fighter is listed twice (use --mirror for mirror matches).');
   if (weapons.length < 2 && !values.mirror) fail('Need at least two weapons (or --mirror).');
 
   return {
@@ -202,6 +230,44 @@ function readUsage() {
     .join('\n');
 }
 
+function readList() {
+  const lines = ['Weapons:', ...WEAPONS.map((W) => `  ${W.id.padEnd(16)} ${W.displayName}`)];
+  const line = (U) => {
+    const notes = [U.maxStacks < Infinity && `max ${U.maxStacks}`, U.requires.length && `needs ${U.requires.join(', ')}`].filter(Boolean);
+    return `  ${U.id.padEnd(16)} ${U.description}${notes.length ? `  (${notes.join('; ')})` : ''}`;
+  };
+  lines.push('', 'Upgrades for any weapon:', ...UPGRADES.filter((U) => U.weapons === null).map(line));
+  for (const W of WEAPONS) {
+    const own = UPGRADES.filter((U) => U.weapons?.includes(W.id));
+    if (own.length) lines.push('', `${W.displayName} upgrades:`, ...own.map(line));
+  }
+  lines.push('', 'Upgrades stack: repeat an id or add :N, e.g. sword+damage:3+crit');
+  return lines.join('\n');
+}
+
+// 'sword+damage:2+lifesteal' -> { weapon: 'sword', upgrades: ['damage', 'damage', 'lifesteal'] }.
+// Throws if anything is unknown, doesn't fit the weapon, or breaks a stack limit or requirement.
+function parseFighter(spec) {
+  const [weapon, ...parts] = spec.split('+').map((part) => part.trim());
+  const upgrades = parts.flatMap((part) => {
+    const [id, count = '1'] = part.split(':');
+    const n = Number(count);
+    if (!Number.isInteger(n) || n < 1) throw new Error(`bad stack count in "${part}"`);
+    return Array(n).fill(id);
+  });
+  resolveUpgrades(upgrades, getWeaponById(weapon).id);
+  return { weapon, upgrades };
+}
+
+function fighterName(spec) {
+  const { weapon, upgrades } = parseFighter(spec);
+  const names = [...new Set(upgrades)].map((id) => {
+    const count = upgrades.filter((x) => x === id).length;
+    return getUpgradeById(id).displayName + (count > 1 ? ` x${count}` : '');
+  });
+  return [getWeaponById(weapon).displayName, ...names].join(' + ');
+}
+
 function buildPairings(weapons, mirror) {
   const pairings = [];
   for (let i = 0; i < weapons.length; i++) {
@@ -212,9 +278,9 @@ function buildPairings(weapons, mirror) {
 
 function buildTasks(pairings, { games, seed, timeLimit }) {
   const tasks = [];
-  pairings.forEach(([A, B], pairIndex) => {
+  pairings.forEach(([a, b], pairIndex) => {
     for (let start = 0; start < games; start += CHUNK_SIZE) {
-      tasks.push({ pairIndex, aId: A.id, bId: B.id, start, count: Math.min(CHUNK_SIZE, games - start), seed, timeLimit });
+      tasks.push({ pairIndex, a, b, start, count: Math.min(CHUNK_SIZE, games - start), seed, timeLimit });
     }
   });
   return tasks;
@@ -259,12 +325,12 @@ function runPool(tasks, jobs, total, started) {
 // ---- Aggregation --------------------------------------------------------------
 
 function summarise(records, pairings, opts) {
-  const ids = opts.weapons.map((W) => W.id);
+  const ids = opts.weapons;
   const weapons = Object.fromEntries(ids.map((id) => [id, newWeaponTotals()]));
-  const matchups = pairings.map(([A, B]) => ({
-    a: A.id,
-    b: B.id,
-    mirror: A === B,
+  const matchups = pairings.map(([a, b]) => ({
+    a,
+    b,
+    mirror: a === b,
     games: 0,
     winsA: 0,
     winsB: 0,
@@ -327,9 +393,15 @@ function summarise(records, pairings, opts) {
       w.attacksBlocked += f.attacksBlocked;
       w.abilityUses += f.abilityUses;
       w.abilityDamage += f.abilityDamage;
+      w.otherDamage += f.otherDamage;
+      w.crits += f.crits;
+      w.dodges += f.dodges;
       w.firstHits += r.firstHit === i ? 1 : 0;
       w.time += r.time;
-      for (const k of Object.keys(w.final)) w.final[k] += f.final[k];
+      for (const k of Object.keys(w.final)) {
+        w.start[k] += f.start[k];
+        w.final[k] += f.final[k];
+      }
     });
   }
 
@@ -354,7 +426,8 @@ function newWeaponTotals() {
     games: 0, wins: 0, draws: 0, comebackWins: 0, hpLeftOnWin: 0,
     damageDealt: 0, damageTaken: 0, hits: 0, maxHit: 0,
     parries: 0, blocksMade: 0, attacksBlocked: 0,
-    abilityUses: 0, abilityDamage: 0, firstHits: 0, time: 0,
+    abilityUses: 0, abilityDamage: 0, otherDamage: 0, crits: 0, dodges: 0, firstHits: 0, time: 0,
+    start: { damage: 0, spinSpeed: 0, length: 0 },
     final: { damage: 0, spinSpeed: 0, length: 0 },
   };
 }
@@ -378,11 +451,15 @@ function finishWeapon(w) {
       blocksMade: w.blocksMade / n,
       attacksBlocked: w.attacksBlocked / n,
       abilityUses: w.abilityUses / n,
+      crits: w.crits / n,
+      dodges: w.dodges / n,
     },
     dps: w.damageDealt / (w.time || 1),
-    avgHit: w.hits ? w.damageDealt / w.hits : 0,
+    avgHit: w.hits ? (w.damageDealt - w.otherDamage) / w.hits : 0,
     maxHit: w.maxHit,
     abilityDamageShare: w.damageDealt ? w.abilityDamage / w.damageDealt : 0,
+    otherDamageShare: w.damageDealt ? w.otherDamage / w.damageDealt : 0,
+    startStats: Object.fromEntries(Object.entries(w.start).map(([k, v]) => [k, v / n])),
     finalStats: Object.fromEntries(Object.entries(w.final).map(([k, v]) => [k, v / n])),
   };
 }
@@ -434,7 +511,7 @@ function marginOfError(p, n) {
 // ---- Printing -------------------------------------------------------------------
 
 function printSummary({ run, totals, weapons, matchups, matrix }) {
-  const name = (id) => getWeaponById(id).displayName;
+  const name = fighterName;
   const ids = run.weapons;
 
   heading('Weapons');
@@ -457,7 +534,7 @@ function printSummary({ run, totals, weapons, matchups, matrix }) {
 
   heading('Combat (averages per match)');
   table(
-    ['Weapon', 'Dmg dealt', 'Dmg taken', 'DPS', 'Hits', 'Avg hit', 'Max hit', 'Parries', 'Blocks', 'Got blocked', 'Ability uses', 'Ability dmg'],
+    ['Weapon', 'Dmg dealt', 'Dmg taken', 'DPS', 'Hits', 'Avg hit', 'Max hit', 'Parries', 'Blocks', 'Got blocked', 'Ability uses', 'Ability dmg', 'Other dmg', 'Crits', 'Dodges'],
     ids.map((id) => {
       const w = weapons[id];
       const p = w.perMatch;
@@ -474,6 +551,9 @@ function printSummary({ run, totals, weapons, matchups, matrix }) {
         num(p.attacksBlocked),
         num(p.abilityUses),
         pctText(w.abilityDamageShare),
+        pctText(w.otherDamageShare),
+        num(p.crits),
+        num(p.dodges),
       ];
     }),
   );
@@ -483,8 +563,8 @@ function printSummary({ run, totals, weapons, matchups, matrix }) {
     ['Weapon', 'Damage', 'Spin speed', 'Length', 'Start dmg', 'Start spin', 'Start len'],
     ids.map((id) => {
       const f = weapons[id].finalStats;
-      const base = new (getWeaponById(id))({ radius: CONFIG.ball.radius, pos: { x: 0, y: 0 } });
-      return [name(id), num(f.damage, 2), num(f.spinSpeed, 2), num(f.length), num(base.damage, 2), num(base.spinSpeed, 2), num(base.length)];
+      const s = weapons[id].startStats;
+      return [name(id), num(f.damage, 2), num(f.spinSpeed, 2), num(f.length), num(s.damage, 2), num(s.spinSpeed, 2), num(s.length)];
     }),
   );
 
@@ -576,17 +656,17 @@ const visibleLength = (text) => text.replace(/\x1b\[[0-9;]*m/g, '').length;
 // ---- CSV ------------------------------------------------------------------------
 
 function toCsv(records, pairings) {
-  const perFighter = ['id', 'hpLeft', 'damageDealt', 'hits', 'maxHit', 'parries', 'blocksMade', 'attacksBlocked', 'abilityUses', 'abilityDamage', 'worstDeficit'];
+  const perFighter = ['id', 'hpLeft', 'damageDealt', 'hits', 'maxHit', 'parries', 'blocksMade', 'attacksBlocked', 'abilityUses', 'abilityDamage', 'otherDamage', 'crits', 'dodges', 'worstDeficit'];
   const finals = ['damage', 'spinSpeed', 'length'];
   const fighterCols = (p) => [...perFighter, ...finals.map((k) => `final_${k}`)].map((k) => `${p}_${k}`);
   const header = ['matchup', 'game', 'seed', 'time', 'winner', 'first_hit', ...fighterCols('p1'), ...fighterCols('p2')];
 
   const rows = records.map((r) => {
-    const [A, B] = pairings[r.pairIndex];
+    const [a, b] = pairings[r.pairIndex];
     const winner = r.fighters[r.winner]?.id ?? 'draw';
     const firstHit = r.fighters[r.firstHit]?.id ?? '';
     const fighter = (f) => [...perFighter.map((k) => round(f[k])), ...finals.map((k) => round(f.final[k]))];
-    return [`${A.id}-vs-${B.id}`, r.game, r.seed, round(r.time), winner, firstHit, ...fighter(r.fighters[0]), ...fighter(r.fighters[1])];
+    return [`${a}-vs-${b}`, r.game, r.seed, round(r.time), winner, firstHit, ...fighter(r.fighters[0]), ...fighter(r.fighters[1])];
   });
   return [header, ...rows].map((row) => row.join(',')).join('\n') + '\n';
 }

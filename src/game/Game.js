@@ -11,7 +11,7 @@ const MAX_STEPS_PER_FRAME = 40;
 // Owns the browser loop: runs the simulation at a fixed rate, turns sim events
 // into effects, handles pause / speed / hitstop, and draws each frame.
 export class Game {
-  // chooseLineup() returns the weapon classes for each new match.
+  // chooseLineup() returns the loadouts for each new match (see Simulation).
   constructor(canvas, { chooseLineup }) {
     this.chooseLineup = chooseLineup;
     this.renderer = new Renderer(canvas);
@@ -91,16 +91,35 @@ export class Game {
 
     switch (type) {
       case 'hit': {
-        const { attacker, target, damage, point } = data;
+        const { attacker, target, damage, crit, point } = data;
         sound.hit(damage, attacker.weapon.constructor.id);
         effects.burst(point, target.color, { count: 8 + Math.min(damage, 20) });
         effects.floatingText(
           { x: target.pos.x, y: target.pos.y - target.radius - 12 },
-          `-${formatNumber(damage)}`,
-          '#ffffff',
+          crit ? `CRIT -${formatNumber(damage)}` : `-${formatNumber(damage)}`,
+          crit ? '#ffd23f' : '#ffffff',
         );
         effects.shake(2 + damage * 0.4);
         this.hitstop = Math.max(this.hitstop, Math.min(hs.max, hs.base + hs.perDamage * damage));
+        if (crit) {
+          sound.crit();
+          effects.burst(point, '#ffd23f', { count: 26, speed: 420, life: 0.5, size: 3.5 });
+          effects.shake(8);
+          this.hitstop = Math.max(this.hitstop, hs.crit);
+        }
+        break;
+      }
+      case 'dodge': {
+        const { target } = data;
+        sound.dodge();
+        effects.floatingText({ x: target.pos.x, y: target.pos.y - target.radius - 12 }, 'DODGE', '#9fd3ff');
+        break;
+      }
+      case 'damage': {
+        const { target, damage, color = '#ffffff' } = data;
+        sound.chip();
+        effects.burst(target.pos, color, { count: 6, speed: 160, life: 0.3, size: 2 });
+        effects.floatingText({ x: target.pos.x, y: target.pos.y - target.radius - 12 }, `-${formatNumber(damage)}`, color);
         break;
       }
       case 'block':
@@ -116,6 +135,14 @@ export class Game {
         sound.ability(phase, shake);
         if (shake) effects.shake(shake);
         if (burst) effects.burst(ball.pos, burst.color ?? ball.color, burst);
+        break;
+      }
+      case 'upgrade': {
+        const { ball, phase, shake, burst, text, color } = data;
+        sound.upgrade(phase, shake);
+        if (shake) effects.shake(shake);
+        if (burst) effects.burst(ball.pos, burst.color ?? ball.color, burst);
+        if (text) effects.floatingText({ x: ball.pos.x, y: ball.pos.y - ball.radius - 12 }, text, color ?? '#ffffff');
         break;
       }
       case 'death':

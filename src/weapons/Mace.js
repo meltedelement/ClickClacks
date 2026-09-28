@@ -2,7 +2,6 @@ import { Weapon } from './Weapon.js';
 import { DropSlam } from '../abilities/DropSlam.js';
 import { TAU } from '../sim/math.js';
 
-const DAMAGE_PER_HIT = 1;
 const HEAD_RADIUS = 10;
 const SPIKES = 7;
 
@@ -18,11 +17,12 @@ export class Mace extends Weapon {
     this.spinSpeed = 2.4;
     this.length = 72;
     this.thickness = 7;
+    this.damagePerHit = 1;
     this.ability = new DropSlam(this);
   }
 
   onHit() {
-    this.damage += DAMAGE_PER_HIT;
+    this.damage += this.damagePerHit;
   }
 
   drawLocal(ctx, start) {

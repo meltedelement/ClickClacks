@@ -3,13 +3,16 @@ import { TAU, fromAngle, length, scale } from './math.js';
 import { formatNumber } from '../utils/format.js';
 
 export class Ball {
-  constructor({ position, color, WeaponClass }) {
+  // `upgrades` are Upgrade classes, applied in order once the weapon is built.
+  // A class listed more than once stacks onto the same instance.
+  constructor({ position, color, WeaponClass, upgrades = [] }) {
     this.pos = { ...position };
     this.radius = CONFIG.ball.radius;
     this.speed = CONFIG.ball.speed;
-    this.vel = fromAngle(Math.random() * TAU, this.speed);
+    const heading = Math.random() * TAU;
     this.maxHp = CONFIG.ball.maxHp;
-    this.hp = this.maxHp;
+    this.armor = 0; // taken off every weapon hit, but a hit is never reduced below half
+    this.dodgeChance = 0; // 0–1 chance a weapon hit misses completely
     this.color = color;
     this.alive = true;
     this.flash = 0; // seconds left of the white hit flash
@@ -18,6 +21,19 @@ export class Ball {
     this.hitCooldowns = new Map();
 
     this.weapon = new WeaponClass(this);
+    for (const UpgradeClass of upgrades) {
+      let upgrade = this.weapon.upgrades.find((u) => u.constructor === UpgradeClass);
+      if (!upgrade) {
+        upgrade = new UpgradeClass(this.weapon);
+        this.weapon.upgrades.push(upgrade);
+      }
+      upgrade.stacks += 1;
+      upgrade.apply();
+    }
+
+    // Set last so upgrades to speed or maxHp count from the start.
+    this.vel = fromAngle(heading, this.speed);
+    this.hp = this.maxHp;
   }
 
   get name() {
@@ -58,11 +74,38 @@ export class Ball {
     return !this.hitCooldowns.has(weapon);
   }
 
+  // Rolls this ball's dodge chance. Only uses Math.random when there is a chance
+  // to dodge, so fights without dodging play out the same as before it existed.
+  dodges() {
+    return this.dodgeChance > 0 && Math.random() < this.dodgeChance;
+  }
+
+  // Damage actually taken from a weapon hit of `damage`, after armor and modifiers.
+  reduceDamage(damage) {
+    const armored = Math.max(damage / 2, damage - this.armor);
+    return armored * this.weapon.damageTakenMultiplier;
+  }
+
   takeHit(weapon, damage) {
-    this.hp = Math.max(0, this.hp - damage);
     this.hitCooldowns.set(weapon, CONFIG.combat.hitCooldown);
+    return this.takeDamage(damage);
+  }
+
+  // Removes HP. Returns how much was actually lost (no overkill).
+  takeDamage(damage) {
+    const lost = Math.min(this.hp, damage);
+    this.hp -= lost;
     this.flash = 0.1;
     if (this.hp <= 0) this.alive = false;
+    return lost;
+  }
+
+  // Restores HP up to maxHp. Returns how much was actually healed.
+  heal(amount) {
+    if (!this.alive) return 0;
+    const healed = Math.min(this.maxHp - this.hp, amount);
+    this.hp += healed;
+    return healed;
   }
 
   draw(ctx) {

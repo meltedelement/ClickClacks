@@ -1,18 +1,6 @@
 import { Ability } from './Ability.js';
 import { TAU, angleOf, distance, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
 
-const COOLDOWN = 7;
-const GATHER_TIME = 0.25; // seconds stopped while the blades swing together and aim
-const DASHES = 3;
-const AIM_TIME = 0.25; // seconds between dashes, moving freely while re-aiming
-const AIM_TURN_RATE = 30; // rad/s
-const DASH_SPEED = 850; // px/s
-const DASH_DURATION = 0.2; // seconds per dash, if it doesn't hit first
-const DAMAGE_MULTIPLIER = 0.7; // each dash is a light hit
-const KNOCKBACK_MULTIPLIER = 0.6; // keep the target close for the next dash
-const TRIGGER_RANGE = 300; // px; only starts when an enemy is within this distance
-const RECOIL = 0.3; // fraction of dash speed kept after a dash lands
-
 // Gather every blade together at the front, then three quick dashes at the
 // enemy. Between dashes the ball keeps moving while it re-aims. Each dash can
 // land its own hit.
@@ -20,7 +8,20 @@ export class DashFlurry extends Ability {
   static displayName = 'Dash Flurry';
 
   constructor(weapon) {
-    super(weapon, { cooldown: COOLDOWN });
+    super(weapon, { cooldown: 7 });
+
+    // Stats. Upgrades may change these.
+    this.gatherTime = 0.25; // seconds stopped while the blades swing together and aim
+    this.dashes = 3;
+    this.aimTime = 0.25; // seconds between dashes, moving freely while re-aiming
+    this.aimTurnRate = 30; // rad/s
+    this.dashSpeed = 850; // px/s
+    this.dashDuration = 0.2; // seconds per dash, if it doesn't hit first
+    this.dashDamageMultiplier = 0.7; // each dash is a light hit
+    this.dashKnockbackMultiplier = 0.6; // keep the target close for the next dash
+    this.triggerRange = 300; // px; only starts when an enemy is within this distance
+    this.recoil = 0.3; // fraction of dash speed kept after a dash lands
+
     this.phase = null; // 'gather' | 'aim' | 'dash'
     this.timer = 0;
     this.dashesLeft = 0;
@@ -32,11 +33,11 @@ export class DashFlurry extends Ability {
   }
 
   get damageMultiplier() {
-    return this.phase === 'dash' ? DAMAGE_MULTIPLIER : 1;
+    return this.phase === 'dash' ? this.dashDamageMultiplier : 1;
   }
 
   get knockbackMultiplier() {
-    return this.phase === 'dash' ? KNOCKBACK_MULTIPLIER : 1;
+    return this.phase === 'dash' ? this.dashKnockbackMultiplier : 1;
   }
 
   // Stopped while gathering and steering while dashing; free to move between dashes.
@@ -50,14 +51,14 @@ export class DashFlurry extends Ability {
 
   shouldActivate(sim) {
     const enemy = this.nearestEnemy(sim);
-    return enemy !== null && distance(enemy.pos, this.owner.pos) < TRIGGER_RANGE;
+    return enemy !== null && distance(enemy.pos, this.owner.pos) < this.triggerRange;
   }
 
   onStart(sim) {
     this.target = this.nearestEnemy(sim);
-    this.dashesLeft = DASHES;
+    this.dashesLeft = this.dashes;
     this.phase = 'gather';
-    this.timer = GATHER_TIME;
+    this.timer = this.gatherTime;
   }
 
   onUpdate(dt, sim) {
@@ -68,22 +69,22 @@ export class DashFlurry extends Ability {
       if (this.phase === 'gather') owner.vel = vec(0, 0);
       if (this.target?.alive) {
         const desired = angleOf(sub(this.target.pos, owner.pos));
-        weapon.angle = turnTowards(weapon.angle, desired, AIM_TURN_RATE * dt);
+        weapon.angle = turnTowards(weapon.angle, desired, this.aimTurnRate * dt);
       }
       if (this.timer <= 0) this.startDash(sim);
       return;
     }
 
-    owner.vel = scale(normalize(owner.vel), DASH_SPEED);
+    owner.vel = scale(normalize(owner.vel), this.dashSpeed);
     weapon.angle = angleOf(owner.vel);
     if (this.timer <= 0) this.finishDash(sim);
   }
 
   startDash(sim) {
     this.phase = 'dash';
-    this.timer = DASH_DURATION;
+    this.timer = this.dashDuration;
     this.dashesLeft -= 1;
-    this.owner.vel = fromAngle(this.weapon.angle, DASH_SPEED);
+    this.owner.vel = fromAngle(this.weapon.angle, this.dashSpeed);
     // Each dash is its own attack, so the normal hit cooldown doesn't block it.
     this.target?.clearHitCooldown(this.weapon);
     this.emit(sim, 'dash', { shake: 1.5 });
@@ -92,7 +93,7 @@ export class DashFlurry extends Ability {
   finishDash(sim) {
     if (this.dashesLeft > 0 && this.target?.alive) {
       this.phase = 'aim';
-      this.timer = AIM_TIME;
+      this.timer = this.aimTime;
     } else {
       this.end(sim);
     }
@@ -105,7 +106,7 @@ export class DashFlurry extends Ability {
 
   onHit(target, sim) {
     if (this.phase !== 'dash') return;
-    this.owner.vel = scale(this.owner.vel, RECOIL);
+    this.owner.vel = scale(this.owner.vel, this.recoil);
     this.finishDash(sim);
   }
 

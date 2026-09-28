@@ -1,10 +1,6 @@
 import { Weapon } from './Weapon.js';
 import { DashFlurry } from '../abilities/DashFlurry.js';
 
-const SPIN_PER_HIT = 0.3;
-const DAMAGE_PER_HIT = 0.1;
-const PARRY_LOCK = 0.5; // s a dagger can't re-parry the same weapon it just parried
-
 // Two short blades on opposite sides. Weak at first, but every hit makes them
 // spin faster and cut a little deeper.
 export class Daggers extends Weapon {
@@ -19,6 +15,9 @@ export class Daggers extends Weapon {
     this.length = 42;
     this.thickness = 3;
     this.blades = 2;
+    this.spinPerHit = 0.3;
+    this.damagePerHit = 0.1;
+    this.parryLock = 0.5; // s a dagger can't re-parry the same weapon it just parried
     this.ability = new DashFlurry(this);
 
     // Fast dual blades tend to clash with the same weapon over and over;
@@ -27,12 +26,12 @@ export class Daggers extends Weapon {
   }
 
   onHit() {
-    this.spinSpeed += SPIN_PER_HIT;
-    this.damage += DAMAGE_PER_HIT;
+    this.spinSpeed += this.spinPerHit;
+    this.damage += this.damagePerHit;
   }
 
   onParry(otherWeapon) {
-    this.parryLocks.set(otherWeapon, PARRY_LOCK);
+    this.parryLocks.set(otherWeapon, this.parryLock);
   }
 
   canParry(otherWeapon) {

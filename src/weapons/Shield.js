@@ -2,7 +2,7 @@ import { TAU, add, fromAngle, sub } from '../sim/math.js';
 
 // An off-hand shield: a curved plate just outside the ball that sits at a fixed
 // angle from its weapon and turns with it. Enemy weapons that touch it are
-// blocked. Give a weapon one with `this.shield = new Shield(this, { ... })`.
+// blocked. With `contactDamage` set, it also hurts enemy balls it touches. Give a weapon one with `this.shield = new Shield(this, { ... })`.
 export class Shield {
   constructor(weapon, { offset, distance = 7, width = 40, thickness = 5 }) {
     this.weapon = weapon;
@@ -10,6 +10,8 @@ export class Shield {
     this.distance = distance; // px between the ball's surface and the shield
     this.width = width; // px across
     this.thickness = thickness; // hitbox half-width, px
+    this.contactDamage = 0; // damage to enemy balls that touch the shield; 0 = harmless
+    this.spikeLength = 0; // px of extra reach towards balls, for spikes on the face
   }
 
   get angle() {

@@ -47,9 +47,13 @@ export class Renderer {
 
     this.drawGrid(width, height);
     const balls = sim.aliveBalls;
-    for (const ball of balls) ball.weapon.ability?.draw(ctx);
+    for (const ball of balls) {
+      ball.weapon.ability?.draw(ctx);
+      for (const upgrade of ball.weapon.upgrades) upgrade.drawUnder(ctx);
+    }
     for (const ball of balls) ball.draw(ctx);
     for (const ball of balls) ball.weapon.draw(ctx);
+    for (const ball of balls) for (const upgrade of ball.weapon.upgrades) upgrade.drawOver(ctx);
     if (showHitboxes) this.drawHitboxes(balls);
     effects.draw(ctx);
 

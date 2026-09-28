@@ -1,4 +1,5 @@
 import { WEAPONS, getWeaponById } from '../weapons/index.js';
+import { getUpgradeById, upgradesFor } from '../upgrades/index.js';
 
 const RANDOM = 'random';
 
@@ -14,16 +15,16 @@ export class Controls {
     this.bindKeyboard();
   }
 
-  // Weapons for the next match. Random slots are rerolled every match and avoid
+  // Loadouts for the next match. Random slots are rerolled every match and avoid
   // weapons already in the fight, so random matchups aren't mirrors.
   get lineup() {
-    const lineup = this.selects.map((select) => (select.value === RANDOM ? null : getWeaponById(select.value)));
-    for (let i = 0; i < lineup.length; i++) {
-      if (lineup[i]) continue;
-      const unused = WEAPONS.filter((W) => !lineup.includes(W));
-      lineup[i] = randomItem(unused.length > 0 ? unused : WEAPONS);
+    const weapons = this.selects.map((select) => (select.value === RANDOM ? null : getWeaponById(select.value)));
+    for (let i = 0; i < weapons.length; i++) {
+      if (weapons[i]) continue;
+      const unused = WEAPONS.filter((W) => !weapons.includes(W));
+      weapons[i] = randomItem(unused.length > 0 ? unused : WEAPONS);
     }
-    return lineup;
+    return weapons.map((W, i) => ({ weapon: W.id, upgrades: [...this.fighterUpgrades[i]] }));
   }
 
   startMatch() {
@@ -32,7 +33,13 @@ export class Controls {
 
   buildFighterSelects(fighters) {
     const root = byId('fighter-selects');
+    // Upgrade ids per fighter, in the order added; a repeated id is a stack.
+    this.fighterUpgrades = Array.from({ length: fighters }, () => []);
+    this.upgradeLists = [];
+    this.upgradeAdders = [];
+
     this.selects = Array.from({ length: fighters }, (_, i) => {
+      const fighter = el('div', 'fighter');
       const label = el('label', 'field');
       label.append(el('span', 'field-label', `Fighter ${i + 1}`));
 
@@ -42,13 +49,96 @@ export class Controls {
       select.value = RANDOM;
       select.addEventListener('change', () => {
         select.blur();
+        this.pruneUpgrades(i);
+        this.renderUpgrades(i);
         this.startMatch();
       });
-
       label.append(select);
-      root.append(label);
+
+      const list = el('ul', 'upgrade-list');
+      const adder = el('select', 'upgrade-add');
+      adder.addEventListener('change', () => {
+        const id = adder.value;
+        adder.blur();
+        if (!id) return;
+        this.changeUpgrade(i, id, +1);
+      });
+
+      fighter.append(label, list, adder);
+      root.append(fighter);
+      this.upgradeLists.push(list);
+      this.upgradeAdders.push(adder);
       return select;
     });
+
+    for (let i = 0; i < fighters; i++) this.renderUpgrades(i);
+  }
+
+  // Weapon id whose upgrades fighter `i` can take. For Random that's null,
+  // which only upgrades that fit every weapon accept.
+  upgradeWeaponId(i) {
+    const value = this.selects[i].value;
+    return value === RANDOM ? null : value;
+  }
+
+  // Adds (+1) or removes (-1) one copy of an upgrade, then restarts the match.
+  changeUpgrade(i, id, delta) {
+    const owned = this.fighterUpgrades[i];
+    if (delta > 0) {
+      const addable = upgradesFor(this.upgradeWeaponId(i), owned).some((U) => U.id === id);
+      if (!addable) return;
+      owned.push(id);
+    } else {
+      const at = owned.lastIndexOf(id);
+      if (at < 0) return;
+      owned.splice(at, 1);
+    }
+    this.pruneUpgrades(i);
+    this.renderUpgrades(i);
+    this.startMatch();
+  }
+
+  // Drops upgrades that no longer fit the fighter's weapon, then any whose
+  // requirements were removed (repeatedly, in case requirements chain).
+  pruneUpgrades(i) {
+    const weaponId = this.upgradeWeaponId(i);
+    let owned = this.fighterUpgrades[i].filter((id) => getUpgradeById(id).canApplyTo(weaponId));
+    let changed = true;
+    while (changed) {
+      const kept = owned.filter((id) => getUpgradeById(id).requires.every((req) => owned.includes(req)));
+      changed = kept.length !== owned.length;
+      owned = kept;
+    }
+    this.fighterUpgrades[i] = owned;
+  }
+
+  renderUpgrades(i) {
+    const owned = this.fighterUpgrades[i];
+    const list = this.upgradeLists[i];
+    list.replaceChildren();
+
+    for (const id of new Set(owned)) {
+      const U = getUpgradeById(id);
+      const count = owned.filter((x) => x === id).length;
+      const item = el('li', 'upgrade');
+      item.title = U.description;
+      item.append(el('span', 'upgrade-name', U.displayName));
+      if (count > 1) item.append(el('span', 'upgrade-count', `×${count}`));
+      const remove = button('−', `Remove one ${U.displayName}`, () => this.changeUpgrade(i, id, -1));
+      const add = button('+', `Add another ${U.displayName}`, () => this.changeUpgrade(i, id, +1));
+      add.disabled = count >= U.maxStacks;
+      item.append(remove, add);
+      list.append(item);
+    }
+
+    const adder = this.upgradeAdders[i];
+    adder.replaceChildren(new Option(owned.length ? 'Add upgrade…' : 'Add upgrade… (none yet)', ''));
+    for (const U of upgradesFor(this.upgradeWeaponId(i), owned)) {
+      const option = new Option(U.displayName, U.id);
+      option.title = U.description;
+      adder.append(option);
+    }
+    adder.value = '';
   }
 
   bindSettings() {
@@ -158,6 +248,17 @@ function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function button(text, label, onClickFn) {
+  const node = el('button', 'upgrade-button', text);
+  node.type = 'button';
+  node.setAttribute('aria-label', label);
+  node.addEventListener('click', (e) => {
+    e.currentTarget.blur();
+    onClickFn();
+  });
   return node;
 }
 

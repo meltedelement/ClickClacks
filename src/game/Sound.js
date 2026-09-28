@@ -61,6 +61,29 @@ export class Sound {
     }
   }
 
+  // A critical hit, on top of the normal hit sound: a deep boom, a bright
+  // ringing strike and a sharp crack.
+  crit() {
+    if (!this.ready('crit')) return;
+    this.tone({ type: 'sine', freq: 95, freqEnd: 32, dur: 0.6, gain: 0.9 });
+    this.tone({ type: 'square', freq: 1320, freqEnd: 660, dur: 0.25, gain: 0.12, lowpass: 4000 });
+    this.clang([1560, 2340, 3120], 0.5, 0.28);
+    this.noise({ filter: 'highpass', freq: 2500, freqEnd: 900, dur: 0.18, gain: 0.55 });
+  }
+
+  // Quick airy swish of a blade missing.
+  dodge() {
+    if (!this.ready('dodge')) return;
+    this.whoosh(0.16, 1400, 3800, 0.3);
+  }
+
+  // Small damage that isn't a weapon hit (thorns, spikes, shield bash).
+  chip() {
+    if (!this.ready('chip')) return;
+    this.tone({ type: 'triangle', freq: 520 * vary(1), freqEnd: 260, dur: 0.08, gain: 0.18 });
+    this.noise({ filter: 'bandpass', freq: 2400, dur: 0.05, gain: 0.2 });
+  }
+
   parry() {
     if (!this.ready('parry')) return;
     this.clang([1180, 1790, 2630], 0.35, 0.22);
@@ -90,6 +113,15 @@ export class Sound {
         this.noise({ filter: 'lowpass', freq: 600, freqEnd: 150, dur: 0.35 + power * 0.2, gain: 0.5 + power * 0.4 });
         break;
       }
+    }
+  }
+
+  upgrade(phase, shake = 0) {
+    if (!this.ready(`upgrade:${phase}`)) return;
+    switch (phase) {
+      case 'heal':
+        this.tone({ type: 'sine', freq: 660, freqEnd: 990, dur: 0.18, gain: 0.15 });
+        break;
     }
   }
 

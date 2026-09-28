@@ -1,23 +1,24 @@
 import { Ability } from './Ability.js';
 import { TAU, angleOf, distance, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
 
-const COOLDOWN = 7.5;
-const WINDUP = 0.5; // seconds standing still while charging
-const DASH_SPEED = 950; // px/s
-const DASH_DURATION = 0.4; // seconds, if it doesn't hit anything first
-const DAMAGE_MULTIPLIER = 2;
-const KNOCKBACK_MULTIPLIER = 1.6;
-const TRIGGER_RANGE = 380; // px; only starts charging when an enemy is within this distance
-const AIM_TURN_RATE = 10; // rad/s the weapon turns to track the target while charging
-const RECOIL = 0.35; // fraction of dash speed kept after landing the hit
-
 // Stop, aim at the nearest enemy, then lunge forward weapon-first.
 // Getting hit while charging, or having the dash parried, cancels it.
 export class ChargeDash extends Ability {
   static displayName = 'Charge Dash';
 
   constructor(weapon) {
-    super(weapon, { cooldown: COOLDOWN });
+    super(weapon, { cooldown: 7.5 });
+
+    // Stats. Upgrades may change these.
+    this.windup = 0.5; // seconds standing still while charging
+    this.dashSpeed = 950; // px/s
+    this.dashDuration = 0.4; // seconds, if it doesn't hit anything first
+    this.dashDamageMultiplier = 2;
+    this.dashKnockbackMultiplier = 1.6;
+    this.triggerRange = 380; // px; only starts charging when an enemy is within this distance
+    this.aimTurnRate = 10; // rad/s the weapon turns to track the target while charging
+    this.recoil = 0.35; // fraction of dash speed kept after landing the hit
+
     this.phase = null; // 'windup' | 'dash'
     this.timer = 0;
     this.target = null;
@@ -28,11 +29,11 @@ export class ChargeDash extends Ability {
   }
 
   get damageMultiplier() {
-    return this.phase === 'dash' ? DAMAGE_MULTIPLIER : 1;
+    return this.phase === 'dash' ? this.dashDamageMultiplier : 1;
   }
 
   get knockbackMultiplier() {
-    return this.phase === 'dash' ? KNOCKBACK_MULTIPLIER : 1;
+    return this.phase === 'dash' ? this.dashKnockbackMultiplier : 1;
   }
 
   get controlsMovement() {
@@ -41,12 +42,12 @@ export class ChargeDash extends Ability {
 
   shouldActivate(sim) {
     const enemy = this.nearestEnemy(sim);
-    return enemy !== null && distance(enemy.pos, this.owner.pos) < TRIGGER_RANGE;
+    return enemy !== null && distance(enemy.pos, this.owner.pos) < this.triggerRange;
   }
 
   onStart(sim) {
     this.phase = 'windup';
-    this.timer = WINDUP;
+    this.timer = this.windup;
     this.target = this.nearestEnemy(sim);
     this.emit(sim, 'charge');
   }
@@ -59,19 +60,19 @@ export class ChargeDash extends Ability {
       owner.vel = vec(0, 0);
       if (this.target?.alive) {
         const desired = angleOf(sub(this.target.pos, owner.pos));
-        weapon.angle = turnTowards(weapon.angle, desired, AIM_TURN_RATE * dt);
+        weapon.angle = turnTowards(weapon.angle, desired, this.aimTurnRate * dt);
       }
       if (this.timer <= 0) {
         this.phase = 'dash';
-        this.timer = DASH_DURATION;
-        owner.vel = fromAngle(weapon.angle, DASH_SPEED);
+        this.timer = this.dashDuration;
+        owner.vel = fromAngle(weapon.angle, this.dashSpeed);
         this.emit(sim, 'dash', { shake: 4, burst: { color: '#cfd6df', count: 16, speed: 180, life: 0.4 } });
       }
       return;
     }
 
     // Dashing: hold full speed, but follow wall bounces and keep the weapon pointing forward.
-    owner.vel = scale(normalize(owner.vel), DASH_SPEED);
+    owner.vel = scale(normalize(owner.vel), this.dashSpeed);
     weapon.angle = angleOf(owner.vel);
     if (this.timer <= 0) this.end(sim);
   }
@@ -83,7 +84,7 @@ export class ChargeDash extends Ability {
 
   onHit(target, sim) {
     if (this.phase !== 'dash') return;
-    this.owner.vel = scale(this.owner.vel, RECOIL);
+    this.owner.vel = scale(this.owner.vel, this.recoil);
     this.end(sim);
   }
 
@@ -103,7 +104,7 @@ export class ChargeDash extends Ability {
   // Ring that tightens around the ball and a faint line showing where it'll go.
   drawWindup(ctx) {
     const { owner, weapon } = this;
-    const progress = 1 - this.timer / WINDUP;
+    const progress = 1 - this.timer / this.windup;
     const { x, y } = owner.pos;
 
     ctx.save();
@@ -115,7 +116,7 @@ export class ChargeDash extends Ability {
     ctx.stroke();
 
     const start = fromAngle(weapon.angle, owner.radius + weapon.gap + weapon.length);
-    const end = fromAngle(weapon.angle, owner.radius + weapon.gap + weapon.length + DASH_SPEED * DASH_DURATION);
+    const end = fromAngle(weapon.angle, owner.radius + weapon.gap + weapon.length + this.dashSpeed * this.dashDuration);
     ctx.globalAlpha = 0.25 * progress;
     ctx.setLineDash([8, 8]);
     ctx.lineWidth = 2;

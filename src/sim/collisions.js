@@ -9,22 +9,29 @@ import {
   sub,
 } from './math.js';
 
+// Keeps the ball inside the arena. Returns true if it bounced off a wall.
 export function bounceOffWalls(ball, arena) {
   const r = ball.radius;
+  let bounced = false;
   if (ball.pos.x < r) {
     ball.pos.x = r;
     ball.vel.x = Math.abs(ball.vel.x);
+    bounced = true;
   } else if (ball.pos.x > arena.width - r) {
     ball.pos.x = arena.width - r;
     ball.vel.x = -Math.abs(ball.vel.x);
+    bounced = true;
   }
   if (ball.pos.y < r) {
     ball.pos.y = r;
     ball.vel.y = Math.abs(ball.vel.y);
+    bounced = true;
   } else if (ball.pos.y > arena.height - r) {
     ball.pos.y = arena.height - r;
     ball.vel.y = -Math.abs(ball.vel.y);
+    bounced = true;
   }
+  return bounced;
 }
 
 // Elastic bounce between two equal-mass balls. An unstoppable ball acts as if
@@ -61,6 +68,14 @@ export function weaponHitsBall(weapon, ball) {
     const point = closestPointOnSegment(ball.pos, a, b);
     if (distance(point, ball.pos) < ball.radius + weapon.thickness) return point;
   }
+  return null;
+}
+
+// Returns the contact point if the shield (plus any spikes on it) touches the ball, otherwise null.
+export function shieldHitsBall(shield, ball) {
+  const { a, b } = shield.getSegment();
+  const point = closestPointOnSegment(ball.pos, a, b);
+  if (distance(point, ball.pos) < ball.radius + shield.thickness + shield.spikeLength) return point;
   return null;
 }
 

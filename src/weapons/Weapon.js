@@ -29,36 +29,52 @@ export class Weapon {
     this.thickness = 4; // hitbox half-width, px
     this.blades = 1; // copies of the weapon, evenly spaced around the ball
     this.spread = 1; // 1 = blades evenly spaced, 0 = gathered side by side at the front
+    this.widthScale = 1; // stretches drawLocal across the blade; set it when changing thickness
+    this.critChance = 0; // 0–1 chance a hit is a critical hit
+    this.critMultiplier = 2; // damage multiplier on a critical hit
 
     // Optional special move, e.g. `this.ability = new SpinSwipe(this)`. See src/abilities/.
     this.ability = null;
     // Optional off-hand shield that blocks enemy weapons. See Shield.js.
     this.shield = null;
+    // Roguelike upgrades from the loadout, added by Ball after construction. See src/upgrades/.
+    this.upgrades = [];
   }
 
   get name() {
     return this.constructor.displayName;
   }
 
-  // Damage this weapon deals right now, including any ability bonus.
+  // Damage this weapon deals right now, including ability and upgrade bonuses.
   getDamage() {
-    return this.damage * (this.ability?.damageMultiplier ?? 1);
+    return this.damage * this.multiplier('damageMultiplier');
+  }
+
+  // Rolls for a critical hit. Only uses Math.random when there is a chance to
+  // crit, so fights without crits play out the same as before crits existed.
+  rollCrit() {
+    return this.critChance > 0 && Math.random() < this.critChance;
   }
 
   get knockbackMultiplier() {
-    return this.ability?.knockbackMultiplier ?? 1;
+    return this.multiplier('knockbackMultiplier');
+  }
+
+  // Multiplies damage this weapon's ball takes from weapon hits.
+  get damageTakenMultiplier() {
+    return this.multiplier('damageTakenMultiplier');
   }
 
   get controlsMovement() {
-    return this.ability?.controlsMovement ?? false;
+    return this.anyModifier('controlsMovement');
   }
 
   get unblockable() {
-    return this.ability?.unblockable ?? false;
+    return this.anyModifier('unblockable');
   }
 
   get unstoppable() {
-    return this.ability?.unstoppable ?? false;
+    return this.anyModifier('unstoppable');
   }
 
   // ---- Hooks for subclasses -------------------------------------------------
@@ -87,26 +103,54 @@ export class Weapon {
 
   update(dt, sim) {
     this.ability?.update(dt, sim);
-    const spinMultiplier = this.ability?.spinMultiplier ?? 1;
+    for (const upgrade of this.upgrades) upgrade.onUpdate(dt, sim);
+    const spinMultiplier = this.multiplier('spinMultiplier');
     this.angle += this.spinSpeed * spinMultiplier * this.spinDir * dt;
 
-    const targetSpread = this.ability?.bladeSpread ?? 1;
+    const targetSpread = this.multiplier('bladeSpread');
     this.spread += (targetSpread - this.spread) * Math.min(1, SPREAD_RATE * dt);
     if (this.parryCooldown > 0) this.parryCooldown -= dt;
   }
 
-  registerHit(target, sim) {
+  registerHit(target, sim, damage) {
     this.ability?.onHit(target, sim);
     this.onHit(target, sim);
+    for (const upgrade of this.upgrades) upgrade.onHit(target, sim, damage);
   }
 
   registerParry(otherWeapon, sim) {
     this.ability?.onParry(otherWeapon, sim);
     this.onParry(otherWeapon, sim);
+    for (const upgrade of this.upgrades) upgrade.onParry(otherWeapon, sim);
   }
 
-  registerOwnerHit(attackerWeapon, sim) {
+  registerOwnerHit(attackerWeapon, sim, damage) {
     this.ability?.onOwnerHit(attackerWeapon, sim);
+    for (const upgrade of this.upgrades) upgrade.onOwnerHit(attackerWeapon, sim, damage);
+  }
+
+  // This weapon's shield stopped `attackerWeapon`.
+  registerBlock(attackerWeapon, sim) {
+    for (const upgrade of this.upgrades) upgrade.onBlock(attackerWeapon, sim);
+  }
+
+  // This weapon's ball bounced off a wall.
+  registerWallBounce(sim) {
+    for (const upgrade of this.upgrades) upgrade.onWallBounce(sim);
+  }
+
+  // A modifier multiplied across the ability and every upgrade (1 if none change it).
+  multiplier(key) {
+    let value = this.ability?.[key] ?? 1;
+    for (const upgrade of this.upgrades) value *= upgrade[key];
+    return value;
+  }
+
+  // True if the ability or any upgrade turns this flag on.
+  anyModifier(key) {
+    if (this.ability?.[key]) return true;
+    for (const upgrade of this.upgrades) if (upgrade[key]) return true;
+    return false;
   }
 
   // Angle of each blade. Spread out, blade 0 points along `this.angle`;
@@ -134,7 +178,10 @@ export class Weapon {
       ctx.save();
       ctx.translate(this.owner.pos.x, this.owner.pos.y);
       ctx.rotate(angle);
-      this.drawLocal(ctx, this.owner.radius + this.gap);
+      ctx.scale(1, this.widthScale);
+      const start = this.owner.radius + this.gap;
+      this.drawLocal(ctx, start);
+      for (const upgrade of this.upgrades) upgrade.drawBlade(ctx, start);
       ctx.restore();
     }
     this.shield?.draw(ctx);

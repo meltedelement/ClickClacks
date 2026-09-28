@@ -40,6 +40,11 @@ export class Ability {
     return 1;
   }
 
+  // Multiplies damage the ball takes from weapon hits (below 1 = tougher).
+  get damageTakenMultiplier() {
+    return 1;
+  }
+
   // True while the ability steers the ball itself (normal speed recovery is paused).
   get controlsMovement() {
     return false;
@@ -111,6 +116,7 @@ export class Ability {
   start(sim) {
     this.active = true;
     this.onStart(sim);
+    for (const upgrade of this.weapon.upgrades) upgrade.onAbilityStart(this, sim);
   }
 
   end(sim) {
@@ -118,5 +124,6 @@ export class Ability {
     this.active = false;
     this.cooldownLeft = this.cooldown;
     this.onEnd(sim);
+    for (const upgrade of this.weapon.upgrades) upgrade.onAbilityEnd(this, sim);
   }
 }
