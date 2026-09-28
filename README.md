@@ -10,7 +10,8 @@ npm install
 npm run dev      # opens a dev server with hot reload
 ```
 
-The menu button in the top right picks the matchup and has restart, pause, speed,
+Each fighter is a random weapon by default (rerolled every match, never a mirror
+match). The menu button in the top right can pin a specific weapon per fighter, and has restart, pause, speed,
 hitboxes, auto rematch, and fullscreen.
 
 Shortcuts: **Space** pause, **R** restart, **H** hitboxes, **F** fullscreen, **Esc** close menu.
@@ -29,12 +30,15 @@ src/
     math.js            Vector + segment geometry helpers
   weapons/
     Weapon.js          Base class every weapon extends
-    Sword.js, Spear.js One file per weapon: stats, scaling, and how it's drawn
+    Sword.js, Spear.js, Mace.js, Daggers.js
+                       One file per weapon: stats, scaling, and how it's drawn
     index.js           Registry of selectable weapons
   abilities/
     Ability.js         Base class for special moves on a cooldown
     SpinSwipe.js       Sword: one rapid full spin for bonus damage
     ChargeDash.js      Spear: stop, aim, lunge for bonus damage
+    DropSlam.js        Mace: from high up, plunge to the floor; damage grows with the fall
+    DashFlurry.js      Daggers: gather both blades, then three rapid dashes
   game/                Browser-only
     Game.js            Fixed-timestep loop, pause/speed/hitstop, sim events -> effects
     Renderer.js        Draws the arena, balls, weapons, banners
@@ -94,6 +98,9 @@ That's it. It appears in the fighter dropdowns and the balance script.
 | `update(dt, sim)`              | Every physics step (call `super.update(dt, sim)`) |
 | `drawLocal(ctx, start)`        | Drawing the weapon                             |
 
+Set `this.blades = 2` (or more) for several copies of the weapon spaced evenly around
+the ball, like the Daggers. Each blade hits and parries on its own.
+
 `this.owner` is the ball holding the weapon, so a weapon can change its ball too
 (e.g. `this.owner.speed += 20` for an "unarmed" fighter that gets faster).
 
@@ -139,10 +146,14 @@ every step:
 | `damageMultiplier`    | Multiplies damage dealt                                       |
 | `knockbackMultiplier` | Multiplies how hard hits launch the target                    |
 | `controlsMovement`    | When true, the ball stops easing back to its normal speed, so the ability can set `owner.vel` itself |
+| `unblockable`         | When true, the weapon can't be parried and passes through other weapons |
+| `unstoppable`         | When true, other balls can't push this one; it shoves them aside |
+| `bladeSpread`         | For multi-blade weapons: 1 = evenly spaced, 0 = gathered side by side at the front |
 
 Hooks: `shouldActivate`, `onStart`, `onUpdate`, `onEnd`, `onHit`, `onParry`,
 `onOwnerHit` (the ability's ball got hit), and `draw(ctx)` for visuals, which are drawn
-underneath the balls. `nearestEnemy(sim)` is a handy helper for targeting.
+underneath the balls. `nearestEnemy(sim)` is a handy helper for targeting, and
+`target.clearHitCooldown(this.weapon)` lets a rapid multi-hit move land every hit.
 `ChargeDash.js` is the most complete example, with multiple phases, aiming,
 movement control, and cancelling.
 

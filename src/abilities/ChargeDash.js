@@ -1,7 +1,7 @@
 import { Ability } from './Ability.js';
 import { TAU, angleOf, distance, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
 
-const COOLDOWN = 6;
+const COOLDOWN = 7.5;
 const WINDUP = 0.5; // seconds standing still while charging
 const DASH_SPEED = 950; // px/s
 const DASH_DURATION = 0.4; // seconds, if it doesn't hit anything first
@@ -12,7 +12,7 @@ const AIM_TURN_RATE = 10; // rad/s the weapon turns to track the target while ch
 const RECOIL = 0.35; // fraction of dash speed kept after landing the hit
 
 // Stop, aim at the nearest enemy, then lunge forward weapon-first.
-// Getting hit while charging, or being parried at any point, cancels it.
+// Getting hit while charging, or having the dash parried, cancels it.
 export class ChargeDash extends Ability {
   static displayName = 'Charge Dash';
 
@@ -88,7 +88,7 @@ export class ChargeDash extends Ability {
   }
 
   onParry(otherWeapon, sim) {
-    this.end(sim);
+    if (this.phase === 'dash') this.end(sim);
   }
 
   onOwnerHit(attackerWeapon, sim) {

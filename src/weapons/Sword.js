@@ -1,7 +1,11 @@
 import { Weapon } from './Weapon.js';
 import { SpinSwipe } from '../abilities/SpinSwipe.js';
+import { Shield } from './Shield.js';
+
+const SHIELD_OFFSET = -0.95; // radians: a bit to the left of the sword
 
 // Fast, short, and snowballs hard: every hit makes the next one hurt more.
+// Carries a shield just to the left of the sword that blocks enemy weapons.
 export class Sword extends Weapon {
   static id = 'sword';
   static displayName = 'Sword';
@@ -14,6 +18,7 @@ export class Sword extends Weapon {
     this.length = 80;
     this.thickness = 5;
     this.ability = new SpinSwipe(this);
+    this.shield = new Shield(this, { offset: SHIELD_OFFSET, width: 30 });
   }
 
   onHit() {

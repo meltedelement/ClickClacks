@@ -1,7 +1,7 @@
 import { CONFIG } from '../config.js';
 import { Ball } from './Ball.js';
 import { TAU, add, fromAngle, normalize, scale, sub } from './math.js';
-import { bounceOffWalls, resolveBallCollision, weaponHitsBall, weaponsClash } from './collisions.js';
+import { bounceOffWalls, resolveBallCollision, weaponHitsBall, weaponHitsShield, weaponsClash } from './collisions.js';
 
 // Pure match logic: no DOM, no rendering. The browser game and the headless
 // balance script both drive this by calling step(dt).
@@ -9,6 +9,7 @@ import { bounceOffWalls, resolveBallCollision, weaponHitsBall, weaponsClash } fr
 // Things that happen are reported through onEvent(type, data):
 //   'hit'   { attacker, target, damage, point }
 //   'parry' { a, b, point }
+//   'block' { attacker, defender, point }  (a weapon hit a shield)
 //   'death' { ball }
 //   'end'   { winner }  (winner is null on a draw)
 //   'ability' { ball, ability, phase, shake?, burst? }  (see Ability.emit)
@@ -62,6 +63,7 @@ export class Simulation {
     const blocked = new Set();
 
     forEachPair(balls, (a, b) => {
+      if (a.weapon.unblockable || b.weapon.unblockable) return;
       const point = weaponsClash(a.weapon, b.weapon);
       if (!point) return;
       blocked.add(a.weapon);
@@ -70,6 +72,19 @@ export class Simulation {
         this.applyParry(a, b, point);
       }
     });
+
+    // Enemy weapons touching a shield are blocked too.
+    for (const defender of balls) {
+      const { shield } = defender.weapon;
+      if (!shield) continue;
+      for (const attacker of balls) {
+        if (attacker === defender || attacker.weapon.unblockable) continue;
+        const point = weaponHitsShield(attacker.weapon, shield);
+        if (!point) continue;
+        blocked.add(attacker.weapon);
+        if (attacker.weapon.parryCooldown <= 0) this.applyBlock(attacker, defender, point);
+      }
+    }
 
     for (const attacker of balls) {
       if (blocked.has(attacker.weapon)) continue;
@@ -96,6 +111,16 @@ export class Simulation {
     a.weapon.registerParry(b.weapon, this);
     b.weapon.registerParry(a.weapon, this);
     this.onEvent('parry', { a, b, point });
+  }
+
+  // Like a parry, but only the attacker bounces off: the shield holds firm.
+  applyBlock(attacker, defender, point) {
+    attacker.weapon.spinDir *= -1;
+    attacker.weapon.parryCooldown = CONFIG.combat.parryCooldown;
+    const n = normalize(sub(attacker.pos, defender.pos));
+    attacker.vel = scale(n, attacker.speed * CONFIG.combat.parryKnockback);
+    attacker.weapon.registerParry(defender.weapon, this);
+    this.onEvent('block', { attacker, defender, point });
   }
 
   applyHit(attacker, target, point) {

@@ -45,6 +45,21 @@ export class Ability {
     return false;
   }
 
+  // True while the weapon can't be parried: it passes through other weapons.
+  get unblockable() {
+    return false;
+  }
+
+  // True while the ball can't be pushed by other balls: it shoves them aside instead.
+  get unstoppable() {
+    return false;
+  }
+
+  // Only matters for multi-blade weapons: 1 = evenly spaced, 0 = gathered at the front.
+  get bladeSpread() {
+    return 1;
+  }
+
   // ---- Hooks ----------------------------------------------------------------
 
   shouldActivate(sim) {

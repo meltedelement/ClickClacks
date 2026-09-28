@@ -27,39 +27,59 @@ export function bounceOffWalls(ball, arena) {
   }
 }
 
-// Equal-mass elastic bounce between two balls.
+// Elastic bounce between two equal-mass balls. An unstoppable ball acts as if
+// it had infinite mass: the other ball takes all the push and bounces off it.
 export function resolveBallCollision(a, b) {
   const delta = sub(b.pos, a.pos);
   const dist = length(delta);
   const minDist = a.radius + b.radius;
   if (dist >= minDist || dist < 1e-9) return;
 
+  const aHeavy = a.weapon.unstoppable;
+  const bHeavy = b.weapon.unstoppable;
+  const aShare = aHeavy === bHeavy ? 0.5 : aHeavy ? 0 : 1;
+  const bShare = 1 - aShare;
+
   const n = scale(delta, 1 / dist);
-  const push = (minDist - dist) / 2;
-  a.pos.x -= n.x * push;
-  a.pos.y -= n.y * push;
-  b.pos.x += n.x * push;
-  b.pos.y += n.y * push;
+  const overlap = minDist - dist;
+  a.pos.x -= n.x * overlap * aShare;
+  a.pos.y -= n.y * overlap * aShare;
+  b.pos.x += n.x * overlap * bShare;
+  b.pos.y += n.y * overlap * bShare;
 
   const approach = dot(sub(a.vel, b.vel), n);
   if (approach <= 0) return;
-  a.vel.x -= n.x * approach;
-  a.vel.y -= n.y * approach;
-  b.vel.x += n.x * approach;
-  b.vel.y += n.y * approach;
+  a.vel.x -= n.x * approach * 2 * aShare;
+  a.vel.y -= n.y * approach * 2 * aShare;
+  b.vel.x += n.x * approach * 2 * bShare;
+  b.vel.y += n.y * approach * 2 * bShare;
 }
 
-// Returns the contact point if the weapon touches the ball, otherwise null.
+// Returns the contact point if any blade of the weapon touches the ball, otherwise null.
 export function weaponHitsBall(weapon, ball) {
-  const { a, b } = weapon.getSegment();
-  const point = closestPointOnSegment(ball.pos, a, b);
-  return distance(point, ball.pos) < ball.radius + weapon.thickness ? point : null;
+  for (const { a, b } of weapon.getSegments()) {
+    const point = closestPointOnSegment(ball.pos, a, b);
+    if (distance(point, ball.pos) < ball.radius + weapon.thickness) return point;
+  }
+  return null;
 }
 
-// Returns the contact point if the two weapons overlap, otherwise null.
+// Returns the contact point if any blades of the two weapons overlap, otherwise null.
 export function weaponsClash(w1, w2) {
-  const s1 = w1.getSegment();
-  const s2 = w2.getSegment();
-  const { c1, c2, distance: dist } = closestPointsBetweenSegments(s1.a, s1.b, s2.a, s2.b);
-  return dist < w1.thickness + w2.thickness ? midpoint(c1, c2) : null;
+  return firstContact(w1.getSegments(), w2.getSegments(), w1.thickness + w2.thickness);
+}
+
+// Returns the contact point if any blade of the weapon touches the shield, otherwise null.
+export function weaponHitsShield(weapon, shield) {
+  return firstContact(weapon.getSegments(), [shield.getSegment()], weapon.thickness + shield.thickness);
+}
+
+function firstContact(segmentsA, segmentsB, reach) {
+  for (const s1 of segmentsA) {
+    for (const s2 of segmentsB) {
+      const { c1, c2, distance: dist } = closestPointsBetweenSegments(s1.a, s1.b, s2.a, s2.b);
+      if (dist < reach) return midpoint(c1, c2);
+    }
+  }
+  return null;
 }

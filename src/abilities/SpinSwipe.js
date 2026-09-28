@@ -1,7 +1,7 @@
 import { Ability } from './Ability.js';
 import { TAU, distance } from '../sim/math.js';
 
-const COOLDOWN = 3.5;
+const COOLDOWN = 4.5;
 const SPIN_MULTIPLIER = 4;
 const DAMAGE_MULTIPLIER = 2;
 const TRIGGER_MARGIN = 30; // px beyond weapon reach at which it's worth swinging

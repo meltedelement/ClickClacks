@@ -1,34 +1,45 @@
 import { WEAPONS, getWeaponById } from '../weapons/index.js';
 
+const RANDOM = 'random';
+
 // Wires the menu (fighter pickers, sim settings) and keyboard shortcuts to the Game.
 export class Controls {
-  constructor(game, { defaultLineup }) {
+  constructor(game, { fighters }) {
     this.game = game;
 
-    this.buildFighterSelects(defaultLineup);
+    this.buildFighterSelects(fighters);
     this.bindSettings();
     this.bindMenu();
     this.bindFullscreen();
     this.bindKeyboard();
   }
 
+  // Weapons for the next match. Random slots are rerolled every match and avoid
+  // weapons already in the fight, so random matchups aren't mirrors.
   get lineup() {
-    return this.selects.map((select) => getWeaponById(select.value));
+    const lineup = this.selects.map((select) => (select.value === RANDOM ? null : getWeaponById(select.value)));
+    for (let i = 0; i < lineup.length; i++) {
+      if (lineup[i]) continue;
+      const unused = WEAPONS.filter((W) => !lineup.includes(W));
+      lineup[i] = randomItem(unused.length > 0 ? unused : WEAPONS);
+    }
+    return lineup;
   }
 
   startMatch() {
-    this.game.newMatch(this.lineup);
+    this.game.newMatch();
   }
 
-  buildFighterSelects(defaultLineup) {
+  buildFighterSelects(fighters) {
     const root = byId('fighter-selects');
-    this.selects = defaultLineup.map((weaponId, i) => {
+    this.selects = Array.from({ length: fighters }, (_, i) => {
       const label = el('label', 'field');
       label.append(el('span', 'field-label', `Fighter ${i + 1}`));
 
       const select = el('select');
+      select.append(new Option('Random', RANDOM));
       for (const W of WEAPONS) select.append(new Option(W.displayName, W.id));
-      select.value = weaponId;
+      select.value = RANDOM;
       select.addEventListener('change', () => {
         select.blur();
         this.startMatch();
@@ -125,6 +136,10 @@ export class Controls {
     this.game.paused = !this.game.paused;
     this.pauseButton.textContent = this.game.paused ? 'Resume' : 'Pause';
   }
+}
+
+function randomItem(items) {
+  return items[Math.floor(Math.random() * items.length)];
 }
 
 function byId(id) {

@@ -49,6 +49,11 @@ export class Ball {
     this.vel = scale(this.vel, next / current);
   }
 
+  // Lets `weapon` hit this ball again straight away (e.g. for rapid multi-hit moves).
+  clearHitCooldown(weapon) {
+    this.hitCooldowns.delete(weapon);
+  }
+
   canBeHitBy(weapon) {
     return !this.hitCooldowns.has(weapon);
   }

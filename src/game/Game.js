@@ -10,7 +10,9 @@ const MAX_STEPS_PER_FRAME = 40;
 // Owns the browser loop: runs the simulation at a fixed rate, turns sim events
 // into effects, handles pause / speed / hitstop, and draws each frame.
 export class Game {
-  constructor(canvas) {
+  // chooseLineup() returns the weapon classes for each new match.
+  constructor(canvas, { chooseLineup }) {
+    this.chooseLineup = chooseLineup;
     this.renderer = new Renderer(canvas);
     this.effects = new Effects();
     this.fixedDt = 1 / CONFIG.physicsHz;
@@ -22,24 +24,18 @@ export class Game {
     this.autoRematch = false;
 
     this.sim = null;
-    this.lineup = [];
     this.accumulator = 0;
     this.hitstop = 0;
     this.timeSinceEnd = 0;
     this.lastTime = null;
   }
 
-  newMatch(weaponClasses) {
-    this.lineup = weaponClasses;
-    this.sim = new Simulation(weaponClasses, { onEvent: (type, data) => this.handleSimEvent(type, data) });
+  newMatch() {
+    this.sim = new Simulation(this.chooseLineup(), { onEvent: (type, data) => this.handleSimEvent(type, data) });
     this.effects.clear();
     this.accumulator = 0;
     this.hitstop = 0;
     this.timeSinceEnd = 0;
-  }
-
-  rematch() {
-    this.newMatch(this.lineup);
   }
 
   start() {
@@ -63,7 +59,7 @@ export class Game {
     if (this.sim.over) {
       this.timeSinceEnd += dt;
       if (this.autoRematch && this.timeSinceEnd > AUTO_REMATCH_DELAY) {
-        this.rematch();
+        this.newMatch();
         return;
       }
     }
@@ -104,6 +100,7 @@ export class Game {
         this.hitstop = Math.max(this.hitstop, Math.min(hs.max, hs.base + hs.perDamage * damage));
         break;
       }
+      case 'block':
       case 'parry':
         effects.burst(data.point, '#ffd966', { count: 14, speed: 320, life: 0.3, size: 2.5 });
         effects.shake(2);
