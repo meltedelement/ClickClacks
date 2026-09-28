@@ -3,6 +3,7 @@ import { Simulation } from '../sim/Simulation.js';
 import { formatNumber } from '../utils/format.js';
 import { Effects } from './Effects.js';
 import { Renderer } from './Renderer.js';
+import { Sound } from './Sound.js';
 
 const AUTO_REMATCH_DELAY = 2.5; // seconds after a win
 const MAX_STEPS_PER_FRAME = 40;
@@ -15,6 +16,7 @@ export class Game {
     this.chooseLineup = chooseLineup;
     this.renderer = new Renderer(canvas);
     this.effects = new Effects();
+    this.sound = new Sound();
     this.fixedDt = 1 / CONFIG.physicsHz;
 
     // Settings the UI can change.
@@ -84,12 +86,13 @@ export class Game {
   }
 
   handleSimEvent(type, data) {
-    const { effects } = this;
+    const { effects, sound } = this;
     const hs = CONFIG.hitstop;
 
     switch (type) {
       case 'hit': {
-        const { target, damage, point } = data;
+        const { attacker, target, damage, point } = data;
+        sound.hit(damage, attacker.weapon.constructor.id);
         effects.burst(point, target.color, { count: 8 + Math.min(damage, 20) });
         effects.floatingText(
           { x: target.pos.x, y: target.pos.y - target.radius - 12 },
@@ -102,12 +105,15 @@ export class Game {
       }
       case 'block':
       case 'parry':
+        if (type === 'block') sound.block();
+        else sound.parry();
         effects.burst(data.point, '#ffd966', { count: 14, speed: 320, life: 0.3, size: 2.5 });
         effects.shake(2);
         this.hitstop = Math.max(this.hitstop, hs.parry);
         break;
       case 'ability': {
-        const { ball, shake, burst } = data;
+        const { ball, phase, shake, burst } = data;
+        sound.ability(phase, shake);
         if (shake) effects.shake(shake);
         if (burst) effects.burst(ball.pos, burst.color ?? ball.color, burst);
         break;
@@ -115,6 +121,10 @@ export class Game {
       case 'death':
         effects.burst(data.ball.pos, data.ball.color, { count: 70, speed: 450, life: 0.9, size: 4 });
         effects.shake(14);
+        sound.death();
+        break;
+      case 'end':
+        sound.end(data.winner !== null);
         break;
     }
   }

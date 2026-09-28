@@ -68,7 +68,7 @@ export class Simulation {
       if (!point) return;
       blocked.add(a.weapon);
       blocked.add(b.weapon);
-      if (a.weapon.parryCooldown <= 0 && b.weapon.parryCooldown <= 0) {
+      if (a.weapon.canParry(b.weapon) && b.weapon.canParry(a.weapon)) {
         this.applyParry(a, b, point);
       }
     });
@@ -82,7 +82,7 @@ export class Simulation {
         const point = weaponHitsShield(attacker.weapon, shield);
         if (!point) continue;
         blocked.add(attacker.weapon);
-        if (attacker.weapon.parryCooldown <= 0) this.applyBlock(attacker, defender, point);
+        if (attacker.weapon.canParry(defender.weapon)) this.applyBlock(attacker, defender, point);
       }
     }
 

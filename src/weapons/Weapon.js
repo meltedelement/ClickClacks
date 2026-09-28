@@ -70,6 +70,12 @@ export class Weapon {
   // Called when this weapon clashes with another weapon.
   onParry(otherWeapon, sim) {}
 
+  // Whether this weapon is currently able to parry `otherWeapon`. Defaults to
+  // the shared cooldown set on every parry; override to add per-opponent locks.
+  canParry(otherWeapon) {
+    return this.parryCooldown <= 0;
+  }
+
   // Draw the weapon pointing along +x, starting at x = `start`.
   // The canvas is already translated to the ball's centre and rotated.
   drawLocal(ctx, start) {

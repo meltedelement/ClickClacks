@@ -70,6 +70,10 @@ export class Controls {
 
     this.hitboxToggle = bindCheckbox('hitboxes', (on) => (game.showHitboxes = on));
     bindCheckbox('auto-rematch', (on) => (game.autoRematch = on));
+
+    this.soundToggle = byId('sound');
+    this.soundToggle.checked = !game.sound.muted;
+    bindCheckbox('sound', (on) => (game.sound.muted = !on));
   }
 
   bindMenu() {
@@ -121,6 +125,10 @@ export class Controls {
         case 'KeyH':
           this.hitboxToggle.checked = !this.hitboxToggle.checked;
           this.game.showHitboxes = this.hitboxToggle.checked;
+          break;
+        case 'KeyM':
+          this.soundToggle.checked = !this.soundToggle.checked;
+          this.game.sound.muted = !this.soundToggle.checked;
           break;
         case 'KeyF':
           if (document.fullscreenEnabled) this.toggleFullscreen();

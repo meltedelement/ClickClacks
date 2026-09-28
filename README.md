@@ -12,9 +12,9 @@ npm run dev      # opens a dev server with hot reload
 
 Each fighter is a random weapon by default (rerolled every match, never a mirror
 match). The menu button in the top right can pin a specific weapon per fighter, and has restart, pause, speed,
-hitboxes, auto rematch, and fullscreen.
+hitboxes, auto rematch, sound, and fullscreen.
 
-Shortcuts: **Space** pause, **R** restart, **H** hitboxes, **F** fullscreen, **Esc** close menu.
+Shortcuts: **Space** pause, **R** restart, **H** hitboxes, **M** mute, **F** fullscreen, **Esc** close menu.
 
 ## Project layout
 
@@ -43,10 +43,11 @@ src/
     Game.js            Fixed-timestep loop, pause/speed/hitstop, sim events -> effects
     Renderer.js        Draws the arena, balls, weapons, banners
     Effects.js         Particles, floating damage numbers, screen shake
+    Sound.js           Sound effects, synthesised with Web Audio (no audio files)
   ui/
     Controls.js        Menu + keyboard shortcuts
 tools/
-  balance.js           Headless win-rate tester
+  balance.js           Headless batch balance tester (win rates + combat stats)
 ```
 
 ## Adding a new weapon
@@ -159,10 +160,30 @@ movement control, and cancelling.
 
 ## Balancing
 
+Runs a batch of headless matches between every pair of weapons, spread across
+all CPU cores.
+
 ```sh
-npm run balance        # 500 matches per pairing
-npm run balance 2000   # more matches, more accurate
+npm run balance                          # 500 matches per pairing
+npm run balance -- 5000                  # more matches, tighter error bars
+npm run balance -- -g 2000 -w sword,mace # only some weapons
+npm run balance -- -g 1000 --mirror      # include sword vs sword etc.
+npm run balance -- -s 42 --json a.json   # fixed seed: rerun after a tweak and compare
+npm run balance -- --csv matches.csv     # one row per match for your own analysis
+npm run balance -- --help                # all options
 ```
 
-Prints win rates, draws, average fight length, and how much HP winners have left.
+It prints:
+
+- **Weapons**: overall win rate with a 95% error margin, flagged `strong`/`weak`
+  when it's clearly outside 45–55%, plus HP left on wins, comeback wins and how
+  often it lands the first hit.
+- **Combat**: damage dealt/taken, DPS, hits, average and max hit, parries,
+  shield blocks, ability uses and the share of damage done by abilities.
+- **Scaling**: average weapon stats at the end of a match vs. at the start.
+- **Win matrix** and **Matchups**: every pairing's win rates, match length
+  (average, median, p10–p90), and how often the first hit decides the fight.
+- **Overall**: snowball factor (first hit -> win), comeback rate, spawn-side bias.
+
+Win rates are red above 55% (60% for a single matchup) and cyan below 45% (40%).
 Weapon numbers live in each weapon's file; everything shared lives in `src/config.js`.
