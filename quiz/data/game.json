@@ -1,0 +1,22 @@
+{
+  "upgradesPerCorrect": 1,
+  "offerSize": 3,
+  "weapons": [
+    { "id": "sword", "name": "Sword" },
+    { "id": "spear", "name": "Spear" },
+    { "id": "mace", "name": "Mace" },
+    { "id": "daggers", "name": "Daggers" }
+  ],
+  "upgrades": [
+    { "id": "damage", "name": "Sharpened", "description": "+damage per hit", "maxStacks": 5 },
+    { "id": "spin", "name": "Whirl", "description": "Weapon spins faster", "maxStacks": 5 },
+    { "id": "length", "name": "Long Reach", "description": "Longer weapon", "maxStacks": 5 },
+    { "id": "thickness", "name": "Heavy Blade", "description": "Wider weapon hitbox", "maxStacks": 3 },
+    { "id": "hp", "name": "Tough", "description": "+max HP", "maxStacks": 5 },
+    { "id": "speed", "name": "Swift", "description": "Ball moves faster", "maxStacks": 3 },
+    { "id": "cooldown", "name": "Focus", "description": "Ability recharges faster", "maxStacks": 3 },
+    { "id": "knockback", "name": "Heavy Hitter", "description": "Hits knock enemies further", "maxStacks": 3 },
+    { "id": "shield", "name": "Bigger Shield", "description": "Wider shield", "maxStacks": 2, "weapons": ["sword"] },
+    { "id": "extra_blade", "name": "Third Dagger", "description": "One more dagger", "maxStacks": 1, "weapons": ["daggers"] }
+  ]
+}
