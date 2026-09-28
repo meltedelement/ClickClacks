@@ -22,8 +22,9 @@ export interface Upgrade {
   id: string;
   name: string;
   description: string;
-  maxStacks?: number;
+  maxStacks?: number; // omit for no limit
   weapons?: string[]; // only offered to these weapons; omit for all
+  requires?: string[]; // upgrade ids the team must own first; omit for none
 }
 
 export interface Catalog {
@@ -31,6 +32,10 @@ export interface Catalog {
   upgrades: Upgrade[];
   upgradesPerCorrect: number;
   offerSize: number;
+  // Where this catalog came from. 'game' = live from GET /api/catalog,
+  // 'file' = the generated offline fallback in data/game.json.
+  source?: 'game' | 'file';
+  syncedAt?: string | null;
 }
 
 export interface Team {
@@ -53,6 +58,7 @@ export interface State {
   teams: Team[];
   message: string;
   weaponsLocked: boolean;
+  battle: Battle | null; // the round-robin, once the host starts it
 }
 
 // What the game receives for one team.
@@ -60,6 +66,49 @@ export interface Loadout {
   team: string;
   weapon: string;
   upgrades: Record<string, number>;
+}
+
+// ---- The battle -------------------------------------------------------------
+
+// One fighter as the game's match API takes it. Copied at battle start, so a
+// later change on the admin page does not change a match that is already set.
+export interface Fighter {
+  name: string;
+  weapon: string;
+  upgrades: Record<string, number>;
+}
+
+export type BattleMatchStatus = 'pending' | 'queued' | 'playing' | 'done' | 'cancelled' | 'failed';
+
+// One match in the round-robin. `a` and `b` are team ids.
+export interface BattleMatch {
+  id: string; // quiz-side id, e.g. "m3"
+  a: string;
+  b: string;
+  seed: number; // fixed by the quiz so a re-queue is the same fight
+  gameId: string | null; // id from the game's match API
+  status: BattleMatchStatus;
+  fighters: [Fighter, Fighter]; // snapshot of the two loadouts
+  winner: string | null; // team id; null is a draw, or no result yet
+  hp: [number, number] | null;
+  time: number | null; // sim seconds
+  error?: string;
+}
+
+export interface Battle {
+  startedAt: string;
+  finishedAt: string | null;
+  matches: BattleMatch[];
+  note: string; // what the driver is waiting for, shown to the host
+}
+
+// What the quiz server knows about the game's match API right now.
+export interface GameStatus {
+  url: string;
+  reachable: boolean;
+  displays: number; // display pages connected; matches do not play without one
+  catalogSource: 'game' | 'file';
+  catalogSyncedAt: string | null;
 }
 
 // Where a question is in its round. See shared/rounds.ts.
@@ -93,6 +142,14 @@ export interface TeamView {
     picksUsed: number;
     offer: string[] | null;
   };
+  // Set once the battle has started. Null before that.
+  battle: {
+    opponent: string | null; // name of the team they are fighting now or next
+    status: BattleMatchStatus | null;
+    rank: number | null; // 1-based place in the round-robin
+    points: number;
+    played: number;
+  } | null;
 }
 
 export interface AdminView {
@@ -100,4 +157,5 @@ export interface AdminView {
   catalog: Catalog;
   picks: Record<string, number>; // teamId -> picks available
   online: string[]; // teamIds with an open connection
+  game: GameStatus;
 }

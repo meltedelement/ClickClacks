@@ -1,6 +1,6 @@
 # Weapon Balls Quiz
 
-The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick. The game reads each team's weapon and upgrades from `/api/loadouts`.
+The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick. When the quiz reaches the battle phase the quiz server drives the game's match API (see [Battle](#battle)).
 
 ## Run
 
@@ -22,7 +22,7 @@ npm run build && npm start   # one server on port 3001 that serves the built cli
 | File | Content |
 | --- | --- |
 | `../quiz-questions.json` | The questions, in rounds. `answerIndex` is the index of the correct option. |
-| `data/game.json` | Weapons, upgrades, `upgradesPerCorrect`, and `offerSize`. The ids must match the game. |
+| `data/game.json` | Offline copy of the game's weapons and upgrades, plus the quiz's `upgradesPerCorrect`, `offerSize` and `exclude`. Generated from the game by `npm run sync-catalog`. At run time the quiz reads the real catalog from the game's `GET /api/catalog`. |
 | `data/admin-token.txt` | The generated admin key. Not in git. |
 | `data/state.json` | Live state: teams, answers, and upgrades. The server writes it after each change. Not in git. |
 
@@ -85,3 +85,36 @@ A team that loses its device can rejoin with the same team name and the team cod
 ```
 
 The quiz stores only upgrade ids and counts. The game decides what each upgrade does.
+
+## Battle
+
+When the quiz reaches the `battle` phase the quiz server runs a round-robin
+through the game's match API: every team fights every other team once, one match
+at a time, and the standings rank by most wins.
+
+- Start it with the presenter's **Start battle** button, or **Start battle** on
+  the admin page. Moving the phase to `battle` starts it automatically.
+- The game server must be running and its display page must be open and visible
+  on the big screen: `http://localhost:3002/?display` after
+  `npm run build && npm start` in the repo root, or `http://localhost:5173/?display`
+  under `npm run dev`. A match only plays while a display page is connected, and
+  the admin page shows how many are.
+- Point the quiz at the game with `GAME_API` (default `http://localhost:3002/api`).
+  The admin page shows the address and whether it answers.
+- Loadouts are copied when the battle starts, so a later change on the admin
+  page does not change a match that is already set. **Resync loadouts** copies
+  the current loadouts into the matches that have not been played yet.
+- A win is 1 point, a draw 0.5. Ties are broken by HP difference, then team
+  name. A match still going at the game's time limit is a draw.
+- Results are kept in `state.json`, so restarting the quiz server does not lose
+  them and an interrupted battle carries on. The game keeps its matches in
+  memory only, so if the game server restarts the match on screen is queued
+  again with the same seed — the same fight.
+- **Stop** cancels the match on screen. **Skip** gives up on one match; it is
+  cancelled, not drawn, so it never counts in the table.
+
+The quiz takes its weapons and upgrades from the game's `GET /api/catalog`, so
+an offer can never name an upgrade the game does not know. If the game is not
+running the quiz uses `data/game.json` and switches to the live catalog as soon
+as the game answers. Run `npm run sync-catalog` after changing a weapon, upgrade
+or stack limit in the game to refresh that offline copy.

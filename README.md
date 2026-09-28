@@ -77,7 +77,9 @@ tools/
 Another program (such as the quiz server) can queue matches over HTTP. A
 display page plays them live, and each result goes back to that program. The
 display page decides the official result, so the recorded winner is always the
-one the audience saw.
+one the audience saw. The quiz server in `quiz/` is the reference caller: at the
+battle phase it snapshots every team's loadout and runs a round-robin through
+this API, one match at a time (see `quiz/README.md`).
 
 ```sh
 npm run dev                  # API at http://localhost:5173/api, display at http://localhost:5173/?display
