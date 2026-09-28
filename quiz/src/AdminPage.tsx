@@ -1,5 +1,7 @@
+import { Fragment } from 'react';
 import type { AdminView, Team } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
+import { groupRounds, roundPosition } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
 import { Brand, LETTERS, Status, ThemeToggle } from './ui.tsx';
 
@@ -12,6 +14,8 @@ export function AdminPage() {
   const { state, catalog, picks, online } = view;
   const q = state.questions[state.questionIndex];
   const answers = (q && state.answers[q.id]) ?? {};
+  const rounds = groupRounds(state.questions);
+  const round = roundPosition(state.questions, state.questionIndex);
 
   return (
     <>
@@ -36,9 +40,11 @@ export function AdminPage() {
             <section className="card stack">
               <div className="card-head" style={{ marginBottom: 0 }}>
                 <h2>Flow</h2>
-                <span className="muted num">
-                  Question {state.questionIndex + 1} of {state.questions.length}
-                </span>
+                {round && (
+                  <span className="muted num">
+                    Round {round.index + 1} of {round.count} · Question {round.position} of {round.size}
+                  </span>
+                )}
               </div>
               <div className="segmented" role="group" aria-label="Phase">
                 {PHASES.map((phase) => (
@@ -52,10 +58,14 @@ export function AdminPage() {
                   ←
                 </button>
                 <select className="grow" value={state.questionIndex} onChange={(e) => act({ type: 'setQuestion', index: Number(e.target.value) })}>
-                  {state.questions.map((question, i) => (
-                    <option key={question.id} value={i}>
-                      {question.id} {question.text.slice(0, 70)}
-                    </option>
+                  {rounds.map((r) => (
+                    <optgroup key={r.label} label={r.label}>
+                      {r.items.map(({ question, index }) => (
+                        <option key={question.id} value={index}>
+                          {question.id} {question.text.slice(0, 70)}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 <button
@@ -153,44 +163,51 @@ export function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {state.questions.map((question) => (
-                      <tr key={question.id}>
-                        <td title={question.text}>
-                          <span className="faint num">{question.id}</span> {question.options[question.answer]}
-                        </td>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={state.revealed.includes(question.id)}
-                            onChange={(e) => act({ type: 'setRevealed', questionId: question.id, revealed: e.target.checked })}
-                          />
-                        </td>
-                        {state.teams.map((t) => {
-                          const choice = state.answers[question.id]?.[t.id];
-                          return (
-                            <td key={t.id} className={choice === undefined ? '' : choice === question.answer ? 'correct' : 'wrong'}>
-                              <select
-                                value={choice ?? ''}
-                                onChange={(e) =>
-                                  act({ type: 'setAnswer', questionId: question.id, teamId: t.id, choice: e.target.value === '' ? null : Number(e.target.value) })
-                                }
-                              >
-                                <option value="">–</option>
-                                {question.options.map((option, i) => (
-                                  <option key={i} value={i}>
-                                    {option}
-                                  </option>
-                                ))}
-                              </select>
+                    {rounds.map((r) => (
+                      <Fragment key={r.label}>
+                        <tr className="round-row">
+                          <td colSpan={state.teams.length + 3}>{r.label}</td>
+                        </tr>
+                        {r.items.map(({ question }) => (
+                          <tr key={question.id}>
+                            <td title={question.text}>
+                              <span className="faint num">{question.id}</span> {question.options[question.answer]}
                             </td>
-                          );
-                        })}
-                        <td>
-                          <button className="small ghost" onClick={() => confirm('Clear all answers for this question?') && act({ type: 'clearAnswers', questionId: question.id })}>
-                            Clear
-                          </button>
-                        </td>
-                      </tr>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={state.revealed.includes(question.id)}
+                                onChange={(e) => act({ type: 'setRevealed', questionId: question.id, revealed: e.target.checked })}
+                              />
+                            </td>
+                            {state.teams.map((t) => {
+                              const choice = state.answers[question.id]?.[t.id];
+                              return (
+                                <td key={t.id} className={choice === undefined ? '' : choice === question.answer ? 'correct' : 'wrong'}>
+                                  <select
+                                    value={choice ?? ''}
+                                    onChange={(e) =>
+                                      act({ type: 'setAnswer', questionId: question.id, teamId: t.id, choice: e.target.value === '' ? null : Number(e.target.value) })
+                                    }
+                                  >
+                                    <option value="">–</option>
+                                    {question.options.map((option, i) => (
+                                      <option key={i} value={i}>
+                                        {option}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                              );
+                            })}
+                            <td>
+                              <button className="small ghost" onClick={() => confirm('Clear all answers for this question?') && act({ type: 'clearAnswers', questionId: question.id })}>
+                                Clear
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>

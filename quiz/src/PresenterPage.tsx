@@ -1,38 +1,49 @@
 // Big-screen view for the host: the current question, how many teams answered,
 // and after the reveal, the percentage of votes for each option. It never shows
 // which team answered or what one team chose. One button moves the quiz on.
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { AdminView } from '../shared/types.ts';
+import { roundPosition, startsRound } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
-import { Brand, LETTERS, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
+import { Brand, LETTERS, RoundProgress, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
 
-interface Step {
-  label: string;
-  action: Record<string, unknown>;
-}
+// A step either sends an admin action, or shows the title of the round that
+// starts at question `intro`. The round title exists only on this screen.
+type Step = { label: string; action: Record<string, unknown> } | { label: string; intro: number };
 
-// The action the "next" button does in each phase.
-function nextStep({ state }: AdminView): Step | null {
+// The step the "next" button does in each phase.
+function nextStep({ state }: AdminView, intro: number | null): Step | null {
+  if (intro !== null) return { label: 'Start round', action: { type: 'setQuestion', index: intro } };
   const hasNext = state.questionIndex < state.questions.length - 1;
-  const nextQuestion = { type: 'setQuestion', index: state.questionIndex + 1 };
+  const goTo = (index: number): Step =>
+    startsRound(state.questions, index) ? { label: 'Next round', intro: index } : { label: 'Next question', action: { type: 'setQuestion', index } };
   switch (state.phase) {
     case 'lobby':
-      return state.questions.length ? { label: 'Start quiz', action: { type: 'setQuestion', index: state.questionIndex } } : null;
+      return state.questions.length ? { ...goTo(state.questionIndex), label: 'Start quiz' } : null;
     case 'question':
       return { label: 'Close answers', action: { type: 'setPhase', phase: 'locked' } };
     case 'locked':
       return { label: 'Reveal answer', action: { type: 'setPhase', phase: 'reveal' } };
     case 'reveal':
-      return hasNext ? { label: 'Next question', action: nextQuestion } : { label: 'Start battle', action: { type: 'setPhase', phase: 'battle' } };
+      return hasNext ? goTo(state.questionIndex + 1) : { label: 'Start battle', action: { type: 'setPhase', phase: 'battle' } };
     case 'battle':
-      return hasNext ? { label: 'Next question', action: nextQuestion } : null;
+      return hasNext ? goTo(state.questionIndex + 1) : null;
   }
 }
 
 export function PresenterPage() {
   const admin = useAdmin();
   const { view, connected, act, error } = admin;
-  const step = view ? nextStep(view) : null;
+  const [intro, setIntro] = useState<number | null>(null);
+  const step = view ? nextStep(view, intro) : null;
+
+  // Any change from the server (from this screen or the admin page) ends the round title.
+  useEffect(() => setIntro(null), [view?.state.questionIndex, view?.state.phase]);
+
+  function run(s: Step) {
+    if ('intro' in s) setIntro(s.intro);
+    else act(s.action);
+  }
 
   // Space, Enter or the right arrow does the next step (for a clicker or a keyboard).
   useEffect(() => {
@@ -40,7 +51,7 @@ export function PresenterPage() {
       if (!step || e.repeat || (e.target as HTMLElement).closest('input, select, textarea, button')) return;
       if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'PageDown') {
         e.preventDefault();
-        act(step.action);
+        run(step);
       }
     }
     window.addEventListener('keydown', onKey);
@@ -56,7 +67,11 @@ export function PresenterPage() {
   const revealed = !!q && state.phase === 'reveal';
   const showQuestion = q && (state.phase === 'question' || state.phase === 'locked' || state.phase === 'reveal');
   const weaponName = (id: string) => catalog.weapons.find((w) => w.id === id)?.name ?? id;
-  const phaseLabel = { lobby: 'Lobby', question: 'Answers open', locked: 'Answers closed', reveal: 'Answer', battle: 'Battle' }[state.phase];
+  const phaseLabel = intro !== null ? 'Next round' : { lobby: 'Lobby', question: 'Answers open', locked: 'Answers closed', reveal: 'Answer', battle: 'Battle' }[state.phase];
+  const round = q ? roundPosition(state.questions, state.questionIndex) : null;
+  const introRound = intro !== null ? roundPosition(state.questions, intro) : null;
+  // The bar shows the round title as the start of its round, and otherwise the current question.
+  const bar = introRound ? { round: introRound.index, position: 0 } : round && state.phase !== 'lobby' ? { round: round.index, position: round.position } : null;
 
   return (
     <div className="present">
@@ -64,10 +79,17 @@ export function PresenterPage() {
         <div className="topbar-inner">
           <Brand name="Weapon Balls quiz" />
           <div className="row">
-            {q && state.phase !== 'lobby' && (
+            {introRound ? (
               <span className="muted num">
-                Question {state.questionIndex + 1} of {state.questions.length}
+                Round {introRound.index + 1} of {introRound.count}
               </span>
+            ) : (
+              round &&
+              state.phase !== 'lobby' && (
+                <span className="muted num">
+                  Round {round.index + 1} of {round.count} · Question {round.position} of {round.size}
+                </span>
+              )
             )}
             <span className={state.phase === 'question' ? 'pill accent' : state.phase === 'reveal' ? 'pill good' : 'pill'}>{phaseLabel}</span>
             <Status connected={connected} />
@@ -75,17 +97,23 @@ export function PresenterPage() {
           </div>
         </div>
       </header>
-      {q && state.phase !== 'lobby' && (
-        <div className="progress" style={{ borderRadius: 0, height: 3 }}>
-          <div style={{ width: `${((state.questionIndex + 1) / state.questions.length) * 100}%` }} />
-        </div>
-      )}
+      {bar && round && <RoundProgress className="bleed" sizes={round.sizes} round={bar.round} position={bar.position} />}
 
       <main className="present-body">
         {error && <p className="error">{error}</p>}
         {state.message && <p className="banner">{state.message}</p>}
 
-        {state.phase === 'lobby' && (
+        {introRound && (
+          <section className="round-intro">
+            <p className="eyebrow">
+              Round {introRound.index + 1} of {introRound.count}
+            </p>
+            <h1 className="present-q">{introRound.name}</h1>
+            <p className="muted">{introRound.size === 1 ? '1 question' : `${introRound.size} questions`}</p>
+          </section>
+        )}
+
+        {!introRound && state.phase === 'lobby' && (
           <section className="join">
             <div>
               <p className="eyebrow">Get your phones out</p>
@@ -101,7 +129,7 @@ export function PresenterPage() {
           </section>
         )}
 
-        {state.phase === 'battle' && (
+        {!introRound && state.phase === 'battle' && (
           <section className="stack loose">
             <div>
               <p className="eyebrow">Watch the arena</p>
@@ -113,10 +141,10 @@ export function PresenterPage() {
           </section>
         )}
 
-        {showQuestion && (
+        {!introRound && showQuestion && (
           <section className="stack loose">
             <div className="stack">
-              <p className="eyebrow">{q.round}</p>
+              <p className="eyebrow">{round ? `Round ${round.index + 1} · ${round.name}` : q.round}</p>
               <h1 className="present-q">{q.text}</h1>
             </div>
             <div className="present-grid">
@@ -157,15 +185,22 @@ export function PresenterPage() {
       </main>
 
       <footer className="present-footer">
-        <button className="ghost" disabled={state.questionIndex <= 0} onClick={() => act({ type: 'setQuestion', index: state.questionIndex - 1 })}>
-          ← Previous question
-        </button>
+        {/* Different keys, so a focused Back button is not reused as "Previous question" when Space is pressed next. */}
+        {intro !== null ? (
+          <button key="back" className="ghost" onClick={() => setIntro(null)}>
+            ← Back
+          </button>
+        ) : (
+          <button key="previous" className="ghost" disabled={state.questionIndex <= 0} onClick={() => act({ type: 'setQuestion', index: state.questionIndex - 1 })}>
+            ← Previous question
+          </button>
+        )}
         <div className="row">
           <span className="hint">
             <kbd>Space</kbd> or <kbd>→</kbd>
           </span>
           {step ? (
-            <button className="primary" onClick={() => act(step.action)}>
+            <button className="primary" onClick={() => run(step)}>
               {step.label} →
             </button>
           ) : (

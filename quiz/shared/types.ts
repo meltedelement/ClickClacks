@@ -62,6 +62,16 @@ export interface Loadout {
   upgrades: Record<string, number>;
 }
 
+// Where a question is in its round. See shared/rounds.ts.
+export interface RoundPosition {
+  index: number; // 0-based round number
+  count: number; // rounds in the quiz
+  name: string; // the round name without the "Round N: " prefix
+  position: number; // 1-based question number in this round
+  size: number; // questions in this round
+  sizes: number[]; // questions in each round, for the progress bar
+}
+
 export interface TeamView {
   phase: Phase;
   message: string;
@@ -71,6 +81,7 @@ export interface TeamView {
   questionNumber: number;
   questionCount: number;
   question: { id: string; round: string; text: string; options: string[] } | null;
+  round: RoundPosition | null;
   myAnswer: number | null;
   correct: number | null; // only set once the question is revealed
   team: {

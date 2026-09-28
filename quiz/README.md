@@ -58,6 +58,8 @@ The server pushes the full state to each device with server-sent events (`/api/e
 - It never shows which team answered or what a team chose. It shows only the number of teams that answered.
 - On the reveal, it shows the correct option and the percentage of votes for each option.
 - The next button moves the quiz one step: question → locked → reveal → next question. After the last question, it starts the battle.
+- Before the first question of a round, the next button shows the round title: the round number, the round name, and the number of questions. The next press opens the first question. Only the presenter view shows the round title. The phase does not change, and the teams see no change.
+- A round is a group of consecutive questions with the same round in `quiz-questions.json`. The phones, the presenter view, and the admin page show the round and the question number in the round.
 - Space, Enter, the right arrow, and Page Down also do the next step. A presentation clicker sends one of these keys.
 
 ## Dev controls (admin page)

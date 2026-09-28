@@ -96,3 +96,17 @@ export function ThemeToggle() {
     </button>
   );
 }
+
+// One segment per round, so the gaps show where each round starts and ends.
+// Rounds before the current one are full; the current one fills up to `position`.
+export function RoundProgress({ sizes, round, position, className }: { sizes: number[]; round: number; position: number; className?: string }) {
+  return (
+    <div className={className ? `round-progress ${className}` : 'round-progress'} aria-hidden="true">
+      {sizes.map((size, i) => (
+        <div key={i} style={{ flexGrow: size }}>
+          <div style={{ width: `${i < round ? 100 : i === round ? (position / size) * 100 : 0}%` }} />
+        </div>
+      ))}
+    </div>
+  );
+}

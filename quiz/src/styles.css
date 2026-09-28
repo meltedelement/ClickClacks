@@ -212,6 +212,11 @@ legend { padding: 0; margin-bottom: 6px; }
 
 .progress { height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
 .progress > div { height: 100%; background: var(--accent); transition: width 200ms ease-out; }
+.round-progress { display: flex; gap: 4px; }
+.round-progress > div { flex-basis: 0; height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.round-progress > div > div { height: 100%; background: var(--accent); transition: width 200ms ease-out; }
+.round-progress.bleed { gap: 3px; }
+.round-progress.bleed > div { height: 3px; border-radius: 0; }
 
 /* ---------- Choices (weapon tiles, answers, upgrades) ---------- */
 
@@ -281,6 +286,7 @@ button.option.dim { color: var(--muted); }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface-2); font-size: 14px; }
 .chip .count { color: var(--muted); font-variant-numeric: tabular-nums; }
 
+.round-name { font-size: 15px; font-weight: 600; color: var(--muted); }
 .question-text { font-size: 21px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; }
 
 .loadout { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; align-items: start; font-size: 15px; }
@@ -295,6 +301,9 @@ button.option.dim { color: var(--muted); }
 .present .topbar-inner { max-width: 1320px; }
 .present .banner { font-size: 20px; }
 .present-q { font-size: clamp(30px, 3.6vw, 56px); line-height: 1.15; letter-spacing: -0.02em; font-weight: 650; max-width: 32ch; text-wrap: balance; }
+.round-intro { display: flex; flex-direction: column; gap: 16px; padding-left: 28px; border-left: 4px solid var(--accent); }
+.round-intro .present-q { font-size: clamp(40px, 5.5vw, 84px); }
+.round-intro .muted { font-size: 22px; }
 .present-meta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 18px; color: var(--muted); }
 .present-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .present-option {
@@ -376,6 +385,8 @@ td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: 
 tbody tr:last-child td { border-bottom: 0; }
 td input, td select { padding: 5px 8px; font-size: 14px; }
 td select { max-width: 180px; }
+tr.round-row td { padding: 16px 12px 8px; background: var(--surface); border-bottom: 1px solid var(--border-strong); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+tbody tr.round-row:first-child td { padding-top: 10px; }
 td.correct select { border-color: var(--good-line); background-color: var(--good-soft); }
 td.wrong select { border-color: var(--bad-line); background-color: var(--bad-soft); }
 td.error { color: var(--bad-text); font-weight: 600; }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { TeamView, WeaponInfo } from '../shared/types.ts';
 import { post, useEvents } from './api.ts';
-import { Brand, LETTERS, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
+import { Brand, LETTERS, RoundProgress, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
 
 const TOKEN_KEY = 'quiz-team-token';
 
@@ -180,17 +180,22 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
 
         {view.question && (
           <section className="stack loose">
-            <div className="stack">
-              <div className="row">
-                <span className="eyebrow">{view.question.round}</span>
-                <span className="muted num">
-                  {view.questionNumber} / {view.questionCount}
-                </span>
+            {view.round ? (
+              <div className="stack">
+                <div className="row">
+                  <span className="eyebrow">
+                    Round {view.round.index + 1} of {view.round.count}
+                  </span>
+                  <span className="muted num">
+                    Question {view.round.position} of {view.round.size}
+                  </span>
+                </div>
+                <RoundProgress sizes={view.round.sizes} round={view.round.index} position={view.round.position} />
+                <h2 className="round-name">{view.round.name}</h2>
               </div>
-              <div className="progress">
-                <div style={{ width: `${(view.questionNumber / view.questionCount) * 100}%` }} />
-              </div>
-            </div>
+            ) : (
+              <span className="eyebrow">{view.question.round}</span>
+            )}
             <p className="question-text">{view.question.text}</p>
             <div className="stack">
               {view.question.options.map((option, i) => {

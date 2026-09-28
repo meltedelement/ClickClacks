@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { AdminView, Catalog, Loadout, Phase, Question, State, Team, TeamView } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
+import { roundPosition } from '../shared/rounds.ts';
 
 const DATA_DIR = path.join(import.meta.dirname, '..', 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
@@ -134,6 +135,7 @@ export function teamView(team: Team): TeamView {
     questionNumber: state.questionIndex + 1,
     questionCount: state.questions.length,
     question: showQuestion ? { id: q.id, round: q.round, text: q.text, options: q.options } : null,
+    round: showQuestion ? roundPosition(state.questions, state.questionIndex) : null,
     myAnswer: q ? (state.answers[q.id]?.[team.id] ?? null) : null,
     correct: q && showQuestion && state.revealed.includes(q.id) ? q.answer : null,
     team: {
