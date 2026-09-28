@@ -110,21 +110,181 @@ const done: Match = await (await fetch(`${API}/matches/${queued.id}?wait=1`)).js
 console.log(done.result); // { winner: 0 | 1 | null, winnerName, reason: 'ko' | 'time', time, hp }
 ```
 
+### API reference
+
+Everything is JSON over HTTP under `/api`. Request bodies must be a JSON object
+(an empty body counts as `{}`) of at most 64 KB. CORS is open (`Access-Control-Allow-Origin: *`),
+so a page on another local port can call it. TypeScript types for every shape
+below are in [`server/api.d.ts`](server/api.d.ts); copy that file into the caller.
+
 | Route | |
 | --- | --- |
-| `POST /api/matches` | Queue a match: `{ fighters: [a, b], seed?, timeLimit? }`. A fighter is `{ name?, weapon, upgrades? }`, and `team` works in place of `name`. Upgrades can be a list of ids (repeat one to stack it) or an `{ id: count }` object. Returns the match (201), or 400 with `{ error }` when a loadout is invalid. |
+| `POST /api/matches` | Queue a match. |
 | `GET /api/matches/:id` | One match. Add `?wait=1` to hold the request until it is `done` or `cancelled`. |
-| `GET /api/matches` | Every match since the server started. |
+| `GET /api/matches` | Every match since the server started, in the order queued. |
 | `DELETE /api/matches/:id` | Cancel a match that is queued or playing. If it's on screen, it stops. |
-| `GET /api/status` | `{ displays, current, queued }`. Check `displays > 0` before waiting on a result. |
-| `GET /api/catalog` | Weapon and upgrade ids, names, descriptions, stack limits and requirements, for building menus or offers. |
+| `GET /api/status` | Displays connected, the current match and the queue length. |
+| `GET /api/catalog` | Weapon and upgrade ids, for building menus or offers. |
 
-Matches play one at a time, in the order they were queued. There's a short
-pause after each one so the winner banner stays on screen. A match's status
-goes `queued` → `playing` → `done`, or ends as `cancelled`. `result.winner` is
-an index into `fighters`, or `null` for a draw. A match still going at
-`timeLimit` (default 180 sim seconds) is a draw with `reason: 'time'`. A bracket
-has to decide what to do with a draw, such as replaying with another seed.
+#### `POST /api/matches`
+
+Request body (`MatchRequest`):
+
+| Field | Type | |
+| --- | --- | --- |
+| `fighters` | `[Fighter, Fighter]` | Required, exactly two. `result.winner` indexes into this list. |
+| `seed` | integer | Optional, 0 to 2³² − 1. The same seed and fighters give the same fight. Random if left out. |
+| `timeLimit` | number | Optional, sim seconds above 0 and at most 600. Default 180. |
+
+A fighter (`FighterInput`):
+
+| Field | Type | |
+| --- | --- | --- |
+| `weapon` | string | Required. A weapon id from `/api/catalog`. |
+| `name` | string | Optional. Shown above the ball and in the winner banner. `team` is accepted in its place. |
+| `upgrades` | `string[]` or `{ [id]: count }` | Optional. A list of upgrade ids (repeat an id to stack it) or a map of id to copies, 0 to 100 each. `['damage', 'damage']` and `{ damage: 2 }` are the same. Upgrades are applied in the order given, except that transformations always go first. |
+
+Every upgrade must exist, fit the weapon, stay within its `maxStacks` and have
+the upgrades it `requires`. A bad request gets a 400 and nothing is queued.
+Success is a **201** with the new `Match`:
+
+```json
+{
+  "id": "5f0c3a1e-8d4b-4b8e-9a52-1c7e2f6a9d10",
+  "status": "queued",
+  "fighters": [
+    { "name": "Alpha", "weapon": "sword", "upgrades": ["damage", "damage", "lifesteal"] },
+    { "name": "Beta", "weapon": "mace", "upgrades": ["health", "health"] }
+  ],
+  "seed": 2894113750,
+  "timeLimit": 180,
+  "queuedAt": "2026-09-28T14:03:11.204Z",
+  "startedAt": null,
+  "finishedAt": null,
+  "result": null
+}
+```
+
+The stored `fighters` are normalised: `team` is folded into `name` (`null` when
+neither was given), and `upgrades` is always a flat list of ids.
+
+#### The `Match` object
+
+| Field | Type | |
+| --- | --- | --- |
+| `id` | string | UUID. |
+| `status` | `'queued'` \| `'playing'` \| `'done'` \| `'cancelled'` | See the lifecycle below. |
+| `fighters` | `[Fighter, Fighter]` | `{ name: string \| null, weapon: string, upgrades: string[] }`. |
+| `seed` | integer | The seed the fight is played with, whether you passed it or not. |
+| `timeLimit` | number | Sim seconds before a draw is called. |
+| `queuedAt` | ISO timestamp | |
+| `startedAt` | ISO timestamp \| `null` | When a display started it. Reset to `null` if it goes back to `queued`. |
+| `finishedAt` | ISO timestamp \| `null` | Set when `done` or `cancelled`. |
+| `result` | `MatchResult` \| `null` | Only set when `status` is `done`. A cancelled match has no result. |
+
+`MatchResult`:
+
+| Field | Type | |
+| --- | --- | --- |
+| `winner` | `0` \| `1` \| `null` | Index into `fighters`, or `null` for a draw. |
+| `winnerName` | string \| `null` | The winner's `name`, or its weapon id if it has no name. `null` for a draw. |
+| `reason` | `'ko'` \| `'time'` | `'time'` when nobody had won at `timeLimit`. Otherwise `'ko'`. |
+| `time` | number | Sim seconds the match lasted. |
+| `hp` | `[number, number]` | HP left per fighter, in `fighters` order. |
+
+A draw is `winner: null`. It is usually `reason: 'time'`, but two fighters
+knocked out in the same step is also a draw, with `reason: 'ko'`. Check
+`winner`, not `reason`. A bracket has to decide what to do with a draw, such as
+replaying with another seed.
+
+#### `GET /api/matches/:id`
+
+Returns the `Match`. With `?wait=1` (any value except `0` or `false`) the
+request is held open until the match is `done` or `cancelled`, then returns it.
+If it already is, it returns straight away. There is no timeout on the server
+side, and a match can sit in the queue for minutes, so set a long (or no) client
+timeout. If the connection drops, just ask again. With no display connected the
+match never plays and the wait never ends, so check `/api/status` first.
+
+#### `GET /api/matches`
+
+Returns `Match[]`, oldest first, including finished and cancelled matches. The
+server keeps them all until it restarts.
+
+#### `DELETE /api/matches/:id`
+
+Cancels a match and returns it with `status: 'cancelled'`. A match that is
+playing stops on the display, and the next one in the queue goes on. Waiters on
+`?wait=1` get the cancelled match. Cancelling a match that is already `done` or
+`cancelled` is a 409.
+
+#### `GET /api/status`
+
+```json
+{ "displays": 1, "current": { "...": "a Match" }, "queued": 3 }
+```
+
+| Field | Type | |
+| --- | --- | --- |
+| `displays` | number | Display pages connected right now. Matches only play while this is above 0. |
+| `current` | `Match` \| `null` | The match on screen (`playing`), or the next one to go on screen (`queued`). |
+| `queued` | number | Matches not done yet, including `current`. |
+
+#### `GET /api/catalog`
+
+```json
+{
+  "weapons": [{ "id": "sword", "name": "Sword" }],
+  "upgrades": [
+    {
+      "id": "lifesteal",
+      "name": "Lifesteal",
+      "description": "…",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null,
+      "transformation": false
+    }
+  ]
+}
+```
+
+For an upgrade, `weapons` is the list of weapon ids it fits (`null` for any
+weapon), `requires` the upgrade ids the fighter must also have, `maxStacks` the
+most copies allowed (`null` for no limit) and `transformation` whether it is a
+big upgrade that reshapes the weapon. `description` is per copy. Upgrades are
+listed in menu order.
+
+#### Errors
+
+Every error is `{ "error": "message" }` with one of these statuses:
+
+| Status | When |
+| --- | --- |
+| 400 | Invalid request. The message names the field, e.g. `fighters[1]: Unknown weapon: axe` or `fighters[0]: Upgrade "quick-drop" can't go on weapon "sword"`. Also a body that isn't a JSON object. |
+| 404 | Unknown route, or no match with that id. |
+| 405 | The route exists but not for that method. |
+| 409 | Cancelling a match that already finished, or (display side) reporting on a match that isn't the one on screen. |
+| 413 | Body over 64 KB. |
+| 500 | Server error. |
+
+#### Display routes
+
+These are used by the display page (`src/ui/TournamentDisplay.js`), not by the
+calling program. They are listed for anyone writing another display.
+
+| Route | |
+| --- | --- |
+| `GET /api/display` | A server-sent event stream. Each message's `data` is the JSON of the match to show, or `null` when the queue is empty. One is sent on connecting and another whenever the front of the queue changes. A `: ping` comment goes out every 20 seconds. |
+| `POST /api/matches/:id/start` | The display started playing the match. Moves it to `playing`. Only the match at the front of the queue is accepted (409 otherwise). Safe to repeat. |
+| `POST /api/matches/:id/result` | Body `{ winner: 0 \| 1 \| null, time: number, hp: [number, number] }`. Marks the match `done` and builds `result` (the server works out `winnerName` and `reason`). The first result in wins: a later one for a finished match just returns it. 409 if it isn't the match on screen, 400 for a malformed body. |
+
+### Lifecycle
+
+Matches play one at a time, in the order they were queued, and only while a
+display page is connected. There's a short pause after each one so the winner
+banner stays on screen. A match's status goes `queued` → `playing` → `done`, or
+ends as `cancelled` from either of the first two.
 
 Each match has a seed (random unless you pass one), so every display page shows
 the same fight. If the last display disconnects mid-match, the match goes back
