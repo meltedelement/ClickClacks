@@ -5,11 +5,17 @@ const RANDOM = 'random';
 
 // Wires the menu (fighter pickers, sim settings) and keyboard shortcuts to the Game.
 export class Controls {
-  constructor(game, { fighters }) {
+  // In display mode the match API picks the matchups, so the matchup section
+  // and auto rematch are hidden.
+  constructor(game, { fighters, displayMode = false }) {
     this.game = game;
 
     this.buildFighterSelects(fighters);
     this.bindSettings();
+    if (displayMode) {
+      byId('matchup').hidden = true;
+      byId('auto-rematch').closest('label').hidden = true;
+    }
     this.bindMenu();
     this.bindFullscreen();
     this.bindKeyboard();

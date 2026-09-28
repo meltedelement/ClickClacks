@@ -1,0 +1,319 @@
+// The match API: another program (the quiz/tournament server) queues matches
+// over HTTP, a display page plays them live, and the result goes back to
+// whoever asked. The display decides the official result, so what's on screen
+// is always what gets recorded. Types for callers are in api.d.ts.
+//
+// For the tournament program:
+//   GET    /api/catalog               weapons and upgrades the game knows
+//   GET    /api/status                displays connected, match on screen, queue length
+//   POST   /api/matches               queue a match -> the match (201)
+//   GET    /api/matches               every match this server has seen
+//   GET    /api/matches/:id           one match; add ?wait=1 to hold the request until it's done
+//   DELETE /api/matches/:id           cancel a match that isn't done yet
+// For the display page (src/ui/TournamentDisplay.js):
+//   GET    /api/display               server-sent events: the match to show (or null)
+//   POST   /api/matches/:id/start     the display started playing it
+//   POST   /api/matches/:id/result    the display finished it
+//
+// Matches are played one at a time in the order they were queued. Every
+// connected display plays the current match; they all show the same fight
+// because the match is seeded. The first result in counts. If the last display
+// disconnects mid-match, the match goes back to queued and restarts from the
+// beginning (same seed, same fight) when a display comes back.
+//
+// State lives in memory only: restarting the server forgets every match.
+import { randomUUID } from 'node:crypto';
+import { WEAPONS, getWeaponById } from '../src/weapons/index.js';
+import { UPGRADES, resolveUpgrades } from '../src/upgrades/index.js';
+
+const DEFAULT_TIME_LIMIT = 180; // sim seconds before a match is called a draw (same as the balance tool)
+const MAX_TIME_LIMIT = 600;
+const MAX_BODY = 64 * 1024;
+const MAX_COUNT = 100; // copies of one upgrade in the { id: count } form, whatever its maxStacks
+const PING_INTERVAL = 20_000; // keeps display connections open through proxies
+
+const matches = new Map(); // id -> match, in the order they were queued
+const queue = []; // matches not yet done; queue[0] is the one on screen
+const displays = new Set(); // open /api/display responses
+const waiters = new Map(); // match id -> callbacks for ?wait=1 requests
+
+setInterval(() => {
+  for (const res of displays) res.write(': ping\n\n');
+}, PING_INTERVAL).unref();
+
+class ApiError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// Handles /api/* requests. Returns false for anything else so the caller can
+// serve it (static files, Vite).
+export async function handleApi(req, res) {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (!url.pathname.startsWith('/api/')) return false;
+
+  // Allow calls from other local pages (e.g. the quiz admin page).
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204).end();
+    return true;
+  }
+
+  try {
+    await route(req, res, url);
+  } catch (err) {
+    if (err instanceof ApiError) json(res, err.status, { error: err.message });
+    else {
+      console.error(err);
+      json(res, 500, { error: 'Server error' });
+    }
+  }
+  return true;
+}
+
+async function route(req, res, url) {
+  const parts = url.pathname.split('/').filter(Boolean).slice(1); // drop "api"
+  const [resource, id, action] = parts;
+  const method = req.method;
+
+  if (method === 'GET' && url.pathname === '/api/catalog') return json(res, 200, catalog());
+  if (method === 'GET' && url.pathname === '/api/status') return json(res, 200, status());
+  if (method === 'GET' && url.pathname === '/api/display') return openDisplay(req, res);
+
+  if (resource !== 'matches' || parts.length > 3) throw new ApiError(404, 'Not found');
+
+  if (!id) {
+    if (method === 'GET') return json(res, 200, [...matches.values()]);
+    if (method === 'POST') return json(res, 201, queueMatch(await readBody(req)));
+    throw new ApiError(405, 'Use GET or POST');
+  }
+
+  const match = matches.get(id);
+  if (!match) throw new ApiError(404, `No match with id "${id}"`);
+
+  if (!action) {
+    if (method === 'GET') {
+      const wait = url.searchParams.get('wait');
+      if (wait && wait !== '0' && wait !== 'false' && !isFinished(match)) return waitFor(req, res, match);
+      return json(res, 200, match);
+    }
+    if (method === 'DELETE') return json(res, 200, cancel(match));
+    throw new ApiError(405, 'Use GET or DELETE');
+  }
+
+  if (method !== 'POST') throw new ApiError(405, 'Use POST');
+  if (action === 'start') return json(res, 200, start(match));
+  if (action === 'result') return json(res, 200, finish(match, await readBody(req)));
+  throw new ApiError(404, 'Not found');
+}
+
+// ---- Tournament side -----------------------------------------------------------
+
+function catalog() {
+  return {
+    weapons: WEAPONS.map((W) => ({ id: W.id, name: W.displayName })),
+    upgrades: UPGRADES.map((U) => ({
+      id: U.id,
+      name: U.displayName,
+      description: U.description,
+      weapons: U.weapons,
+      requires: U.requires,
+      maxStacks: Number.isFinite(U.maxStacks) ? U.maxStacks : null,
+      transformation: Boolean(U.transformation),
+    })),
+  };
+}
+
+function status() {
+  return { displays: displays.size, current: queue[0] ?? null, queued: queue.length };
+}
+
+function queueMatch(body) {
+  if (!Array.isArray(body.fighters) || body.fighters.length !== 2) {
+    throw new ApiError(400, '"fighters" must be an array of two fighters');
+  }
+  const match = {
+    id: randomUUID(),
+    status: 'queued',
+    fighters: body.fighters.map(parseFighter),
+    seed: body.seed === undefined ? Math.floor(Math.random() * 2 ** 32) : parseSeed(body.seed),
+    timeLimit: body.timeLimit === undefined ? DEFAULT_TIME_LIMIT : parseTimeLimit(body.timeLimit),
+    queuedAt: new Date().toISOString(),
+    startedAt: null,
+    finishedAt: null,
+    result: null,
+  };
+  matches.set(match.id, match);
+  queue.push(match);
+  if (queue.length === 1) broadcast();
+  return match;
+}
+
+// A fighter is { name?, weapon, upgrades? }. `team` is accepted in place of
+// `name`, and upgrades may be a list of ids (repeat an id to stack it) or an
+// { id: count } object, so the quiz's loadouts can be passed straight in.
+function parseFighter(input, i) {
+  const where = `fighters[${i}]`;
+  if (!input || typeof input !== 'object') throw new ApiError(400, `${where} must be an object`);
+
+  const name = input.name ?? input.team ?? null;
+  if (name !== null && typeof name !== 'string') throw new ApiError(400, `${where}.name must be a string`);
+
+  const upgrades = parseUpgradeIds(input.upgrades ?? [], where);
+  try {
+    const WeaponClass = getWeaponById(input.weapon);
+    resolveUpgrades(upgrades, WeaponClass.id);
+  } catch (err) {
+    throw new ApiError(400, `${where}: ${err.message}`);
+  }
+  return { name, weapon: input.weapon, upgrades };
+}
+
+function parseUpgradeIds(upgrades, where) {
+  if (Array.isArray(upgrades)) {
+    if (!upgrades.every((id) => typeof id === 'string')) throw new ApiError(400, `${where}.upgrades must be upgrade ids`);
+    return upgrades;
+  }
+  if (typeof upgrades !== 'object') throw new ApiError(400, `${where}.upgrades must be a list or an { id: count } object`);
+  return Object.entries(upgrades).flatMap(([id, count]) => {
+    if (!Number.isInteger(count) || count < 0 || count > MAX_COUNT) {
+      throw new ApiError(400, `${where}.upgrades.${id} must be a whole number from 0 to ${MAX_COUNT}`);
+    }
+    return Array(count).fill(id);
+  });
+}
+
+function parseSeed(seed) {
+  if (!Number.isInteger(seed) || seed < 0 || seed >= 2 ** 32) throw new ApiError(400, '"seed" must be a whole number from 0 to 2^32 - 1');
+  return seed;
+}
+
+function parseTimeLimit(timeLimit) {
+  if (typeof timeLimit !== 'number' || !(timeLimit > 0 && timeLimit <= MAX_TIME_LIMIT)) {
+    throw new ApiError(400, `"timeLimit" must be a number of seconds above 0 and at most ${MAX_TIME_LIMIT}`);
+  }
+  return timeLimit;
+}
+
+function isFinished(match) {
+  return match.status === 'done' || match.status === 'cancelled';
+}
+
+// Holds the request open until the match is done or cancelled.
+function waitFor(req, res, match) {
+  const reply = () => json(res, 200, match);
+  const list = waiters.get(match.id) ?? [];
+  list.push(reply);
+  waiters.set(match.id, list);
+  req.socket.setTimeout(0); // matches can take minutes
+  res.on('close', () => {
+    const remaining = (waiters.get(match.id) ?? []).filter((fn) => fn !== reply);
+    if (remaining.length > 0) waiters.set(match.id, remaining);
+    else waiters.delete(match.id);
+  });
+}
+
+function cancel(match) {
+  if (isFinished(match)) throw new ApiError(409, `Match is already ${match.status}`);
+  match.status = 'cancelled';
+  match.finishedAt = new Date().toISOString();
+  settle(match);
+  return match;
+}
+
+// Takes a match that just finished off the queue and tells everyone who cares.
+function settle(match) {
+  const wasCurrent = queue[0] === match;
+  queue.splice(queue.indexOf(match), 1);
+  for (const reply of waiters.get(match.id) ?? []) reply();
+  waiters.delete(match.id);
+  if (wasCurrent) broadcast();
+}
+
+// ---- Display side --------------------------------------------------------------
+
+function openDisplay(req, res) {
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+  req.socket.setTimeout(0);
+  displays.add(res);
+  send(res);
+  res.on('close', () => {
+    displays.delete(res);
+    // Nobody is watching the match any more; play it again from the start later.
+    const current = queue[0];
+    if (displays.size === 0 && current?.status === 'playing') {
+      current.status = 'queued';
+      current.startedAt = null;
+    }
+  });
+}
+
+function send(res) {
+  res.write(`data: ${JSON.stringify(queue[0] ?? null)}\n\n`);
+}
+
+function broadcast() {
+  for (const res of displays) send(res);
+}
+
+function start(match) {
+  if (match !== queue[0]) throw new ApiError(409, 'That match is not the one on screen');
+  if (match.status === 'queued') {
+    match.status = 'playing';
+    match.startedAt = new Date().toISOString();
+  }
+  return match;
+}
+
+// Body: { winner: fighter index or null for a draw, time: sim seconds, hp: [hp left per fighter] }
+function finish(match, body) {
+  if (match.status === 'done') return match; // another display got there first
+  if (match !== queue[0]) throw new ApiError(409, 'That match is not the one on screen');
+
+  const { winner, time, hp } = body;
+  if (winner !== null && !(Number.isInteger(winner) && winner >= 0 && winner < match.fighters.length)) {
+    throw new ApiError(400, '"winner" must be a fighter index or null');
+  }
+  if (typeof time !== 'number') throw new ApiError(400, '"time" must be a number');
+  if (!Array.isArray(hp) || hp.length !== match.fighters.length) throw new ApiError(400, '"hp" must have one number per fighter');
+
+  match.status = 'done';
+  match.startedAt ??= new Date().toISOString();
+  match.finishedAt = new Date().toISOString();
+  match.result = {
+    winner,
+    winnerName: winner === null ? null : (match.fighters[winner].name ?? match.fighters[winner].weapon),
+    reason: winner === null && time >= match.timeLimit ? 'time' : 'ko',
+    time,
+    hp,
+  };
+  settle(match);
+  return match;
+}
+
+// ---- HTTP helpers --------------------------------------------------------------
+
+function json(res, status, body) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+
+async function readBody(req) {
+  let raw = '';
+  for await (const chunk of req) {
+    raw += chunk;
+    if (raw.length > MAX_BODY) throw new ApiError(413, 'Request body too large');
+  }
+  if (!raw) return {};
+  try {
+    const body = JSON.parse(raw);
+    if (body && typeof body === 'object' && !Array.isArray(body)) return body;
+  } catch {
+    // fall through
+  }
+  throw new ApiError(400, 'Body must be a JSON object');
+}

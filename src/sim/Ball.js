@@ -5,8 +5,10 @@ import { formatNumber } from '../utils/format.js';
 export class Ball {
   // `upgrades` are Upgrade classes, applied in order once the weapon is built.
   // A class listed more than once stacks onto the same instance.
-  constructor({ position, color, WeaponClass, upgrades = [] }) {
+  // `name` (e.g. a team name) replaces the weapon's name on screen.
+  constructor({ position, color, WeaponClass, upgrades = [], name = null }) {
     this.pos = { ...position };
+    this.label = name;
     this.radius = CONFIG.ball.radius;
     this.speed = CONFIG.ball.speed;
     const heading = Math.random() * TAU;
@@ -37,7 +39,7 @@ export class Ball {
   }
 
   get name() {
-    return this.weapon.name;
+    return this.label ?? this.weapon.name;
   }
 
   update(dt, sim) {

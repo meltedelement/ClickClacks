@@ -80,7 +80,9 @@ body {
   gap: 16px;
 }
 
-.menu-panel[hidden] {
+.menu-panel[hidden],
+.menu-section[hidden],
+.check[hidden] {
   display: none;
 }
 

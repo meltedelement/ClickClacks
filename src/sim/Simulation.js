@@ -10,7 +10,8 @@ import { resolveUpgrades } from '../upgrades/index.js';
 //
 // A match is set up from one loadout per fighter. Loadouts are plain data, so
 // they can be saved with a run or sent to a worker thread:
-//   { weapon: 'sword', upgrades: ['extra-blade', 'lifesteal'] }
+//   { weapon: 'sword', upgrades: ['extra-blade', 'lifesteal'], name: 'Team Alpha' }
+// `name` is optional and only for display; without it a fighter is called by its weapon.
 // Upgrade ids must exist, fit the weapon, and not repeat (see src/upgrades/).
 //
 // Things that happen are reported through onEvent(type, data):
@@ -51,6 +52,7 @@ export class Simulation {
         color: `hsl(${WeaponClass.hue}, 70%, ${55 - copy * 18}%)`,
         WeaponClass,
         upgrades,
+        name: loadout.name,
       });
     });
   }
@@ -186,6 +188,14 @@ export class Simulation {
     const dealt = target.takeDamage(damage);
     this.onEvent('damage', { source, target, damage, dealt, reason, color });
     if (!target.alive) this.onEvent('death', { ball: target });
+  }
+
+  // Ends the match with no winner, e.g. when it runs past a time limit.
+  endInDraw() {
+    if (this.over) return;
+    this.over = true;
+    this.winner = null;
+    this.onEvent('end', { winner: null });
   }
 
   checkForWinner() {
