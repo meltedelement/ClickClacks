@@ -40,6 +40,11 @@ export class Ability {
     return 1;
   }
 
+  // Multiplies damage the ball takes from weapon hits (below 1 = tougher).
+  get damageTakenMultiplier() {
+    return 1;
+  }
+
   // True while the ability steers the ball itself (normal speed recovery is paused).
   get controlsMovement() {
     return false;
@@ -52,6 +57,11 @@ export class Ability {
 
   // True while the ball can't be pushed by other balls: it shoves them aside instead.
   get unstoppable() {
+    return false;
+  }
+
+  // True while the weapon is out of the ball's hands (thrown): no blades to hit or clash with.
+  get disarmed() {
     return false;
   }
 
@@ -73,6 +83,7 @@ export class Ability {
   onParry(otherWeapon, sim) {} // this weapon clashed with another
   onOwnerHit(attackerWeapon, sim) {} // this ball got hit
   draw(ctx) {} // drawn underneath the balls
+  drawOver(ctx) {} // drawn on top of the balls and weapons
 
   // ---- Helpers --------------------------------------------------------------
 
@@ -111,6 +122,7 @@ export class Ability {
   start(sim) {
     this.active = true;
     this.onStart(sim);
+    for (const upgrade of this.weapon.upgrades) upgrade.onAbilityStart(this, sim);
   }
 
   end(sim) {
@@ -118,5 +130,6 @@ export class Ability {
     this.active = false;
     this.cooldownLeft = this.cooldown;
     this.onEnd(sim);
+    for (const upgrade of this.weapon.upgrades) upgrade.onAbilityEnd(this, sim);
   }
 }

@@ -2,6 +2,7 @@ import { CONFIG } from '../config.js';
 import { TAU } from '../sim/math.js';
 
 const GRID_SPACING = 50;
+const LABEL_SIZE = 18;
 const COLORS = {
   background: '#171a21',
   grid: 'rgba(255, 255, 255, 0.04)',
@@ -33,9 +34,10 @@ export class Renderer {
     this.scale = width / CONFIG.arena.width;
   }
 
-  draw(sim, effects, { showHitboxes = false, paused = false } = {}) {
+  // With no sim (nothing to play yet) this draws an empty arena.
+  draw(sim, effects, { showHitboxes = false, paused = false, endHint = '' } = {}) {
     const { ctx } = this;
-    const { width, height } = sim.arena;
+    const { width, height } = sim?.arena ?? CONFIG.arena;
 
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     ctx.fillStyle = COLORS.background;
@@ -46,10 +48,19 @@ export class Renderer {
     ctx.translate(shake.x, shake.y);
 
     this.drawGrid(width, height);
-    const balls = sim.aliveBalls;
-    for (const ball of balls) ball.weapon.ability?.draw(ctx);
+    const balls = sim?.aliveBalls ?? [];
+    for (const ball of balls) {
+      ball.weapon.ability?.draw(ctx);
+      for (const upgrade of ball.weapon.upgrades) upgrade.drawUnder(ctx);
+    }
     for (const ball of balls) ball.draw(ctx);
+    for (const ball of balls) for (const status of ball.statuses) status.draw(ctx);
     for (const ball of balls) ball.weapon.draw(ctx);
+    for (const ball of balls) {
+      ball.weapon.ability?.drawOver(ctx);
+      for (const upgrade of ball.weapon.upgrades) upgrade.drawOver(ctx);
+    }
+    for (const ball of balls) if (ball.label) this.drawLabel(ball);
     if (showHitboxes) this.drawHitboxes(balls);
     effects.draw(ctx);
 
@@ -59,7 +70,8 @@ export class Renderer {
     ctx.lineWidth = 4;
     ctx.strokeRect(2, 2, width - 4, height - 4);
 
-    if (sim.over) this.drawBanner(width, height, winnerText(sim.winner), sim.winner?.color, 'R to restart');
+    if (!sim) this.drawBanner(width, height, 'WAITING FOR MATCH', '#ffffff', '');
+    else if (sim.over) this.drawBanner(width, height, winnerText(sim.winner), sim.winner?.color, endHint);
     else if (paused) this.drawBanner(width, height, 'PAUSED', '#ffffff', 'Space to resume');
   }
 
@@ -77,6 +89,21 @@ export class Renderer {
       ctx.lineTo(width, y);
     }
     ctx.stroke();
+  }
+
+  // A fighter's name (e.g. its team) above the ball, or below it near the top wall.
+  drawLabel(ball) {
+    const { ctx } = this;
+    const above = ball.pos.y - ball.radius > LABEL_SIZE + 12;
+    ctx.font = `bold ${LABEL_SIZE}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = above ? 'bottom' : 'top';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillStyle = '#ffffff';
+    const y = above ? ball.pos.y - ball.radius - 8 : ball.pos.y + ball.radius + 8;
+    ctx.strokeText(ball.label, ball.pos.x, y);
+    ctx.fillText(ball.label, ball.pos.x, y);
   }
 
   drawHitboxes(balls) {

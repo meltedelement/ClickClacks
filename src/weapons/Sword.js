@@ -18,7 +18,7 @@ export class Sword extends Weapon {
     this.length = 80;
     this.thickness = 5;
     this.ability = new SpinSwipe(this);
-    this.shield = new Shield(this, { offset: SHIELD_OFFSET, width: 30 });
+    this.shields = [new Shield(this, { offset: SHIELD_OFFSET, width: 30 })];
   }
 
   onHit() {

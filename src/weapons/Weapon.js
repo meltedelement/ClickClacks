@@ -29,36 +29,69 @@ export class Weapon {
     this.thickness = 4; // hitbox half-width, px
     this.blades = 1; // copies of the weapon, evenly spaced around the ball
     this.spread = 1; // 1 = blades evenly spaced, 0 = gathered side by side at the front
+    this.widthScale = 1; // stretches drawLocal across the blade; set it when changing thickness
+    this.critChance = 0; // 0–1 chance a hit is a critical hit
+    this.critMultiplier = 2; // damage multiplier on a critical hit
 
     // Optional special move, e.g. `this.ability = new SpinSwipe(this)`. See src/abilities/.
     this.ability = null;
-    // Optional off-hand shield that blocks enemy weapons. See Shield.js.
-    this.shield = null;
+    // Off-hand shields that block enemy weapons, e.g. `this.shields = [new Shield(this, { ... })]`. See Shield.js.
+    this.shields = [];
+    // Roguelike upgrades from the loadout, added by Ball after construction. See src/upgrades/.
+    this.upgrades = [];
   }
 
   get name() {
     return this.constructor.displayName;
   }
 
-  // Damage this weapon deals right now, including any ability bonus.
-  getDamage() {
-    return this.damage * (this.ability?.damageMultiplier ?? 1);
+  // Damage this weapon deals right now, including ability and upgrade bonuses.
+  // With `point` (where a hit landed), upgrades that care where the blade
+  // connected get a say too.
+  getDamage(point) {
+    let damage = this.damage * this.multiplier('damageMultiplier');
+    if (point) for (const upgrade of this.upgrades) damage *= upgrade.damageMultiplierAt(point);
+    return damage;
+  }
+
+  // Rolls for a critical hit landing at `point`. Only uses Math.random when
+  // there is a chance to crit and no upgrade guarantees one, so fights without
+  // crits play out the same as before crits existed.
+  rollCrit(point) {
+    if (point && this.upgrades.some((upgrade) => upgrade.critsAt(point))) return true;
+    return this.critChance > 0 && Math.random() < this.critChance;
   }
 
   get knockbackMultiplier() {
-    return this.ability?.knockbackMultiplier ?? 1;
+    return this.multiplier('knockbackMultiplier');
+  }
+
+  // Multiplies damage this weapon's ball takes from weapon hits.
+  get damageTakenMultiplier() {
+    return this.multiplier('damageTakenMultiplier');
   }
 
   get controlsMovement() {
-    return this.ability?.controlsMovement ?? false;
+    return this.anyModifier('controlsMovement');
   }
 
   get unblockable() {
-    return this.ability?.unblockable ?? false;
+    return this.anyModifier('unblockable');
   }
 
   get unstoppable() {
-    return this.ability?.unstoppable ?? false;
+    return this.anyModifier('unstoppable');
+  }
+
+  // True while the weapon is out of its ball's hands (e.g. thrown): its blades
+  // don't exist, so they can't hit, clash or be drawn. Shields stay.
+  get disarmed() {
+    return this.anyModifier('disarmed');
+  }
+
+  // Shields in hand right now; a thrown one can't block or hurt anything until it's back.
+  get heldShields() {
+    return this.shields.filter((shield) => !shield.away);
   }
 
   // ---- Hooks for subclasses -------------------------------------------------
@@ -87,26 +120,60 @@ export class Weapon {
 
   update(dt, sim) {
     this.ability?.update(dt, sim);
-    const spinMultiplier = this.ability?.spinMultiplier ?? 1;
+    for (const upgrade of this.upgrades) upgrade.onUpdate(dt, sim);
+    const spinMultiplier = this.multiplier('spinMultiplier');
     this.angle += this.spinSpeed * spinMultiplier * this.spinDir * dt;
 
-    const targetSpread = this.ability?.bladeSpread ?? 1;
+    const targetSpread = this.multiplier('bladeSpread');
     this.spread += (targetSpread - this.spread) * Math.min(1, SPREAD_RATE * dt);
     if (this.parryCooldown > 0) this.parryCooldown -= dt;
   }
 
-  registerHit(target, sim) {
+  registerHit(target, sim, damage, point) {
     this.ability?.onHit(target, sim);
     this.onHit(target, sim);
+    for (const upgrade of this.upgrades) upgrade.onHit(target, sim, damage, point);
   }
 
   registerParry(otherWeapon, sim) {
     this.ability?.onParry(otherWeapon, sim);
     this.onParry(otherWeapon, sim);
+    for (const upgrade of this.upgrades) upgrade.onParry(otherWeapon, sim);
   }
 
-  registerOwnerHit(attackerWeapon, sim) {
+  registerOwnerHit(attackerWeapon, sim, damage) {
     this.ability?.onOwnerHit(attackerWeapon, sim);
+    for (const upgrade of this.upgrades) upgrade.onOwnerHit(attackerWeapon, sim, damage);
+  }
+
+  // True if an upgrade cancels this hit on this weapon's ball completely. The
+  // first upgrade that does uses itself up; the rest aren't asked.
+  preventsHit(attackerWeapon, sim) {
+    return this.upgrades.some((upgrade) => upgrade.preventHit(attackerWeapon, sim));
+  }
+
+  // This weapon's shield stopped `attackerWeapon`.
+  registerBlock(attackerWeapon, sim) {
+    for (const upgrade of this.upgrades) upgrade.onBlock(attackerWeapon, sim);
+  }
+
+  // This weapon's ball bounced off a wall.
+  registerWallBounce(sim) {
+    for (const upgrade of this.upgrades) upgrade.onWallBounce(sim);
+  }
+
+  // A modifier multiplied across the ability and every upgrade (1 if none change it).
+  multiplier(key) {
+    let value = this.ability?.[key] ?? 1;
+    for (const upgrade of this.upgrades) value *= upgrade[key];
+    return value;
+  }
+
+  // True if the ability or any upgrade turns this flag on.
+  anyModifier(key) {
+    if (this.ability?.[key]) return true;
+    for (const upgrade of this.upgrades) if (upgrade[key]) return true;
+    return false;
   }
 
   // Angle of each blade. Spread out, blade 0 points along `this.angle`;
@@ -122,6 +189,7 @@ export class Weapon {
 
   // One { a, b } segment per blade, from hilt to tip, in arena coordinates.
   getSegments() {
+    if (this.disarmed) return [];
     const start = this.owner.radius + this.gap;
     return this.bladeAngles().map((angle) => ({
       a: add(this.owner.pos, fromAngle(angle, start)),
@@ -130,14 +198,17 @@ export class Weapon {
   }
 
   draw(ctx) {
-    for (const angle of this.bladeAngles()) {
+    for (const angle of this.disarmed ? [] : this.bladeAngles()) {
       ctx.save();
       ctx.translate(this.owner.pos.x, this.owner.pos.y);
       ctx.rotate(angle);
-      this.drawLocal(ctx, this.owner.radius + this.gap);
+      ctx.scale(1, this.widthScale);
+      const start = this.owner.radius + this.gap;
+      this.drawLocal(ctx, start);
+      for (const upgrade of this.upgrades) upgrade.drawBlade(ctx, start);
       ctx.restore();
     }
-    this.shield?.draw(ctx);
+    for (const shield of this.shields) shield.draw(ctx);
   }
 
   drawHitbox(ctx) {
@@ -152,6 +223,6 @@ export class Weapon {
     }
     ctx.stroke();
     ctx.restore();
-    this.shield?.drawHitbox(ctx);
+    for (const shield of this.shields) shield.drawHitbox(ctx);
   }
 }

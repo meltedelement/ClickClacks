@@ -61,6 +61,29 @@ export class Sound {
     }
   }
 
+  // A critical hit, on top of the normal hit sound: a deep boom, a bright
+  // ringing strike and a sharp crack.
+  crit() {
+    if (!this.ready('crit')) return;
+    this.tone({ type: 'sine', freq: 95, freqEnd: 32, dur: 0.6, gain: 0.9 });
+    this.tone({ type: 'square', freq: 1320, freqEnd: 660, dur: 0.25, gain: 0.12, lowpass: 4000 });
+    this.clang([1560, 2340, 3120], 0.5, 0.28);
+    this.noise({ filter: 'highpass', freq: 2500, freqEnd: 900, dur: 0.18, gain: 0.55 });
+  }
+
+  // Quick airy swish of a blade missing.
+  dodge() {
+    if (!this.ready('dodge')) return;
+    this.whoosh(0.16, 1400, 3800, 0.3);
+  }
+
+  // Small damage that isn't a weapon hit (thorns, spikes, shield bash, burning...).
+  chip() {
+    if (!this.ready('chip')) return;
+    this.tone({ type: 'triangle', freq: 520 * vary(1), freqEnd: 260, dur: 0.08, gain: 0.18 });
+    this.noise({ filter: 'bandpass', freq: 2400, dur: 0.05, gain: 0.2 });
+  }
+
   parry() {
     if (!this.ready('parry')) return;
     this.clang([1180, 1790, 2630], 0.35, 0.22);
@@ -84,12 +107,65 @@ export class Sound {
       case 'dash':
         this.whoosh(0.18 + shake * 0.03, 900, 2200 + shake * 200, 0.3 + shake * 0.06);
         break;
+      case 'throw':
+        this.whoosh(0.3, 500, 2400, 0.5);
+        break;
+      case 'catch':
+        this.clang([520, 790], 0.15, 0.12);
+        break;
       case 'slam': {
         const power = Math.min(shake / 12, 1);
         this.tone({ type: 'sine', freq: 110, freqEnd: 30, dur: 0.4 + power * 0.3, gain: 0.8 + power * 0.2 });
         this.noise({ filter: 'lowpass', freq: 600, freqEnd: 150, dur: 0.35 + power * 0.2, gain: 0.5 + power * 0.4 });
         break;
       }
+    }
+  }
+
+  upgrade(phase, shake = 0) {
+    if (!this.ready(`upgrade:${phase}`)) return;
+    switch (phase) {
+      case 'heal':
+        this.tone({ type: 'sine', freq: 660, freqEnd: 990, dur: 0.18, gain: 0.15 });
+        break;
+      case 'ward':
+        this.tone({ type: 'triangle', freq: 440, freqEnd: 880, dur: 0.22, gain: 0.18 });
+        break;
+      case 'absorb':
+        this.clang([880, 1320, 1980], 0.4, 0.2);
+        this.tone({ type: 'sine', freq: 330, freqEnd: 165, dur: 0.25, gain: 0.3 });
+        break;
+      case 'throw':
+      case 'net-throw':
+        this.whoosh(0.22, 600, 1800, 0.35);
+        break;
+      case 'catch':
+        this.clang([520, 790], 0.15, 0.12);
+        break;
+      case 'ignite':
+        this.noise({ filter: 'lowpass', freq: 500, freqEnd: 2200, dur: 0.3, gain: 0.3, attack: 0.08 });
+        break;
+      case 'lunge':
+        this.whoosh(0.2 + shake * 0.03, 900, 2600, 0.4);
+        break;
+      case 'net':
+        this.noise({ filter: 'bandpass', freq: 900, freqEnd: 400, q: 0.8, dur: 0.2, gain: 0.4 });
+        break;
+      case 'impale':
+        this.tone({ type: 'sine', freq: 160, freqEnd: 60, dur: 0.25, gain: 0.6 });
+        this.noise({ filter: 'bandpass', freq: 1800, freqEnd: 600, q: 1.5, dur: 0.18, gain: 0.45 });
+        break;
+      case 'pulse':
+        this.tone({ type: 'sine', freq: 220, freqEnd: 90, dur: 0.3, gain: 0.45 });
+        this.whoosh(0.25, 300, 1200, 0.3);
+        break;
+      case 'tackle':
+        this.noise({ filter: 'lowpass', freq: 1400, freqEnd: 300, dur: 0.15, gain: 0.5 });
+        this.clang([330, 495], 0.2, 0.15);
+        break;
+      case 'hasten':
+        this.tone({ type: 'triangle', freq: 880, freqEnd: 1320, dur: 0.1, gain: 0.1 });
+        break;
     }
   }
 

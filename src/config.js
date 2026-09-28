@@ -22,5 +22,5 @@ export const CONFIG = {
   },
 
   // Brief freeze on impact to make hits feel heavy. Purely visual, lives in the game loop.
-  hitstop: { base: 0.035, perDamage: 0.008, max: 0.18, parry: 0.03 },
+  hitstop: { base: 0.035, perDamage: 0.008, max: 0.18, parry: 0.03, crit: 0.12 },
 };

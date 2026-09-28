@@ -1,15 +1,7 @@
 import { Ability } from './Ability.js';
 import { TAU, clamp, turnTowards, vec } from '../sim/math.js';
 
-const COOLDOWN = 5;
-const MIN_DROP_HEIGHT = 200; // px above the floor the ball must be to start a slam
-const HOVER_TIME = 0.25; // seconds hanging in the air while the weapon swings out sideways
-const START_SPEED = 150; // px/s downward when the drop begins
-const GRAVITY = 2800; // px/s² the drop accelerates by
-const STEER_SPEED = 220; // max px/s of sideways drift to line the weapon up with the enemy
 const MAX_DROP_TIME = 1.5; // safety net in case it somehow never lands
-const DAMAGE_PER_PX = 1 / 80; // +100% damage for every 80 px fallen
-const KNOCKBACK_MULTIPLIER = 1.4;
 
 // Once high enough, hover, hold the weapon out towards the enemy's side, then
 // plunge straight down to the floor. Nothing stops the fall: the weapon can't
@@ -19,7 +11,18 @@ export class DropSlam extends Ability {
   static displayName = 'Drop Slam';
 
   constructor(weapon) {
-    super(weapon, { cooldown: COOLDOWN });
+    super(weapon, { cooldown: 5 });
+
+    // Stats. Upgrades may change these.
+    this.minDropHeight = 200; // px above the floor the ball must be to start a slam
+    this.hoverTime = 0.25; // seconds hanging in the air while the weapon swings out sideways
+    this.startSpeed = 150; // px/s downward when the drop begins
+    this.gravity = 2800; // px/s² the drop accelerates by
+    this.steerSpeed = 220; // max px/s of sideways drift to line the weapon up with the enemy
+    this.damagePerPx = 1 / 80; // +100% damage for every 80 px fallen
+    this.slamKnockbackMultiplier = 1.4;
+    this.landBounce = 1; // upward speed after landing, as a multiple of the ball's speed
+
     this.phase = null; // 'hover' | 'drop'
     this.timer = 0;
     this.side = 1; // 1 = weapon held out to the right, -1 = left
@@ -37,11 +40,11 @@ export class DropSlam extends Ability {
   }
 
   get damageMultiplier() {
-    return this.phase === 'drop' ? 1 + this.fallen * DAMAGE_PER_PX : 1;
+    return this.phase === 'drop' ? 1 + this.fallen * this.damagePerPx : 1;
   }
 
   get knockbackMultiplier() {
-    return this.phase === 'drop' ? KNOCKBACK_MULTIPLIER : 1;
+    return this.phase === 'drop' ? this.slamKnockbackMultiplier : 1;
   }
 
   get controlsMovement() {
@@ -58,14 +61,14 @@ export class DropSlam extends Ability {
 
   shouldActivate(sim) {
     const floor = sim.arena.height - this.owner.radius;
-    return floor - this.owner.pos.y >= MIN_DROP_HEIGHT;
+    return floor - this.owner.pos.y >= this.minDropHeight;
   }
 
   onStart(sim) {
     this.target = this.nearestEnemy(sim);
     this.side = this.target ? Math.sign(this.target.pos.x - this.owner.pos.x) || 1 : 1;
     this.phase = 'hover';
-    this.timer = HOVER_TIME;
+    this.timer = this.hoverTime;
   }
 
   onUpdate(dt, sim) {
@@ -80,14 +83,14 @@ export class DropSlam extends Ability {
         this.phase = 'drop';
         this.timer = MAX_DROP_TIME;
         this.startY = owner.pos.y;
-        this.fallSpeed = START_SPEED;
-        owner.vel = vec(0, START_SPEED);
+        this.fallSpeed = this.startSpeed;
+        owner.vel = vec(0, this.startSpeed);
         weapon.angle = sideAngle;
       }
       return;
     }
 
-    this.fallSpeed += GRAVITY * dt;
+    this.fallSpeed += this.gravity * dt;
 
     // Land as soon as the next step would reach the floor.
     const floor = sim.arena.height - owner.radius;
@@ -100,7 +103,7 @@ export class DropSlam extends Ability {
     let drift = 0;
     if (this.target?.alive) {
       const idealX = this.target.pos.x - this.side * (owner.radius + weapon.gap + weapon.length * 0.6);
-      drift = clamp((idealX - owner.pos.x) * 5, -STEER_SPEED, STEER_SPEED);
+      drift = clamp((idealX - owner.pos.x) * 5, -this.steerSpeed, this.steerSpeed);
     }
     owner.vel = vec(drift, this.fallSpeed);
     weapon.angle = sideAngle;
@@ -114,7 +117,7 @@ export class DropSlam extends Ability {
       shake: 3 + this.fallen * 0.015,
       burst: { color: '#b9a88f', count: 18, speed: 240, life: 0.5 },
     });
-    owner.vel = vec(0, -owner.speed);
+    owner.vel = vec(0, -owner.speed * this.landBounce);
     this.end(sim);
   }
 
@@ -131,7 +134,7 @@ export class DropSlam extends Ability {
   // Faint line showing where the weapon head will fall.
   drawHover(ctx) {
     const { owner, weapon } = this;
-    const progress = 1 - this.timer / HOVER_TIME;
+    const progress = 1 - this.timer / this.hoverTime;
     const x = owner.pos.x + this.side * (owner.radius + weapon.gap + weapon.length);
 
     ctx.save();
