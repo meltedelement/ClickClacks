@@ -29,6 +29,7 @@ src/
     Ball.js            Movement, HP, hit cooldowns, drawing the ball
     collisions.js      Wall bounce, ball-vs-ball, weapon-vs-ball, weapon-vs-weapon
     math.js            Vector + segment geometry helpers
+    random.js          Seeded Math.random replacement for reproducible matches
   weapons/
     Weapon.js          Base class every weapon extends
     Sword.js, Spear.js, Mace.js, Daggers.js
@@ -53,9 +54,78 @@ src/
     Sound.js           Sound effects, synthesised with Web Audio (no audio files)
   ui/
     Controls.js        Menu + keyboard shortcuts
+    TournamentDisplay.js
+                       Display mode (?display): plays matches queued through the match API
+server/
+  matches.js           Match API: queue matches over HTTP, get results back
+  index.js             Serves the built game + the match API (npm start)
+  api.d.ts             TypeScript types for programs calling the match API
 tools/
   balance.js           Headless batch balance tester (win rates + combat stats)
 ```
+
+## Match API (tournaments)
+
+Another program (such as the quiz server) can queue matches over HTTP. A
+display page plays them live, and each result goes back to that program. The
+display page decides the official result, so the recorded winner is always the
+one the audience saw.
+
+```sh
+npm run dev                  # API at http://localhost:5173/api, display at http://localhost:5173/?display
+npm run build && npm start   # API at http://localhost:3002/api, display at http://localhost:3002/?display (PORT=... to change)
+```
+
+Open the display page on the screen everyone watches and leave it open.
+Matches only play while at least one display page is connected. Browsers slow
+down or pause background tabs, so keep the display tab visible. Then, from the
+calling program:
+
+```ts
+import type { Match, MatchRequest } from './api'; // copy of server/api.d.ts
+
+const API = 'http://localhost:3002/api';
+const request: MatchRequest = {
+  fighters: [
+    { name: 'Alpha', weapon: 'sword', upgrades: { damage: 2, lifesteal: 1 } },
+    { name: 'Beta', weapon: 'mace', upgrades: ['health', 'health'] },
+  ],
+};
+const res = await fetch(`${API}/matches`, { method: 'POST', body: JSON.stringify(request) });
+if (!res.ok) throw new Error((await res.json()).error); // e.g. an unknown upgrade id
+const queued: Match = await res.json();
+
+// Holds the request open until the match has been played on screen.
+const done: Match = await (await fetch(`${API}/matches/${queued.id}?wait=1`)).json();
+console.log(done.result); // { winner: 0 | 1 | null, winnerName, reason: 'ko' | 'time', time, hp }
+```
+
+| Route | |
+| --- | --- |
+| `POST /api/matches` | Queue a match: `{ fighters: [a, b], seed?, timeLimit? }`. A fighter is `{ name?, weapon, upgrades? }`, and `team` works in place of `name`. Upgrades can be a list of ids (repeat one to stack it) or an `{ id: count }` object. Returns the match (201), or 400 with `{ error }` when a loadout is invalid. |
+| `GET /api/matches/:id` | One match. Add `?wait=1` to hold the request until it is `done` or `cancelled`. |
+| `GET /api/matches` | Every match since the server started. |
+| `DELETE /api/matches/:id` | Cancel a match that is queued or playing. If it's on screen, it stops. |
+| `GET /api/status` | `{ displays, current, queued }`. Check `displays > 0` before waiting on a result. |
+| `GET /api/catalog` | Weapon and upgrade ids, names, descriptions, stack limits and requirements, for building menus or offers. |
+
+Matches play one at a time, in the order they were queued. There's a short
+pause after each one so the winner banner stays on screen. A match's status
+goes `queued` → `playing` → `done`, or ends as `cancelled`. `result.winner` is
+an index into `fighters`, or `null` for a draw. A match still going at
+`timeLimit` (default 180 sim seconds) is a draw with `reason: 'time'`. A bracket
+has to decide what to do with a draw, such as replaying with another seed.
+
+Each match has a seed (random unless you pass one), so every display page shows
+the same fight. If the last display disconnects mid-match, the match goes back
+to `queued` and restarts from the beginning when a display reconnects. It's the
+same seed, so it's the same fight. The server keeps matches in memory only.
+
+Use the same browser on every display. JavaScript engines can differ in the
+last bit of some math functions (`Math.atan2` differs between Node 22 and
+Chrome 151), so over a long fight a seed can play out differently in another
+browser, or when rerun in Node.
+
 
 ## Adding a new weapon
 

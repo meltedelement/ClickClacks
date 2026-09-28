@@ -1,5 +1,6 @@
 import { CONFIG } from '../config.js';
 import { Simulation } from '../sim/Simulation.js';
+import { mulberry32 } from '../sim/random.js';
 import { formatNumber } from '../utils/format.js';
 import { Effects } from './Effects.js';
 import { Renderer } from './Renderer.js';
@@ -7,13 +8,19 @@ import { Sound } from './Sound.js';
 
 const AUTO_REMATCH_DELAY = 2.5; // seconds after a win
 const MAX_STEPS_PER_FRAME = 40;
+const realRandom = Math.random;
 
 // Owns the browser loop: runs the simulation at a fixed rate, turns sim events
 // into effects, handles pause / speed / hitstop, and draws each frame.
 export class Game {
-  // chooseLineup() returns the loadouts for each new match (see Simulation).
-  constructor(canvas, { chooseLineup }) {
-    this.chooseLineup = chooseLineup;
+  // chooseMatch() returns the next match to play, or null to show an empty
+  // arena: { fighters, seed?, timeLimit? }, where fighters are loadouts (see
+  // Simulation). A seeded match plays out the same way every time. A match
+  // still going at timeLimit (in sim seconds) is a draw. onMatchEnd(sim) is
+  // called once the match is decided.
+  constructor(canvas, { chooseMatch, onMatchEnd }) {
+    this.chooseMatch = chooseMatch;
+    this.onMatchEnd = onMatchEnd ?? (() => {});
     this.renderer = new Renderer(canvas);
     this.effects = new Effects();
     this.sound = new Sound();
@@ -24,8 +31,11 @@ export class Game {
     this.paused = false;
     this.showHitboxes = false;
     this.autoRematch = false;
+    this.endHint = 'R to restart'; // under the winner banner
 
+    this.match = null;
     this.sim = null;
+    this.random = realRandom; // what Math.random is while the sim runs
     this.accumulator = 0;
     this.hitstop = 0;
     this.timeSinceEnd = 0;
@@ -33,7 +43,10 @@ export class Game {
   }
 
   newMatch() {
-    this.sim = new Simulation(this.chooseLineup(), { onEvent: (type, data) => this.handleSimEvent(type, data) });
+    this.match = this.chooseMatch();
+    this.random = this.match?.seed == null ? realRandom : mulberry32(this.match.seed);
+    const onEvent = (type, data) => this.withRandom(realRandom, () => this.handleSimEvent(type, data));
+    this.sim = this.match && this.withRandom(this.random, () => new Simulation(this.match.fighters, { onEvent }));
     this.effects.clear();
     this.accumulator = 0;
     this.hitstop = 0;
@@ -51,12 +64,13 @@ export class Game {
 
     if (!this.paused) this.advance(realDt * this.timeScale);
 
-    this.renderer.draw(this.sim, this.effects, { showHitboxes: this.showHitboxes, paused: this.paused });
+    this.renderer.draw(this.sim, this.effects, { showHitboxes: this.showHitboxes, paused: this.paused, endHint: this.endHint });
     requestAnimationFrame(this.frame);
   };
 
   advance(dt) {
     this.effects.update(dt);
+    if (!this.sim) return;
 
     if (this.sim.over) {
       this.timeSinceEnd += dt;
@@ -74,7 +88,7 @@ export class Game {
     this.accumulator += dt;
     let steps = 0;
     while (this.accumulator >= this.fixedDt && steps < MAX_STEPS_PER_FRAME) {
-      this.sim.step(this.fixedDt);
+      this.stepSim();
       this.accumulator -= this.fixedDt;
       steps++;
       // A hit just froze time; drop the rest of this frame's steps.
@@ -82,6 +96,25 @@ export class Game {
         this.accumulator = 0;
         break;
       }
+    }
+  }
+
+  stepSim() {
+    this.withRandom(this.random, () => this.sim.step(this.fixedDt));
+    const { timeLimit } = this.match;
+    if (timeLimit && !this.sim.over && this.sim.time >= timeLimit) this.sim.endInDraw();
+  }
+
+  // The sim runs with the match's seeded Math.random. Effects and sounds swap
+  // the real one back in, so they don't use up the seeded sequence and change
+  // how the match plays out.
+  withRandom(random, fn) {
+    const previous = Math.random;
+    Math.random = random;
+    try {
+      return fn();
+    } finally {
+      Math.random = previous;
     }
   }
 
@@ -152,6 +185,7 @@ export class Game {
         break;
       case 'end':
         sound.end(data.winner !== null);
+        this.onMatchEnd(this.sim);
         break;
     }
   }
