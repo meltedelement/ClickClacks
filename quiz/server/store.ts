@@ -59,6 +59,8 @@ export const catalog = readJson<Catalog>(CATALOG_FILE);
 // Questions are read from quiz-questions.json once, then kept in state.json.
 // Use the "reload questions" admin action to read the file again.
 export let state: State = fs.existsSync(STATE_FILE) ? readJson<State>(STATE_FILE) : freshState(loadQuestions());
+// The old 'upgrades' phase was removed: teams now pick as soon as they earn an upgrade.
+if (!PHASES.includes(state.phase)) state.phase = 'lobby';
 
 const listeners = new Set<() => void>();
 export function onChange(fn: () => void) {
@@ -122,7 +124,7 @@ function reconcile() {
 
 export function teamView(team: Team): TeamView {
   const q = currentQuestion();
-  const showQuestion = q && state.phase !== 'lobby' && state.phase !== 'upgrades' && state.phase !== 'battle';
+  const showQuestion = q && state.phase !== 'lobby' && state.phase !== 'battle';
   return {
     phase: state.phase,
     message: state.message,
@@ -213,7 +215,6 @@ export function chooseWeapon(team: Team, weapon: string) {
 }
 
 export function pick(team: Team, upgradeId: string) {
-  if (state.phase !== 'upgrades') throw new UserError('Upgrades are not open');
   if (picksAvailable(team) <= 0 || !team.offer?.includes(upgradeId)) throw new UserError('That upgrade is not on offer');
   mutate(() => {
     team.upgrades[upgradeId] = (team.upgrades[upgradeId] ?? 0) + 1;

@@ -154,29 +154,25 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
           </div>
           {view.phase === 'question' && <p>{view.myAnswer === null ? 'Pick an answer.' : 'Answer saved. You can change it until the host closes answers.'}</p>}
           {view.phase === 'locked' && <p>Answers are closed.</p>}
-          {view.correct !== null && <p>{view.myAnswer === view.correct ? 'Correct! You earned an upgrade.' : 'Not this time.'}</p>}
+          {view.correct !== null && <p>{view.myAnswer === view.correct ? 'Correct! Pick an upgrade below.' : 'Not this time.'}</p>}
         </section>
       )}
 
-      {view.phase === 'upgrades' && (
+      {team.picks > 0 && team.offer && (
         <section>
-          <h2>Upgrades ({team.picks} to pick)</h2>
-          {team.offer && team.picks > 0 ? (
-            <div className="stack">
-              {team.offer.map((id) => {
-                const upgrade = view.upgrades.find((u) => u.id === id);
-                return (
-                  <button key={id} className="option" onClick={() => act('/api/pick', { upgradeId: id })}>
-                    <strong>{upgrade?.name ?? id}</strong>
-                    <br />
-                    {upgrade?.description}
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <p>No upgrades to pick right now.</p>
-          )}
+          <h2>Pick an upgrade{team.picks > 1 && ` (${team.picks} to pick)`}</h2>
+          <div className="stack">
+            {team.offer.map((id) => {
+              const upgrade = view.upgrades.find((u) => u.id === id);
+              return (
+                <button key={id} className="option" onClick={() => act('/api/pick', { upgradeId: id })}>
+                  <strong>{upgrade?.name ?? id}</strong>
+                  <br />
+                  {upgrade?.description}
+                </button>
+              );
+            })}
+          </div>
         </section>
       )}
 
@@ -195,7 +191,6 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
             ))}
           </ul>
         )}
-        {view.phase !== 'upgrades' && team.picks > 0 && <p>You have {team.picks} upgrade(s) to pick when upgrades open.</p>}
       </section>
 
       <button className="small" onClick={() => confirm('Leave this team on this device? You can rejoin with the team name and code.') && onLeave()}>

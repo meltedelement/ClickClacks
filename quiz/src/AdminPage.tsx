@@ -78,7 +78,7 @@ export function AdminPage() {
           </button>
         </div>
         <p className="hint">
-          Order: question (teams answer) → locked (answers closed) → reveal (correct answers earn picks) → upgrades (teams pick) →
+          Order: question (teams answer) → locked (answers closed) → reveal (teams that got it right pick an upgrade at once) →
           battle. Selecting a question opens it for answers.
         </p>
       </section>

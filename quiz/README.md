@@ -33,9 +33,8 @@ The host moves through these phases on the admin page:
 1. **lobby**: Teams join with a name and a weapon.
 2. **question**: Teams answer. A team can change its answer until the host closes answers.
 3. **locked**: Answers are closed.
-4. **reveal**: Teams see the correct answer. Correct teams get a pick.
-5. **upgrades**: Each team with picks gets `offerSize` random upgrades and selects one per pick.
-6. **battle**: The game runs.
+4. **reveal**: Teams see the correct answer. Each team that got it right sees `offerSize` random upgrades and picks one immediately.
+5. **battle**: The game runs.
 
 Picks are calculated again from the answers each time. Picks left = correct revealed answers × `upgradesPerCorrect` + bonus picks − picks used. Thus, if you change an answer or a "revealed" box on the admin page, the pick count is correct immediately.
 

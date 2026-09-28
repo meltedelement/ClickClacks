@@ -1,8 +1,8 @@
 // Types shared by the server and the React client.
 
-export type Phase = 'lobby' | 'question' | 'locked' | 'reveal' | 'upgrades' | 'battle';
+export type Phase = 'lobby' | 'question' | 'locked' | 'reveal' | 'battle';
 
-export const PHASES: Phase[] = ['lobby', 'question', 'locked', 'reveal', 'upgrades', 'battle'];
+export const PHASES: Phase[] = ['lobby', 'question', 'locked', 'reveal', 'battle'];
 
 export interface Question {
   id: string;
