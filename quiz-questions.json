@@ -1,0 +1,257 @@
+{
+  "title": "Table Quiz",
+  "rounds": [
+    {
+      "round": 1,
+      "name": "University of Limerick",
+      "questions": [
+        {
+          "id": "1.1",
+          "question": "In what year did UL officially receive university status?",
+          "options": ["1972", "1989", "1997", "2002"],
+          "answerIndex": 1
+        },
+        {
+          "id": "1.2",
+          "question": "What was the first year of ISE?",
+          "options": ["2020", "2021", "2022", "2023"],
+          "answerIndex": 2
+        },
+        {
+          "id": "1.3",
+          "question": "Which river flows through the UL campus?",
+          "options": ["River Shannon", "River Lee", "River Suir", "River Liffey"],
+          "answerIndex": 0
+        },
+        {
+          "id": "1.4",
+          "question": "What is Brown Thomas' actual name?",
+          "options": ["Side by Side", "Together and Apart", "Reaching Out", "Two as One"],
+          "answerIndex": 1
+        },
+        {
+          "id": "1.5",
+          "question": "Plassey House, on the UL campus, is named after a battle fought in which country?",
+          "options": ["France", "India", "Spain", "Egypt"],
+          "answerIndex": 1
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "name": "Bioscience",
+      "questions": [
+        {
+          "id": "2.1",
+          "question": "Which organelle is known as the 'powerhouse of the cell'?",
+          "options": ["Ribosome", "Golgi apparatus", "Mitochondrion", "Nucleus"],
+          "answerIndex": 2
+        },
+        {
+          "id": "2.2",
+          "question": "In DNA, adenine pairs with which base?",
+          "options": ["Thymine", "Guanine", "Cytosine", "Uracil"],
+          "answerIndex": 0
+        },
+        {
+          "id": "2.3",
+          "question": "Which enzyme unwinds the DNA double helix during replication?",
+          "options": ["Ligase", "Polymerase", "Primase", "Helicase"],
+          "answerIndex": 3
+        },
+        {
+          "id": "2.4",
+          "question": "How many chromosomes are in a typical human body (somatic) cell?",
+          "options": ["23", "46", "44", "48"],
+          "answerIndex": 1
+        },
+        {
+          "id": "2.5",
+          "question": "Which molecule carries amino acids to the ribosome during protein synthesis?",
+          "options": ["mRNA", "rRNA", "tRNA", "DNA"],
+          "answerIndex": 2
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "name": "Software Engineering",
+      "questions": [
+        {
+          "id": "3.1",
+          "question": "Who wrote the first computer algorithm?",
+          "options": ["Alan Turing", "Ada Lovelace", "Grace Hopper", "Charles Babbage"],
+          "answerIndex": 1
+        },
+        {
+          "id": "3.2",
+          "question": "The first recorded computer 'bug' was a real moth found in which computer in 1947?",
+          "options": ["ENIAC", "Harvard Mark II", "Colossus", "UNIVAC I"],
+          "answerIndex": 1
+        },
+        {
+          "id": "3.3",
+          "question": "Which HTTP status code means 'Not Found'?",
+          "options": ["400", "403", "404", "500"],
+          "answerIndex": 2
+        },
+        {
+          "id": "3.4",
+          "question": "Which data structure works on a Last In, First Out (LIFO) basis?",
+          "options": ["Queue", "Stack", "Linked list", "Heap"],
+          "answerIndex": 1
+        },
+        {
+          "id": "3.5",
+          "question": "Which Git command creates a new branch and switches to it?",
+          "options": ["git branch -m", "git merge -b", "git checkout -b", "git switch -d"],
+          "answerIndex": 2
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "name": "Video Games",
+      "questions": [
+        {
+          "id": "4.1",
+          "question": "In Minecraft, what is the minimum pickaxe tier needed to mine diamond ore?",
+          "options": ["Stone", "Iron", "Gold", "Diamond"],
+          "answerIndex": 1
+        },
+        {
+          "id": "4.2",
+          "question": "What was Mario called in the original 1981 Donkey Kong arcade game?",
+          "options": ["Plumberman", "Mr. Video", "Jumpman", "Red Hat"],
+          "answerIndex": 2
+        },
+        {
+          "id": "4.3",
+          "question": "Which of these is NOT one of the four ghosts in the original Pac-Man?",
+          "options": ["Blinky", "Inky", "Clyde", "Stinky"],
+          "answerIndex": 3
+        },
+        {
+          "id": "4.4",
+          "question": "What is the name of the playable hero in The Legend of Zelda series?",
+          "options": ["Link", "Zelda", "Ganon", "Epona"],
+          "answerIndex": 0
+        },
+        {
+          "id": "4.5",
+          "question": "In what year was the original Sony PlayStation first released in Japan?",
+          "options": ["1991", "1996", "1998", "1994"],
+          "answerIndex": 3
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "name": "Books",
+      "questions": [
+        {
+          "id": "5.1",
+          "question": "Who wrote the novel 'Normal People'?",
+          "options": ["Anne Enright", "Sally Rooney", "Marian Keyes", "Naoise Dolan"],
+          "answerIndex": 1
+        },
+        {
+          "id": "5.2",
+          "question": "Which Dublin-born author wrote 'Dracula'?",
+          "options": ["Oscar Wilde", "Sheridan Le Fanu", "Bram Stoker", "W.B. Yeats"],
+          "answerIndex": 2
+        },
+        {
+          "id": "5.3",
+          "question": "In 'Pride and Prejudice', what is Mr. Darcy's first name?",
+          "options": ["Fitzwilliam", "Charles", "George", "Edward"],
+          "answerIndex": 0
+        },
+        {
+          "id": "5.4",
+          "question": "Which Hogwarts house is Luna Lovegood sorted into?",
+          "options": ["Gryffindor", "Hufflepuff", "Slytherin", "Ravenclaw"],
+          "answerIndex": 3
+        },
+        {
+          "id": "5.5",
+          "question": "James Joyce's 'Ulysses' takes place over a single day. What is that day now celebrated as?",
+          "options": ["Joyce Day", "Bloomsday", "Dedalus Day", "Leopold Day"],
+          "answerIndex": 1
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "name": "Trends",
+      "questions": [
+        {
+          "id": "6.1",
+          "question": "Finish the phrase: 'Very demure, very ___'",
+          "options": ["Humble", "Classy", "Cutesy", "Mindful"],
+          "answerIndex": 3
+        },
+        {
+          "id": "6.2",
+          "question": "According to a survey by Cint, what percentage of respondents said they had a 'brat summer' in 2024?",
+          "options": ["9%", "24%", "41%", "57%"],
+          "answerIndex": 1
+        },
+        {
+          "id": "6.3",
+          "question": "A trend asked men how often they think about which historical empire?",
+          "options": ["The Ottoman Empire", "The British Empire", "The Roman Empire", "The Mongol Empire"],
+          "answerIndex": 2
+        },
+        {
+          "id": "6.4",
+          "question": "What was Oxford's Word of the Year for 2024?",
+          "options": ["Rizz", "Delulu", "Goblin mode", "Brain rot"],
+          "answerIndex": 3
+        },
+        {
+          "id": "6.5",
+          "question": "Which company sells the viral Labubu dolls?",
+          "options": ["Pop Mart", "Sanrio", "Funko", "Squishmallows"],
+          "answerIndex": 0
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "name": "Tiebreaker",
+      "questions": [
+        {
+          "id": "7.1",
+          "question": "A chessboard has 64 small squares, but groups of them also form bigger squares (2x2, 3x3, and so on). How many squares are there in total?",
+          "options": ["64", "128", "196", "204"],
+          "answerIndex": 3
+        },
+        {
+          "id": "7.2",
+          "question": "Roughly how fast does light travel in a vacuum?",
+          "options": ["30,000 km/s", "3,000,000 km/s", "300,000 km/s", "150,000 km/s"],
+          "answerIndex": 2
+        },
+        {
+          "id": "7.3",
+          "question": "How many bones are in the adult human body?",
+          "options": ["198", "212", "206", "226"],
+          "answerIndex": 2
+        },
+        {
+          "id": "7.4",
+          "question": "How tall is Carrauntoohil, Ireland's highest mountain (to the nearest metre)?",
+          "options": ["925 m", "1,039 m", "1,211 m", "846 m"],
+          "answerIndex": 1
+        },
+        {
+          "id": "7.5",
+          "question": "In what year was the first iPhone released?",
+          "options": ["2007", "2005", "2008", "2010"],
+          "answerIndex": 0
+        }
+      ]
+    }
+  ]
+}
