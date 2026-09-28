@@ -4,11 +4,25 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import * as store from './store.ts';
 
 const PORT = Number(process.env.PORT ?? 3001);
-const ADMIN_KEY = process.env.ADMIN_KEY ?? '';
 const DIST = path.join(import.meta.dirname, '..', 'dist');
+const KEY_FILE = path.join(import.meta.dirname, '..', 'data', 'admin-token.txt');
+
+// The key that /admin needs. ADMIN_KEY wins; otherwise a random one is made
+// once and kept in data/admin-token.txt, so restarting the server (which
+// `npm run dev` does on every file change) does not lock the host out.
+function readAdminKey() {
+  if (process.env.ADMIN_KEY) return process.env.ADMIN_KEY;
+  const saved = fs.existsSync(KEY_FILE) ? fs.readFileSync(KEY_FILE, 'utf8').trim() : '';
+  if (saved) return saved;
+  const key = randomBytes(4).toString('hex'); // short enough to type on a phone
+  fs.writeFileSync(KEY_FILE, `${key}\n`);
+  return key;
+}
+const ADMIN_KEY = readAdminKey();
 
 interface Client {
   res: http.ServerResponse;
@@ -50,7 +64,7 @@ async function readBody(req: http.IncomingMessage): Promise<any> {
 }
 
 function isAdmin(key: string | null | undefined) {
-  return !ADMIN_KEY || key === ADMIN_KEY;
+  return key === ADMIN_KEY;
 }
 
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
@@ -149,5 +163,8 @@ http
       .filter((a) => a && a.family === 'IPv4' && !a.internal)
       .map((a) => a!.address);
     console.log(`Quiz server on port ${PORT} (${['localhost', ...addresses].join(', ')})`);
-    if (!ADMIN_KEY) console.log('No ADMIN_KEY set: anyone can open /admin.');
+    const source = process.env.ADMIN_KEY
+      ? 'from ADMIN_KEY'
+      : `stored in ${path.relative(process.cwd(), KEY_FILE)} — delete that file for a new one`;
+    console.log(`\n  Admin key: ${ADMIN_KEY}  (${source})\n  The host enters it on /admin.\n`);
   });

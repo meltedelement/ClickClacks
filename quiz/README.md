@@ -11,8 +11,10 @@ npm run build && npm start   # one server on port 3001 that serves the built cli
 ```
 
 - Teams open `http://<your-ip>:5174/` (dev) or `http://<your-ip>:3001/` (start).
-- The host opens `/admin`.
-- Set `ADMIN_KEY=something` to protect `/admin`. Without it, anyone can open the admin page.
+- The host opens `/admin` and enters the admin key.
+- The server prints the admin key when it starts. It is random the first time and kept in
+  `data/admin-token.txt` (not in git), so restarts keep the same key. Delete that file for a new key,
+  or set `ADMIN_KEY=something` to choose one yourself.
 
 ## Data
 
@@ -20,6 +22,7 @@ npm run build && npm start   # one server on port 3001 that serves the built cli
 | --- | --- |
 | `../quiz-questions.json` | The questions, in rounds. `answerIndex` is the index of the correct option. |
 | `data/game.json` | Weapons, upgrades, `upgradesPerCorrect`, and `offerSize`. The ids must match the game. |
+| `data/admin-token.txt` | The generated admin key. Not in git. |
 | `data/state.json` | Live state: teams, answers, and upgrades. The server writes it after each change. Not in git. |
 
 The server reads the questions one time into `state.json`. After you edit `quiz-questions.json`, click **Reload quiz-questions.json** on the admin page.

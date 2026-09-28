@@ -8,7 +8,8 @@ const KEY_STORAGE = 'quiz-admin-key';
 export function AdminPage() {
   const [key, setKey] = useState(() => localStorage.getItem(KEY_STORAGE) ?? '');
   const [error, setError] = useState('');
-  const { data: view, connected } = useEvents<AdminView>(`/api/events?key=${encodeURIComponent(key)}`);
+  // With no key, stay disconnected instead of retrying a request the server rejects.
+  const { data: view, connected } = useEvents<AdminView>(key ? `/api/events?key=${encodeURIComponent(key)}` : null);
 
   async function act(body: Record<string, unknown>) {
     setError('');
@@ -28,15 +29,16 @@ export function AdminPage() {
     return (
       <main>
         <h1>Quiz admin</h1>
-        <p>{connected ? 'Loading…' : 'Not connected. Check the admin key and that the server is running.'}</p>
+        <p>{connected ? 'Loading…' : key ? 'Wrong admin key, or the server is not running.' : 'Enter the admin key to continue.'}</p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            saveKey(new FormData(e.currentTarget).get('key') as string);
+            saveKey((new FormData(e.currentTarget).get('key') as string).trim());
           }}
         >
-          <input name="key" type="password" placeholder="Admin key" defaultValue={key} /> <button>Connect</button>
+          <input name="key" type="password" placeholder="Admin key" defaultValue={key} autoFocus /> <button>Connect</button>
         </form>
+        <p className="hint">The server prints the admin key when it starts.</p>
       </main>
     );
   }
