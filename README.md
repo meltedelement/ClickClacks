@@ -26,7 +26,8 @@ src/
   styles.css
   sim/                 Pure match logic, no DOM. Runs in the browser or in Node.
     Simulation.js      Spawning, the step loop, hits/parries/winner, emits events
-    Ball.js            Movement, HP, hit cooldowns, drawing the ball
+    Ball.js            Movement, HP, hit cooldowns, statuses, drawing the ball
+    Status.js          Base class for timed effects on a ball (burning, netted...)
     collisions.js      Wall bounce, ball-vs-ball, weapon-vs-ball, weapon-vs-weapon
     math.js            Vector + segment geometry helpers
     random.js          Seeded Math.random replacement for reproducible matches
@@ -34,6 +35,8 @@ src/
     Weapon.js          Base class every weapon extends
     Sword.js, Spear.js, Mace.js, Daggers.js
                        One file per weapon: stats, scaling, and how it's drawn
+    Shield.js          Off-hand shield that blocks enemy weapons
+    OffhandSword.js    A shield shaped like a short sword (Dual Wielder)
     index.js           Registry of selectable weapons
   abilities/
     Ability.js         Base class for special moves on a cooldown
@@ -46,6 +49,8 @@ src/
     common.js          Small upgrades any weapon can take
     sword.js, spear.js, daggers.js, mace.js
                        Small upgrades for one weapon
+    sword-transformations.js
+                       Big upgrades that reshape the Sword (Stalwart, Captain...)
     index.js           Registry of upgrades (menu order), plus loadout validation
   game/                Browser-only
     Game.js            Fixed-timestep loop, pause/speed/hitstop, sim events -> effects
@@ -125,7 +130,6 @@ Use the same browser on every display. JavaScript engines can differ in the
 last bit of some math functions (`Math.atan2` differs between Node 22 and
 Chrome 151), so over a long fight a seed can play out differently in another
 browser, or when rerun in Node.
-
 
 ## Adding a new weapon
 
@@ -285,24 +289,49 @@ export class Longsword extends Upgrade {
 Modifier getters and hooks run once however many copies there are, so scale them
 with `this.stacks` (e.g. `return 1 + 0.2 * this.stacks`).
 
-After the weapon, its ability and its shield are built, upgrades are applied in
-loadout order. Then the ball's HP is filled to `maxHp`. An upgrade can do any mix of these:
+After the weapon, its ability and its shields are built, upgrades are applied in
+loadout order, except that transformations go first (see below). Then the ball's HP is
+filled to `maxHp`. An upgrade can do any mix of these:
 
 | What                       | How                                                           |
 | -------------------------- | ------------------------------------------------------------- |
 | Change starting stats      | `apply()`: `this.weapon.blades += 1`, `this.owner.maxHp += 20`, `this.ability.windup *= 0.5` |
-| Combat stats               | `weapon.critChance`, `weapon.critMultiplier`, `owner.armor`, `owner.dodgeChance`, `shield.contactDamage`, `weapon.widthScale` (draw width, set it with `thickness`) |
+| Combat stats               | `weapon.critChance`, `weapon.critMultiplier`, `owner.armor`, `owner.dodgeChance`, `contactDamage` on each of `weapon.shields`, `weapon.widthScale` (draw width, set it with `thickness`) |
 | Change behaviour live      | The same modifier getters as abilities. Multipliers multiply together; flags are on if anything turns them on |
 | React to things            | `onUpdate`, `onHit(target, sim, damage)`, `onParry`, `onOwnerHit(attacker, sim, damage)`, `onBlock(attacker, sim)`, `onWallBounce(sim)`, `onAbilityStart`, `onAbilityEnd` |
+| Cancel a hit               | `preventHit(attacker, sim)`: return true and a weapon hit on this ball does nothing (after dodge, before crit) |
 | Deal extra damage          | `sim.dealDamage(this.owner, target, amount, { reason, color })`: no knockback, ignores armor and dodge |
+| Put an effect on a ball    | `target.addStatus(new Burning({ source: this.owner, ... }), sim)`: see `src/sim/Status.js` |
 | Replace the ability        | `apply()`: `this.weapon.ability = new OtherAbility(this.weapon)` |
 | Show that it's there       | `drawUnder(ctx)`, `drawBlade(ctx, start)`, `drawOver(ctx)` (browser only) |
-| Show that something happened | `this.emit(sim, phase, { shake, burst, text, color })`, sent as an `upgrade` event |
+| Show that something happened | `this.emit(sim, phase, { shake, burst, text, color, pos })`, sent as an `upgrade` event; `pos` defaults to the owner |
 
 Upgrade hooks run after the ability's and the weapon's own, so they see this hit's
 scaling. If an upgrade changes the ability's `cooldown`, set `cooldownLeft` too, since the
 first cooldown was already worked out. If an upgrade emits a new phase and should make a sound, add a case to
 `Sound.upgrade`.
+
+### Statuses
+
+A status is a timed effect on a ball, usually put there by an enemy's upgrade: Fire
+Eater's `Burning` deals damage over time and Gladiator's `Netted` slows the ball and
+makes it take more damage. Extend `Status` (`src/sim/Status.js`), set the modifier
+getters (`speedMultiplier`, `damageTakenMultiplier`) and/or `onUpdate(dt, sim)`, and draw
+it in `draw(ctx)`. A ball holds one status of each class, so applying it again refreshes
+it. Guard damage with `sim.over` so nothing ticks after the match is decided.
+
+### Transformations
+
+Transformations are big upgrades that reshape a weapon, like the Sword's Stalwart (a
+second shield) or Dual Wielder (the shield becomes a short sword). Mark one with
+`static transformation = true`; they usually have `maxStacks = 1`. They combine freely with
+each other and with small upgrades, are listed in their own group in the menu, and are
+applied before every small upgrade, so e.g. Big Shield widens both of Stalwart's shields
+whatever order they were picked in.
+
+A weapon can hold several shields (`weapon.shields`). Code that adds or replaces shields
+should keep that in mind, and a thrown shield sets `shield.away` so it can't block while
+it's gone (`weapon.heldShields` skips it).
 
 ## Balancing
 

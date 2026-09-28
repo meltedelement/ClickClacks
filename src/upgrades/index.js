@@ -14,6 +14,7 @@ import {
   Vitality,
 } from './common.js';
 import { BigShield, LongSwipe, ShieldBash, SpikedShield, WideSwipe } from './sword.js';
+import { Captain, Dizzy, DualWielder, FireEater, Gladiator, Piercer, Stalwart, Wildling } from './sword-transformations.js';
 import { DashGuard, DeadlyCrits, LongDash, QuickCharge, RapidGrowth } from './spear.js';
 import { CloseQuarters, Evasion, Momentum, QuickRecovery, Rebound } from './daggers.js';
 import { GreatMace, HeavyImpact, HighBounce, Meteor, QuickDrop } from './mace.js';
@@ -43,6 +44,15 @@ export const UPGRADES = [
   SpikedShield,
   LongSwipe,
   BigShield,
+  // Sword transformations
+  Stalwart,
+  Wildling,
+  Dizzy,
+  Captain,
+  FireEater,
+  Piercer,
+  DualWielder,
+  Gladiator,
   // Spear
   LongDash,
   QuickCharge,

@@ -77,7 +77,7 @@ export class Sound {
     this.whoosh(0.16, 1400, 3800, 0.3);
   }
 
-  // Small damage that isn't a weapon hit (thorns, spikes, shield bash).
+  // Small damage that isn't a weapon hit (thorns, spikes, shield bash, burning...).
   chip() {
     if (!this.ready('chip')) return;
     this.tone({ type: 'triangle', freq: 520 * vary(1), freqEnd: 260, dur: 0.08, gain: 0.18 });
@@ -121,6 +121,29 @@ export class Sound {
     switch (phase) {
       case 'heal':
         this.tone({ type: 'sine', freq: 660, freqEnd: 990, dur: 0.18, gain: 0.15 });
+        break;
+      case 'ward':
+        this.tone({ type: 'triangle', freq: 440, freqEnd: 880, dur: 0.22, gain: 0.18 });
+        break;
+      case 'absorb':
+        this.clang([880, 1320, 1980], 0.4, 0.2);
+        this.tone({ type: 'sine', freq: 330, freqEnd: 165, dur: 0.25, gain: 0.3 });
+        break;
+      case 'throw':
+      case 'net-throw':
+        this.whoosh(0.22, 600, 1800, 0.35);
+        break;
+      case 'catch':
+        this.clang([520, 790], 0.15, 0.12);
+        break;
+      case 'ignite':
+        this.noise({ filter: 'lowpass', freq: 500, freqEnd: 2200, dur: 0.3, gain: 0.3, attack: 0.08 });
+        break;
+      case 'lunge':
+        this.whoosh(0.2 + shake * 0.03, 900, 2600, 0.4);
+        break;
+      case 'net':
+        this.noise({ filter: 'bandpass', freq: 900, freqEnd: 400, q: 0.8, dur: 0.2, gain: 0.4 });
         break;
     }
   }
