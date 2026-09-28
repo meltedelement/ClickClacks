@@ -60,6 +60,11 @@ export class Ability {
     return false;
   }
 
+  // True while the weapon is out of the ball's hands (thrown): no blades to hit or clash with.
+  get disarmed() {
+    return false;
+  }
+
   // Only matters for multi-blade weapons: 1 = evenly spaced, 0 = gathered at the front.
   get bladeSpread() {
     return 1;
@@ -78,6 +83,7 @@ export class Ability {
   onParry(otherWeapon, sim) {} // this weapon clashed with another
   onOwnerHit(attackerWeapon, sim) {} // this ball got hit
   draw(ctx) {} // drawn underneath the balls
+  drawOver(ctx) {} // drawn on top of the balls and weapons
 
   // ---- Helpers --------------------------------------------------------------
 

@@ -80,7 +80,7 @@ export class Simulation {
     const blocked = new Set();
 
     forEachPair(balls, (a, b) => {
-      if (a.weapon.unblockable || b.weapon.unblockable) return;
+      if (a.weapon.unblockable || b.weapon.unblockable || a.guardBroken || b.guardBroken) return;
       const point = weaponsClash(a.weapon, b.weapon);
       if (!point) return;
       blocked.add(a.weapon);
@@ -92,6 +92,7 @@ export class Simulation {
 
     // Enemy weapons touching a shield are blocked too.
     for (const defender of balls) {
+      if (defender.guardBroken) continue;
       for (const shield of defender.weapon.heldShields) {
         for (const attacker of balls) {
           if (attacker === defender || attacker.weapon.unblockable) continue;
@@ -172,8 +173,8 @@ export class Simulation {
       return;
     }
 
-    const crit = weapon.rollCrit();
-    const damage = target.reduceDamage(weapon.getDamage() * (crit ? weapon.critMultiplier : 1));
+    const crit = weapon.rollCrit(point);
+    const damage = target.reduceDamage(weapon.getDamage(point) * (crit ? weapon.critMultiplier : 1));
     const dealt = target.takeHit(weapon, damage);
 
     // Launch the target directly away from where it was struck.
@@ -184,7 +185,7 @@ export class Simulation {
     this.onEvent('hit', { attacker, target, damage, dealt, crit, point });
     if (!target.alive) this.onEvent('death', { ball: target });
     target.weapon.registerOwnerHit(weapon, this, damage);
-    weapon.registerHit(target, this, damage);
+    weapon.registerHit(target, this, damage, point);
   }
 
   // Damage that doesn't come from a weapon hit (thorns, spiked shields, burning...):

@@ -107,6 +107,12 @@ export class Sound {
       case 'dash':
         this.whoosh(0.18 + shake * 0.03, 900, 2200 + shake * 200, 0.3 + shake * 0.06);
         break;
+      case 'throw':
+        this.whoosh(0.3, 500, 2400, 0.5);
+        break;
+      case 'catch':
+        this.clang([520, 790], 0.15, 0.12);
+        break;
       case 'slam': {
         const power = Math.min(shake / 12, 1);
         this.tone({ type: 'sine', freq: 110, freqEnd: 30, dur: 0.4 + power * 0.3, gain: 0.8 + power * 0.2 });
@@ -144,6 +150,21 @@ export class Sound {
         break;
       case 'net':
         this.noise({ filter: 'bandpass', freq: 900, freqEnd: 400, q: 0.8, dur: 0.2, gain: 0.4 });
+        break;
+      case 'impale':
+        this.tone({ type: 'sine', freq: 160, freqEnd: 60, dur: 0.25, gain: 0.6 });
+        this.noise({ filter: 'bandpass', freq: 1800, freqEnd: 600, q: 1.5, dur: 0.18, gain: 0.45 });
+        break;
+      case 'pulse':
+        this.tone({ type: 'sine', freq: 220, freqEnd: 90, dur: 0.3, gain: 0.45 });
+        this.whoosh(0.25, 300, 1200, 0.3);
+        break;
+      case 'tackle':
+        this.noise({ filter: 'lowpass', freq: 1400, freqEnd: 300, dur: 0.15, gain: 0.5 });
+        this.clang([330, 495], 0.2, 0.15);
+        break;
+      case 'hasten':
+        this.tone({ type: 'triangle', freq: 880, freqEnd: 1320, dur: 0.1, gain: 0.1 });
         break;
     }
   }

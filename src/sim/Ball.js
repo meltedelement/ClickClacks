@@ -94,6 +94,11 @@ export class Ball {
     return this.statuses.some((s) => s instanceof StatusClass);
   }
 
+  // True if any status stops this ball's weapon and shields from blocking.
+  get guardBroken() {
+    return this.statuses.some((status) => status.guardBroken);
+  }
+
   // A status modifier multiplied across every status (1 if there are none).
   statusMultiplier(key) {
     let value = 1;

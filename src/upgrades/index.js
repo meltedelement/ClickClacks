@@ -16,6 +16,7 @@ import {
 import { BigShield, LongSwipe, ShieldBash, SpikedShield, WideSwipe } from './sword.js';
 import { Captain, Dizzy, DualWielder, FireEater, Gladiator, Piercer, Stalwart, Wildling } from './sword-transformations.js';
 import { DashGuard, DeadlyCrits, LongDash, QuickCharge, RapidGrowth } from './spear.js';
+import { Bouncer, Dancer, Hoplite, Olympian, Poseidon, Runner, Tackler, Tactician } from './spear-transformations.js';
 import { CloseQuarters, Evasion, Momentum, QuickRecovery, Rebound } from './daggers.js';
 import { GreatMace, HeavyImpact, HighBounce, Meteor, QuickDrop } from './mace.js';
 
@@ -59,6 +60,15 @@ export const UPGRADES = [
   DashGuard,
   RapidGrowth,
   DeadlyCrits,
+  // Spear transformations
+  Hoplite,
+  Poseidon,
+  Dancer,
+  Bouncer,
+  Olympian,
+  Tactician,
+  Tackler,
+  Runner,
   // Daggers
   QuickRecovery,
   Momentum,

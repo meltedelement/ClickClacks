@@ -42,6 +42,7 @@ src/
     Ability.js         Base class for special moves on a cooldown
     SpinSwipe.js       Sword: one rapid full spin for bonus damage
     ChargeDash.js      Spear: stop, aim, lunge for bonus damage
+    SpearThrow.js      Spear (Olympian): stop, aim, throw the spear, dash after it
     DropSlam.js        Mace: from high up, plunge to the floor; damage grows with the fall
     DashFlurry.js      Daggers: gather both blades, then three rapid dashes
   upgrades/
@@ -51,6 +52,8 @@ src/
                        Small upgrades for one weapon
     sword-transformations.js
                        Big upgrades that reshape the Sword (Stalwart, Captain...)
+    spear-transformations.js
+                       Big upgrades that reshape the Spear (Hoplite, Poseidon...)
     index.js           Registry of upgrades (menu order), plus loadout validation
   game/                Browser-only
     Game.js            Fixed-timestep loop, pause/speed/hitstop, sim events -> effects
@@ -230,12 +233,13 @@ every step:
 | `controlsMovement`    | When true, the ball stops easing back to its normal speed, so the ability can set `owner.vel` itself |
 | `unblockable`         | When true, the weapon can't be parried and passes through other weapons |
 | `unstoppable`         | When true, other balls can't push this one; it shoves them aside |
+| `disarmed`            | When true, the weapon's blades are gone (e.g. thrown): they can't hit, clash or be drawn. Shields stay |
 | `bladeSpread`         | For multi-blade weapons: 1 = evenly spaced, 0 = gathered side by side at the front |
 | `damageTakenMultiplier` | Multiplies damage the ball takes from weapon hits |
 
 Hooks: `shouldActivate`, `onStart`, `onUpdate`, `onEnd`, `onHit`, `onParry`,
-`onOwnerHit` (the ability's ball got hit), and `draw(ctx)` for visuals, which are drawn
-underneath the balls. `nearestEnemy(sim)` is a handy helper for targeting, and
+`onOwnerHit` (the ability's ball got hit), and `draw(ctx)` / `drawOver(ctx)` for visuals, drawn
+underneath / on top of the balls. `nearestEnemy(sim)` is a handy helper for targeting, and
 `target.clearHitCooldown(this.weapon)` lets a rapid multi-hit move land every hit.
 `ChargeDash.js` is the most complete example, with multiple phases, aiming,
 movement control, and cancelling.
@@ -298,7 +302,8 @@ filled to `maxHp`. An upgrade can do any mix of these:
 | Change starting stats      | `apply()`: `this.weapon.blades += 1`, `this.owner.maxHp += 20`, `this.ability.windup *= 0.5` |
 | Combat stats               | `weapon.critChance`, `weapon.critMultiplier`, `owner.armor`, `owner.dodgeChance`, `contactDamage` on each of `weapon.shields`, `weapon.widthScale` (draw width, set it with `thickness`) |
 | Change behaviour live      | The same modifier getters as abilities. Multipliers multiply together; flags are on if anything turns them on |
-| React to things            | `onUpdate`, `onHit(target, sim, damage)`, `onParry`, `onOwnerHit(attacker, sim, damage)`, `onBlock(attacker, sim)`, `onWallBounce(sim)`, `onAbilityStart`, `onAbilityEnd` |
+| React to things            | `onUpdate`, `onHit(target, sim, damage, point)`, `onParry`, `onOwnerHit(attacker, sim, damage)`, `onBlock(attacker, sim)`, `onWallBounce(sim)`, `onAbilityStart`, `onAbilityEnd` |
+| Care where a hit landed    | `critsAt(point)`: return true to make that hit always crit. `damageMultiplierAt(point)`: scale its damage. `point` is on the blade, e.g. `Spear.headHit(point)` tells the head from the shaft |
 | Cancel a hit               | `preventHit(attacker, sim)`: return true and a weapon hit on this ball does nothing (after dodge, before crit) |
 | Deal extra damage          | `sim.dealDamage(this.owner, target, amount, { reason, color })`: no knockback, ignores armor and dodge |
 | Put an effect on a ball    | `target.addStatus(new Burning({ source: this.owner, ... }), sim)`: see `src/sim/Status.js` |
@@ -315,15 +320,17 @@ first cooldown was already worked out. If an upgrade emits a new phase and shoul
 
 A status is a timed effect on a ball, usually put there by an enemy's upgrade: Fire
 Eater's `Burning` deals damage over time and Gladiator's `Netted` slows the ball and
-makes it take more damage. Extend `Status` (`src/sim/Status.js`), set the modifier
-getters (`speedMultiplier`, `damageTakenMultiplier`) and/or `onUpdate(dt, sim)`, and draw
+makes it take more damage. Tackler's `GuardBroken` sets `guardBroken`, so the ball's weapon and
+shields stop blocking, and Poseidon's `Impaled` pins the ball to the trident's tip. Extend `Status` (`src/sim/Status.js`), set the modifier
+getters (`speedMultiplier`, `damageTakenMultiplier`, `guardBroken`) and/or `onUpdate(dt, sim)`, and draw
 it in `draw(ctx)`. A ball holds one status of each class, so applying it again refreshes
 it. Guard damage with `sim.over` so nothing ticks after the match is decided.
 
 ### Transformations
 
 Transformations are big upgrades that reshape a weapon, like the Sword's Stalwart (a
-second shield) or Dual Wielder (the shield becomes a short sword). Mark one with
+second shield) or Dual Wielder (the shield becomes a short sword), and the Spear's Poseidon
+(a trident that skewers) or Olympian (swaps Charge Dash for Spear Throw). Mark one with
 `static transformation = true`; they usually have `maxStacks = 1`. They combine freely with
 each other and with small upgrades, are listed in their own group in the menu, and are
 applied before every small upgrade, so e.g. Big Shield widens both of Stalwart's shields

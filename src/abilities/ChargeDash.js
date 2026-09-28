@@ -62,12 +62,7 @@ export class ChargeDash extends Ability {
         const desired = angleOf(sub(this.target.pos, owner.pos));
         weapon.angle = turnTowards(weapon.angle, desired, this.aimTurnRate * dt);
       }
-      if (this.timer <= 0) {
-        this.phase = 'dash';
-        this.timer = this.dashDuration;
-        owner.vel = fromAngle(weapon.angle, this.dashSpeed);
-        this.emit(sim, 'dash', { shake: 4, burst: { color: '#cfd6df', count: 16, speed: 180, life: 0.4 } });
-      }
+      if (this.timer <= 0) this.release(sim);
       return;
     }
 
@@ -75,6 +70,14 @@ export class ChargeDash extends Ability {
     owner.vel = scale(normalize(owner.vel), this.dashSpeed);
     weapon.angle = angleOf(owner.vel);
     if (this.timer <= 0) this.end(sim);
+  }
+
+  // The windup is over: lunge along the weapon.
+  release(sim) {
+    this.phase = 'dash';
+    this.timer = this.dashDuration;
+    this.owner.vel = fromAngle(this.weapon.angle, this.dashSpeed);
+    this.emit(sim, 'dash', { shake: 4, burst: { color: '#cfd6df', count: 16, speed: 180, life: 0.4 } });
   }
 
   onEnd() {

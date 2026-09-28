@@ -29,7 +29,7 @@ export class QuickCharge extends Upgrade {
 
   // A yellow pennant just behind the spear head.
   drawBlade(ctx, start) {
-    const x = start + this.weapon.length - 26;
+    const x = start + this.weapon.length - this.weapon.headLength - 6;
     ctx.save();
     ctx.fillStyle = '#f2c94c';
     ctx.beginPath();

@@ -30,6 +30,12 @@ export class Status {
     return 1;
   }
 
+  // True while the ball's weapon and shields can't block: other weapons pass
+  // straight through them (both ways) and nothing parries.
+  get guardBroken() {
+    return false;
+  }
+
   // ---- Hooks ----------------------------------------------------------------
 
   onApply(sim) {} // just put on this.ball

@@ -46,13 +46,19 @@ export class Weapon {
   }
 
   // Damage this weapon deals right now, including ability and upgrade bonuses.
-  getDamage() {
-    return this.damage * this.multiplier('damageMultiplier');
+  // With `point` (where a hit landed), upgrades that care where the blade
+  // connected get a say too.
+  getDamage(point) {
+    let damage = this.damage * this.multiplier('damageMultiplier');
+    if (point) for (const upgrade of this.upgrades) damage *= upgrade.damageMultiplierAt(point);
+    return damage;
   }
 
-  // Rolls for a critical hit. Only uses Math.random when there is a chance to
-  // crit, so fights without crits play out the same as before crits existed.
-  rollCrit() {
+  // Rolls for a critical hit landing at `point`. Only uses Math.random when
+  // there is a chance to crit and no upgrade guarantees one, so fights without
+  // crits play out the same as before crits existed.
+  rollCrit(point) {
+    if (point && this.upgrades.some((upgrade) => upgrade.critsAt(point))) return true;
     return this.critChance > 0 && Math.random() < this.critChance;
   }
 
@@ -75,6 +81,12 @@ export class Weapon {
 
   get unstoppable() {
     return this.anyModifier('unstoppable');
+  }
+
+  // True while the weapon is out of its ball's hands (e.g. thrown): its blades
+  // don't exist, so they can't hit, clash or be drawn. Shields stay.
+  get disarmed() {
+    return this.anyModifier('disarmed');
   }
 
   // Shields in hand right now; a thrown one can't block or hurt anything until it's back.
@@ -117,10 +129,10 @@ export class Weapon {
     if (this.parryCooldown > 0) this.parryCooldown -= dt;
   }
 
-  registerHit(target, sim, damage) {
+  registerHit(target, sim, damage, point) {
     this.ability?.onHit(target, sim);
     this.onHit(target, sim);
-    for (const upgrade of this.upgrades) upgrade.onHit(target, sim, damage);
+    for (const upgrade of this.upgrades) upgrade.onHit(target, sim, damage, point);
   }
 
   registerParry(otherWeapon, sim) {
@@ -177,6 +189,7 @@ export class Weapon {
 
   // One { a, b } segment per blade, from hilt to tip, in arena coordinates.
   getSegments() {
+    if (this.disarmed) return [];
     const start = this.owner.radius + this.gap;
     return this.bladeAngles().map((angle) => ({
       a: add(this.owner.pos, fromAngle(angle, start)),
@@ -185,7 +198,7 @@ export class Weapon {
   }
 
   draw(ctx) {
-    for (const angle of this.bladeAngles()) {
+    for (const angle of this.disarmed ? [] : this.bladeAngles()) {
       ctx.save();
       ctx.translate(this.owner.pos.x, this.owner.pos.y);
       ctx.rotate(angle);

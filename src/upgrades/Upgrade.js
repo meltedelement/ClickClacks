@@ -94,16 +94,25 @@ export class Upgrade {
     return false;
   }
 
+  get disarmed() {
+    return false;
+  }
+
   get bladeSpread() {
     return 1;
   }
+
+  // ---- Per-hit modifiers: asked about each weapon hit, with where it landed ----
+
+  critsAt(point) { return false; } // return true to make a hit landing at `point` always crit
+  damageMultiplierAt(point) { return 1; } // multiplies the damage of a hit landing at `point`
 
   // ---- Hooks ----------------------------------------------------------------
   // Upgrade hooks run after the ability's and the weapon's own, so they see
   // the state after this hit's scaling has been applied.
 
   onUpdate(dt, sim) {} // every physics step
-  onHit(target, sim, damage) {} // this weapon landed a hit
+  onHit(target, sim, damage, point) {} // this weapon landed a hit at `point`
   onParry(otherWeapon, sim) {} // this weapon clashed with another
   onOwnerHit(attackerWeapon, sim, damage) {} // this ball got hit
   onBlock(attackerWeapon, sim) {} // this weapon's shield stopped an enemy weapon
