@@ -1,6 +1,5 @@
 import { Upgrade } from './Upgrade.js';
 import { SpinSwipe } from '../abilities/SpinSwipe.js';
-import { add, fromAngle } from '../sim/math.js';
 
 // Small upgrades for the Sword: its shield and its Spin Swipe.
 
@@ -20,43 +19,18 @@ export class ShieldBash extends Upgrade {
   }
 }
 
-const SPIKES = 3;
-
 export class SpikedShield extends Upgrade {
   static id = 'shield-spikes';
   static displayName = 'Spiked Shield';
   static description = 'Your shield deals 2 damage to enemies it touches.';
   static weapons = ['sword'];
 
+  // The shield draws its own spikes once it has some.
   apply() {
-    const { shield } = this.weapon;
-    if (!shield) return;
-    shield.contactDamage += 2;
-    shield.spikeLength = 7;
-  }
-
-  // Spikes sticking out of the shield's face.
-  drawOver(ctx) {
-    const { shield } = this.weapon;
-    if (!shield) return;
-    const out = fromAngle(shield.angle, 1);
-    const across = fromAngle(shield.angle + Math.PI / 2, 1);
-    const face = add(this.owner.pos, fromAngle(shield.angle, shield.radius + 4));
-
-    ctx.save();
-    ctx.fillStyle = '#c3c9d1';
-    for (let i = 0; i < SPIKES; i++) {
-      const t = (i / (SPIKES - 1) - 0.5) * shield.width * 0.7;
-      const base = add(face, { x: across.x * t, y: across.y * t });
-      const tip = add(base, { x: out.x * (shield.spikeLength + 2), y: out.y * (shield.spikeLength + 2) });
-      ctx.beginPath();
-      ctx.moveTo(base.x + across.x * 3, base.y + across.y * 3);
-      ctx.lineTo(tip.x, tip.y);
-      ctx.lineTo(base.x - across.x * 3, base.y - across.y * 3);
-      ctx.closePath();
-      ctx.fill();
+    for (const shield of this.weapon.shields) {
+      shield.contactDamage += 2;
+      shield.spikeLength = 7;
     }
-    ctx.restore();
   }
 }
 
@@ -67,10 +41,9 @@ export class BigShield extends Upgrade {
   static weapons = ['sword'];
 
   apply() {
-    const { shield } = this.weapon;
-    if (!shield) return;
-    this.base ??= shield.width;
-    shield.width += this.base * 0.5;
+    const { shields } = this.weapon;
+    this.base ??= shields.map((shield) => shield.width);
+    shields.forEach((shield, i) => (shield.width += this.base[i] * 0.5));
   }
 }
 

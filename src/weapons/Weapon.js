@@ -35,8 +35,8 @@ export class Weapon {
 
     // Optional special move, e.g. `this.ability = new SpinSwipe(this)`. See src/abilities/.
     this.ability = null;
-    // Optional off-hand shield that blocks enemy weapons. See Shield.js.
-    this.shield = null;
+    // Off-hand shields that block enemy weapons, e.g. `this.shields = [new Shield(this, { ... })]`. See Shield.js.
+    this.shields = [];
     // Roguelike upgrades from the loadout, added by Ball after construction. See src/upgrades/.
     this.upgrades = [];
   }
@@ -75,6 +75,11 @@ export class Weapon {
 
   get unstoppable() {
     return this.anyModifier('unstoppable');
+  }
+
+  // Shields in hand right now; a thrown one can't block or hurt anything until it's back.
+  get heldShields() {
+    return this.shields.filter((shield) => !shield.away);
   }
 
   // ---- Hooks for subclasses -------------------------------------------------
@@ -127,6 +132,12 @@ export class Weapon {
   registerOwnerHit(attackerWeapon, sim, damage) {
     this.ability?.onOwnerHit(attackerWeapon, sim);
     for (const upgrade of this.upgrades) upgrade.onOwnerHit(attackerWeapon, sim, damage);
+  }
+
+  // True if an upgrade cancels this hit on this weapon's ball completely. The
+  // first upgrade that does uses itself up; the rest aren't asked.
+  preventsHit(attackerWeapon, sim) {
+    return this.upgrades.some((upgrade) => upgrade.preventHit(attackerWeapon, sim));
   }
 
   // This weapon's shield stopped `attackerWeapon`.
@@ -184,7 +195,7 @@ export class Weapon {
       for (const upgrade of this.upgrades) upgrade.drawBlade(ctx, start);
       ctx.restore();
     }
-    this.shield?.draw(ctx);
+    for (const shield of this.shields) shield.draw(ctx);
   }
 
   drawHitbox(ctx) {
@@ -199,6 +210,6 @@ export class Weapon {
     }
     ctx.stroke();
     ctx.restore();
-    this.shield?.drawHitbox(ctx);
+    for (const shield of this.shields) shield.drawHitbox(ctx);
   }
 }

@@ -4,7 +4,8 @@ import { formatNumber } from '../utils/format.js';
 
 export class Ball {
   // `upgrades` are Upgrade classes, applied in order once the weapon is built.
-  // A class listed more than once stacks onto the same instance.
+  // A class listed more than once stacks onto the same instance. Transformations
+  // go first, so the small upgrades build on the weapon they turned it into.
   // `name` (e.g. a team name) replaces the weapon's name on screen.
   constructor({ position, color, WeaponClass, upgrades = [], name = null }) {
     this.pos = { ...position };
@@ -21,9 +22,12 @@ export class Ball {
 
     // Weapon -> seconds until that weapon may hit this ball again.
     this.hitCooldowns = new Map();
+    // Timed effects on this ball, at most one of each class. See Status.js.
+    this.statuses = [];
 
     this.weapon = new WeaponClass(this);
-    for (const UpgradeClass of upgrades) {
+    const ordered = [...upgrades.filter((U) => U.transformation), ...upgrades.filter((U) => !U.transformation)];
+    for (const UpgradeClass of ordered) {
       let upgrade = this.weapon.upgrades.find((u) => u.constructor === UpgradeClass);
       if (!upgrade) {
         upgrade = new UpgradeClass(this.weapon);
@@ -48,6 +52,11 @@ export class Ball {
     this.pos.y += this.vel.y * dt;
     this.weapon.update(dt, sim);
 
+    for (const status of this.statuses) status.update(dt, sim);
+    if (this.statuses.some((status) => status.expired)) {
+      this.statuses = this.statuses.filter((status) => !status.expired);
+    }
+
     for (const [weapon, time] of this.hitCooldowns) {
       if (time - dt <= 0) this.hitCooldowns.delete(weapon);
       else this.hitCooldowns.set(weapon, time - dt);
@@ -55,16 +64,41 @@ export class Ball {
     if (this.flash > 0) this.flash -= dt;
   }
 
+  // Speed the ball tries to travel at right now, after statuses like slows.
+  get cruiseSpeed() {
+    return this.speed * this.statusMultiplier('speedMultiplier');
+  }
+
   // Ease back towards cruising speed after being knocked around.
   recoverSpeed(dt) {
+    const speed = this.cruiseSpeed;
     const current = length(this.vel);
     if (current < 1e-6) {
-      this.vel = fromAngle(Math.random() * TAU, this.speed);
+      this.vel = fromAngle(Math.random() * TAU, speed);
       return;
     }
     const t = Math.min(1, dt * CONFIG.ball.speedRecovery);
-    const next = current + (this.speed - current) * t;
+    const next = current + (speed - current) * t;
     this.vel = scale(this.vel, next / current);
+  }
+
+  // Puts a status on this ball, replacing any of the same class (so it refreshes).
+  addStatus(status, sim) {
+    this.statuses = this.statuses.filter((s) => s.constructor !== status.constructor);
+    status.ball = this;
+    this.statuses.push(status);
+    status.onApply(sim);
+  }
+
+  hasStatus(StatusClass) {
+    return this.statuses.some((s) => s instanceof StatusClass);
+  }
+
+  // A status modifier multiplied across every status (1 if there are none).
+  statusMultiplier(key) {
+    let value = 1;
+    for (const status of this.statuses) value *= status[key];
+    return value;
   }
 
   // Lets `weapon` hit this ball again straight away (e.g. for rapid multi-hit moves).
@@ -85,7 +119,7 @@ export class Ball {
   // Damage actually taken from a weapon hit of `damage`, after armor and modifiers.
   reduceDamage(damage) {
     const armored = Math.max(damage / 2, damage - this.armor);
-    return armored * this.weapon.damageTakenMultiplier;
+    return armored * this.weapon.damageTakenMultiplier * this.statusMultiplier('damageTakenMultiplier');
   }
 
   takeHit(weapon, damage) {

@@ -171,11 +171,11 @@ export class Game {
         break;
       }
       case 'upgrade': {
-        const { ball, phase, shake, burst, text, color } = data;
+        const { ball, phase, shake, burst, text, color, pos = ball.pos } = data;
         sound.upgrade(phase, shake);
         if (shake) effects.shake(shake);
-        if (burst) effects.burst(ball.pos, burst.color ?? ball.color, burst);
-        if (text) effects.floatingText({ x: ball.pos.x, y: ball.pos.y - ball.radius - 12 }, text, color ?? '#ffffff');
+        if (burst) effects.burst(pos, burst.color ?? ball.color, burst);
+        if (text) effects.floatingText({ x: pos.x, y: pos.y - ball.radius - 12 }, text, color ?? '#ffffff');
         break;
       }
       case 'death':

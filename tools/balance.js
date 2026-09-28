@@ -234,7 +234,11 @@ function readUsage() {
 function readList() {
   const lines = ['Weapons:', ...WEAPONS.map((W) => `  ${W.id.padEnd(16)} ${W.displayName}`)];
   const line = (U) => {
-    const notes = [U.maxStacks < Infinity && `max ${U.maxStacks}`, U.requires.length && `needs ${U.requires.join(', ')}`].filter(Boolean);
+    const notes = [
+      U.transformation && 'transformation',
+      U.maxStacks < Infinity && `max ${U.maxStacks}`,
+      U.requires.length && `needs ${U.requires.join(', ')}`,
+    ].filter(Boolean);
     return `  ${U.id.padEnd(16)} ${U.description}${notes.length ? `  (${notes.join('; ')})` : ''}`;
   };
   lines.push('', 'Upgrades for any weapon:', ...UPGRADES.filter((U) => U.weapons === null).map(line));

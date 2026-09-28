@@ -54,6 +54,7 @@ export class Renderer {
       for (const upgrade of ball.weapon.upgrades) upgrade.drawUnder(ctx);
     }
     for (const ball of balls) ball.draw(ctx);
+    for (const ball of balls) for (const status of ball.statuses) status.draw(ctx);
     for (const ball of balls) ball.weapon.draw(ctx);
     for (const ball of balls) for (const upgrade of ball.weapon.upgrades) upgrade.drawOver(ctx);
     for (const ball of balls) if (ball.label) this.drawLabel(ball);

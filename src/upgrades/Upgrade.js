@@ -13,7 +13,9 @@ import { distance } from '../sim/math.js';
 //   - draw its own visuals (the draw* methods; the sim never calls them)
 //
 // Upgrades are applied in loadout order, after the weapon, its ability and its
-// shield have been built, and before the ball's HP is filled to maxHp.
+// shields have been built, and before the ball's HP is filled to maxHp.
+// Transformations (big upgrades that reshape the weapon) are applied before
+// all the others, so small upgrades like Big Shield also affect what they add.
 //
 // Upgrades stack: listing an id several times gives one instance whose
 // `stacks` counts the copies, and apply() runs once per copy (with `stacks`
@@ -29,6 +31,9 @@ export class Upgrade {
   static requires = [];
   // Most copies of this upgrade one fighter can have.
   static maxStacks = Infinity;
+  // True for a transformation: a big upgrade that reshapes the weapon. Applied
+  // before the others and listed separately in the menu.
+  static transformation = false;
 
   static canApplyTo(weaponId) {
     return this.weapons === null || this.weapons.includes(weaponId);
@@ -102,6 +107,7 @@ export class Upgrade {
   onParry(otherWeapon, sim) {} // this weapon clashed with another
   onOwnerHit(attackerWeapon, sim, damage) {} // this ball got hit
   onBlock(attackerWeapon, sim) {} // this weapon's shield stopped an enemy weapon
+  preventHit(attackerWeapon, sim) { return false; } // return true to cancel a weapon hit on this ball
   onWallBounce(sim) {} // this ball bounced off a wall
   onAbilityStart(ability, sim) {}
   onAbilityEnd(ability, sim) {}
@@ -130,7 +136,8 @@ export class Upgrade {
 
   // Tell the game something visual happened; sent as an 'upgrade' event.
   //   fx: { shake?: number, burst?: { color?, count?, speed?, life?, size? },
-  //         text?: string, color?: string }  (text floats up above the ball)
+  //         text?: string, color?: string, pos?: { x, y } }
+  // The burst and text appear at `pos`, or on this upgrade's ball if it's left out.
   emit(sim, phase, fx = {}) {
     sim.onEvent('upgrade', { ball: this.owner, upgrade: this, phase, ...fx });
   }

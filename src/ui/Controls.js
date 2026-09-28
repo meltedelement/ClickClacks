@@ -139,11 +139,14 @@ export class Controls {
 
     const adder = this.upgradeAdders[i];
     adder.replaceChildren(new Option(owned.length ? 'Add upgrade…' : 'Add upgrade… (none yet)', ''));
+    const transformations = el('optgroup');
+    transformations.label = 'Transformations';
     for (const U of upgradesFor(this.upgradeWeaponId(i), owned)) {
       const option = new Option(U.displayName, U.id);
       option.title = U.description;
-      adder.append(option);
+      (U.transformation ? transformations : adder).append(option);
     }
+    if (transformations.children.length > 0) adder.append(transformations);
     adder.value = '';
   }
 

@@ -23,7 +23,7 @@ import { resolveUpgrades } from '../upgrades/index.js';
 //   'death' { ball }
 //   'end'   { winner }  (winner is null on a draw)
 //   'ability' { ball, ability, phase, shake?, burst? }  (see Ability.emit)
-//   'upgrade' { ball, upgrade, phase, shake?, burst?, text?, color? }  (see Upgrade.emit)
+//   'upgrade' { ball, upgrade, phase, shake?, burst?, text?, color?, pos? }  (see Upgrade.emit)
 export class Simulation {
   constructor(loadouts, { onEvent } = {}) {
     this.arena = { ...CONFIG.arena };
@@ -92,26 +92,27 @@ export class Simulation {
 
     // Enemy weapons touching a shield are blocked too.
     for (const defender of balls) {
-      const { shield } = defender.weapon;
-      if (!shield) continue;
-      for (const attacker of balls) {
-        if (attacker === defender || attacker.weapon.unblockable) continue;
-        const point = weaponHitsShield(attacker.weapon, shield);
-        if (!point) continue;
-        blocked.add(attacker.weapon);
-        if (attacker.weapon.canParry(defender.weapon)) this.applyBlock(attacker, defender, point);
+      for (const shield of defender.weapon.heldShields) {
+        for (const attacker of balls) {
+          if (attacker === defender || attacker.weapon.unblockable) continue;
+          const point = weaponHitsShield(attacker.weapon, shield);
+          if (!point) continue;
+          blocked.add(attacker.weapon);
+          if (attacker.weapon.canParry(defender.weapon)) this.applyBlock(attacker, defender, point);
+        }
       }
     }
 
-    // Spiked shields hurt enemy balls they touch.
+    // Spiked shields (and off-hand swords) hurt enemy balls they touch.
     for (const defender of balls) {
-      const { shield } = defender.weapon;
-      if (!shield?.contactDamage) continue;
-      for (const target of balls) {
-        if (target === defender || !defender.alive || !target.alive || !target.canBeHitBy(shield)) continue;
-        if (!shieldHitsBall(shield, target)) continue;
-        target.hitCooldowns.set(shield, CONFIG.combat.hitCooldown);
-        this.dealDamage(defender, target, shield.contactDamage, { reason: 'spikes', color: '#c3c9d1' });
+      for (const shield of defender.weapon.heldShields) {
+        if (!shield.contactDamage) continue;
+        for (const target of balls) {
+          if (target === defender || !defender.alive || !target.alive || !target.canBeHitBy(shield)) continue;
+          if (!shieldHitsBall(shield, target)) continue;
+          target.hitCooldowns.set(shield, CONFIG.combat.hitCooldown);
+          this.dealDamage(defender, target, shield.contactDamage, { reason: shield.contactReason, color: shield.contactColor });
+        }
       }
     }
 
@@ -165,6 +166,12 @@ export class Simulation {
       return;
     }
 
+    // An upgrade on the target can cancel the hit outright (it shows that itself).
+    if (target.weapon.preventsHit(weapon, this)) {
+      target.hitCooldowns.set(weapon, CONFIG.combat.hitCooldown);
+      return;
+    }
+
     const crit = weapon.rollCrit();
     const damage = target.reduceDamage(weapon.getDamage() * (crit ? weapon.critMultiplier : 1));
     const dealt = target.takeHit(weapon, damage);
@@ -180,7 +187,7 @@ export class Simulation {
     weapon.registerHit(target, this, damage);
   }
 
-  // Damage that doesn't come from a weapon hit (thorns, spiked shields...):
+  // Damage that doesn't come from a weapon hit (thorns, spiked shields, burning...):
   // no knockback, no hit cooldown, and armor and dodging don't apply. Hooks
   // aren't triggered either, so thorns can't bounce off thorns forever.
   dealDamage(source, target, damage, { reason, color } = {}) {
