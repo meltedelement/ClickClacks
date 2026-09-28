@@ -12,6 +12,7 @@ npm run build && npm start   # one server on port 3001 that serves the built cli
 
 - Teams open `http://<your-ip>:5174/` (dev) or `http://<your-ip>:3001/` (start).
 - The host opens `/admin` and enters the admin key.
+- The host shows `/present` on the big screen. It uses the same admin key.
 - The server prints the admin key when it starts. It is random the first time and kept in
   `data/admin-token.txt` (not in git), so restarts keep the same key. Delete that file for a new key,
   or set `ADMIN_KEY=something` to choose one yourself.
@@ -40,6 +41,15 @@ The host moves through these phases on the admin page:
 5. **battle**: The game runs.
 
 Picks are calculated again from the answers each time. Picks left = correct revealed answers × `upgradesPerCorrect` + bonus picks − picks used. Thus, if you change an answer or a "revealed" box on the admin page, the pick count is correct immediately.
+
+## Presenter view
+
+`/present` shows the current question and the teams. Show it on a projector or a shared screen.
+
+- It never shows which team answered or what a team chose. It shows only the number of teams that answered.
+- On the reveal, it shows the correct option and the percentage of votes for each option.
+- The next button moves the quiz one step: question → locked → reveal → next question. After the last question, it starts the battle.
+- Space, Enter, the right arrow, and Page Down also do the next step. A presentation clicker sends one of these keys.
 
 ## Dev controls (admin page)
 

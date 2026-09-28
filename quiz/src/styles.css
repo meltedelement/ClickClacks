@@ -30,3 +30,17 @@ table { border-collapse: collapse; }
 th, td { border: 1px solid #333; padding: 4px 6px; text-align: left; vertical-align: top; }
 ol.options li { padding: 2px 6px; border: 1px solid transparent; border-radius: 4px; }
 pre { font-size: 12px; overflow: auto; max-height: 400px; }
+main.present { max-width: 1400px; min-height: 100vh; display: flex; flex-direction: column; }
+main.present footer { margin-top: auto; padding-top: 16px; }
+.big { font-size: clamp(28px, 4vw, 52px); line-height: 1.2; margin: 16px 0 24px; }
+.options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }
+.present-option { padding: 18px 20px; border: 2px solid #444; border-radius: 10px; background: #23262e; font-size: clamp(20px, 2.4vw, 30px); }
+.present-option.correct { border-color: #2e9e5b; background: #1b3a28; }
+.present-option.dim { opacity: 0.55; }
+.present-option .count { font-size: 0.8em; color: #bbb; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.chip { padding: 6px 12px; border: 1px solid #444; border-radius: 999px; background: #23262e; font-size: 18px; }
+.bar { height: 10px; margin-top: 12px; border-radius: 5px; background: #15171c; overflow: hidden; }
+.bar > div { height: 100%; background: #4c8dff; }
+.present-option.correct .bar > div { background: #2e9e5b; }
+button.next { font-size: 22px; padding: 12px 28px; border-color: #4c8dff; background: #1f3358; }
