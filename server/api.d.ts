@@ -19,6 +19,12 @@ export interface MatchRequest {
   seed?: number;
   /** Sim seconds before the match is called a draw. Default 180, at most 600. */
   timeLimit?: number;
+  /**
+   * 'hp': the match never ends in a draw. At the time limit, or after a double
+   * KO, the fighter with the most HP left (as a share of max HP) wins, and an
+   * exact tie is a seeded coin flip. Default null: a draw is possible.
+   */
+  tiebreak?: 'hp' | null;
 }
 
 export interface Fighter {
@@ -34,8 +40,8 @@ export interface MatchResult {
   winner: 0 | 1 | null;
   /** The winner's name, or its weapon id if it has no name. */
   winnerName: string | null;
-  /** 'time' when a draw was called at the time limit. */
-  reason: 'ko' | 'time';
+  /** 'time' when a draw was called at the time limit, 'hp' when the hp tiebreak picked the winner. */
+  reason: 'ko' | 'time' | 'hp';
   /** Sim seconds the match lasted. */
   time: number;
   /** HP left per fighter. */
@@ -48,6 +54,9 @@ export interface Match {
   fighters: [Fighter, Fighter];
   seed: number;
   timeLimit: number;
+  tiebreak: 'hp' | null;
+  /** The display screen (0 to screens - 1) it went on, or null while it waits for a free one. */
+  screen: number | null;
   queuedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -59,7 +68,11 @@ export interface Match {
 export interface Status {
   /** Display pages connected. Matches only play while this is above 0. */
   displays: number;
-  /** The match on screen (or next to go on screen). */
+  /** Matches the display plays at the same time (the SCREENS setting, 1 to 4). */
+  screens: number;
+  /** The matches on the screens now, playing or about to start. */
+  onScreen: Match[];
+  /** The first of onScreen, or null. Kept for callers that play one match at a time. */
   current: Match | null;
   /** Matches not done yet, including the current one. */
   queued: number;

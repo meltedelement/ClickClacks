@@ -58,7 +58,7 @@ export interface State {
   teams: Team[];
   message: string;
   weaponsLocked: boolean;
-  battle: Battle | null; // the round-robin, once the host starts it
+  battle: Battle | null; // the knockout, once the host draws the bracket
 }
 
 // What the game receives for one team.
@@ -70,35 +70,57 @@ export interface Loadout {
 
 // ---- The battle -------------------------------------------------------------
 
-// One fighter as the game's match API takes it. Copied at battle start, so a
-// later change on the admin page does not change a match that is already set.
+// One fighter as the game's match API takes it. Copied when its round starts,
+// so a later change on the admin page does not change a match already sent.
 export interface Fighter {
   name: string;
   weapon: string;
   upgrades: Record<string, number>;
 }
 
-export type BattleMatchStatus = 'pending' | 'queued' | 'playing' | 'done' | 'cancelled' | 'failed';
+// pending: not sent to the game yet. queued: sent; the game plays it when a screen is free.
+export type BattleMatchStatus = 'pending' | 'queued' | 'done' | 'cancelled' | 'failed';
 
-// One match in the round-robin. `a` and `b` are team ids.
+// How a match winner was found: a knockout, the game's HP tiebreak at the time
+// limit, or the host on the admin page.
+export type DecidedBy = 'ko' | 'hp' | 'host';
+
+// One match in the knockout. `a` and `b` are team ids.
 export interface BattleMatch {
-  id: string; // quiz-side id, e.g. "m3"
+  id: string; // quiz-side id, e.g. "r1m3" (round 1, match 3)
+  round: number; // index into Battle.rounds
   a: string;
   b: string;
-  seed: number; // fixed by the quiz so a re-queue is the same fight
+  seed: number; // fixed by the bracket seed, so a re-queue is the same fight
   gameId: string | null; // id from the game's match API
   status: BattleMatchStatus;
-  fighters: [Fighter, Fighter]; // snapshot of the two loadouts
-  winner: string | null; // team id; null is a draw, or no result yet
+  fighters: [Fighter, Fighter] | null; // snapshot of the two loadouts, taken when the round starts
+  winner: string | null; // team id, once the match is done
+  decidedBy: DecidedBy | null;
   hp: [number, number] | null;
   time: number | null; // sim seconds
   error?: string;
 }
 
+// waiting: drawn, and the host has not started it. playing: its matches are on
+// the game. done: every match has a winner.
+export type BattleRoundStatus = 'waiting' | 'playing' | 'done';
+
+export interface BattleRound {
+  index: number;
+  name: string; // "Quarter-finals", "Semi-finals", "Final", or "Round N"
+  teams: string[]; // the teams in this round, in bracket order
+  bye: string | null; // with an odd count, the team that goes through without a match
+  status: BattleRoundStatus;
+}
+
 export interface Battle {
+  seed: number; // the draw and every match seed come from this
   startedAt: string;
   finishedAt: string | null;
+  rounds: BattleRound[]; // the last one is the current round
   matches: BattleMatch[];
+  champion: string | null; // team id
   note: string; // what the driver is waiting for, shown to the host
 }
 
@@ -110,6 +132,15 @@ export interface GameStatus {
   catalogSource: 'game' | 'file';
   catalogSyncedAt: string | null;
 }
+
+// Where one team is in the knockout. See teamProgress in shared/battle.ts.
+//   waiting: has a match in this round, and the host has not started the round
+//   fighting: has a match on the game now
+//   bye: goes through this round without a match
+//   through: won this round, waits for the next
+//   out: lost a match
+//   champion: won the final
+export type TeamBattleState = 'waiting' | 'fighting' | 'bye' | 'through' | 'out' | 'champion';
 
 // Where a question is in its round. See shared/rounds.ts.
 export interface RoundPosition {
@@ -142,13 +173,12 @@ export interface TeamView {
     picksUsed: number;
     offer: string[] | null;
   };
-  // Set once the battle has started. Null before that.
+  // Set once the bracket is drawn. Null before that.
   battle: {
-    opponent: string | null; // name of the team they are fighting now or next
-    status: BattleMatchStatus | null;
-    rank: number | null; // 1-based place in the round-robin
-    points: number;
-    played: number;
+    round: string; // name of the current round
+    state: TeamBattleState;
+    opponent: string | null; // name of the team they fight in the current round
+    champion: string | null; // name of the winner, once there is one
   } | null;
 }
 

@@ -14,16 +14,18 @@ const realRandom = Math.random;
 // into effects, handles pause / speed / hitstop, and draws each frame.
 export class Game {
   // chooseMatch() returns the next match to play, or null to show an empty
-  // arena: { fighters, seed?, timeLimit? }, where fighters are loadouts (see
-  // Simulation). A seeded match plays out the same way every time. A match
-  // still going at timeLimit (in sim seconds) is a draw. onMatchEnd(sim) is
-  // called once the match is decided.
-  constructor(canvas, { chooseMatch, onMatchEnd }) {
+  // arena: { fighters, seed?, timeLimit?, tiebreak? }, where fighters are
+  // loadouts (see Simulation). A seeded match plays out the same way every
+  // time. A match still going at timeLimit (in sim seconds) is a draw, or with
+  // tiebreak 'hp' goes to the fighter with the most HP left. onMatchEnd(sim) is
+  // called once the match is decided. soundKey gives this game its own saved
+  // mute switch (see Sound).
+  constructor(canvas, { chooseMatch, onMatchEnd, soundKey }) {
     this.chooseMatch = chooseMatch;
     this.onMatchEnd = onMatchEnd ?? (() => {});
     this.renderer = new Renderer(canvas);
     this.effects = new Effects();
-    this.sound = new Sound();
+    this.sound = new Sound({ key: soundKey });
     this.fixedDt = 1 / CONFIG.physicsHz;
 
     // Settings the UI can change.
@@ -46,7 +48,8 @@ export class Game {
     this.match = this.chooseMatch();
     this.random = this.match?.seed == null ? realRandom : mulberry32(this.match.seed);
     const onEvent = (type, data) => this.withRandom(realRandom, () => this.handleSimEvent(type, data));
-    this.sim = this.match && this.withRandom(this.random, () => new Simulation(this.match.fighters, { onEvent }));
+    const { fighters, tiebreak } = this.match ?? {};
+    this.sim = this.match && this.withRandom(this.random, () => new Simulation(fighters, { onEvent, tiebreak }));
     this.effects.clear();
     this.accumulator = 0;
     this.hitstop = 0;
@@ -100,9 +103,12 @@ export class Game {
   }
 
   stepSim() {
-    this.withRandom(this.random, () => this.sim.step(this.fixedDt));
-    const { timeLimit } = this.match;
-    if (timeLimit && !this.sim.over && this.sim.time >= timeLimit) this.sim.endInDraw();
+    this.withRandom(this.random, () => {
+      this.sim.step(this.fixedDt);
+      // endOnTime may flip a seeded coin for the tiebreak, so it runs in here too.
+      const { timeLimit } = this.match;
+      if (timeLimit && !this.sim.over && this.sim.time >= timeLimit) this.sim.endOnTime();
+    });
   }
 
   // The sim runs with the match's seeded Math.random. Effects and sounds swap

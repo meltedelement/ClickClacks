@@ -63,7 +63,7 @@ src/
   ui/
     Controls.js        Menu + keyboard shortcuts
     TournamentDisplay.js
-                       Display mode (?display): plays matches queued through the match API
+                       Display mode (?display): plays up to four queued matches at once
 server/
   matches.js           Match API: queue matches over HTTP, get results back
   index.js             Serves the built game + the match API (npm start)
@@ -78,15 +78,23 @@ Another program (such as the quiz server) can queue matches over HTTP. A
 display page plays them live, and each result goes back to that program. The
 display page decides the official result, so the recorded winner is always the
 one the audience saw. The quiz server in `quiz/` is the reference caller: at the
-battle phase it snapshots every team's loadout and runs a round-robin through
-this API, one match at a time (see `quiz/README.md`).
+battle phase it runs a knockout tournament through this API. It sends all the
+matches of a round at once, and the display plays up to four of them at the
+same time (see `quiz/README.md`).
 
 ```sh
 npm run dev                  # API at http://localhost:5173/api, display at http://localhost:5173/?display
 npm run build && npm start   # API at http://localhost:3002/api, display at http://localhost:3002/?display (PORT=... to change)
 ```
 
-Open the display page on the screen everyone watches and leave it open.
+Open the display page on the screen everyone watches and leave it open. The
+page is split into up to four arenas ("screens"), one match on each. Set the
+number with `SCREENS=1` to `SCREENS=4` (default 4) when you start the server.
+The grid shows only the screens in use: one match fills the page, two go side
+by side, and three or four make a 2×2 grid. Each screen has a mute button in
+its corner, and keys **1** to **4** do the same. **M** or the menu's Sound box
+mutes all screens. The menu's pause, speed and hitbox settings apply to all
+screens.
 Matches only play while at least one display page is connected. Browsers slow
 down or pause background tabs, so keep the display tab visible. Then, from the
 calling program:
@@ -107,7 +115,7 @@ const queued: Match = await res.json();
 
 // Holds the request open until the match has been played on screen.
 const done: Match = await (await fetch(`${API}/matches/${queued.id}?wait=1`)).json();
-console.log(done.result); // { winner: 0 | 1 | null, winnerName, reason: 'ko' | 'time', time, hp }
+console.log(done.result); // { winner: 0 | 1 | null, winnerName, reason: 'ko' | 'time' | 'hp', time, hp }
 ```
 
 ### API reference
@@ -123,7 +131,7 @@ below are in [`server/api.d.ts`](server/api.d.ts); copy that file into the calle
 | `GET /api/matches/:id` | One match. Add `?wait=1` to hold the request until it is `done` or `cancelled`. |
 | `GET /api/matches` | Every match since the server started, in the order queued. |
 | `DELETE /api/matches/:id` | Cancel a match that is queued or playing. If it's on screen, it stops. |
-| `GET /api/status` | Displays connected, the current match and the queue length. |
+| `GET /api/status` | Displays connected, the matches on screen and the queue length. |
 | `GET /api/catalog` | Weapon and upgrade ids, for building menus or offers. |
 
 #### `POST /api/matches`
@@ -135,6 +143,7 @@ Request body (`MatchRequest`):
 | `fighters` | `[Fighter, Fighter]` | Required, exactly two. `result.winner` indexes into this list. |
 | `seed` | integer | Optional, 0 to 2³² − 1. The same seed and fighters give the same fight. Random if left out. |
 | `timeLimit` | number | Optional, sim seconds above 0 and at most 600. Default 180. |
+| `tiebreak` | `'hp'` \| `null` | Optional. With `'hp'` the match never ends in a draw: at `timeLimit`, or after a double KO, the fighter with the larger share of its max HP left wins. An exact tie is a coin flip from the match seed, so it is the same on every display. The banner says "WINS ON HP". Default `null`. |
 
 A fighter (`FighterInput`):
 
@@ -158,6 +167,8 @@ Success is a **201** with the new `Match`:
   ],
   "seed": 2894113750,
   "timeLimit": 180,
+  "tiebreak": null,
+  "screen": null,
   "queuedAt": "2026-09-28T14:03:11.204Z",
   "startedAt": null,
   "finishedAt": null,
@@ -177,6 +188,8 @@ neither was given), and `upgrades` is always a flat list of ids.
 | `fighters` | `[Fighter, Fighter]` | `{ name: string \| null, weapon: string, upgrades: string[] }`. |
 | `seed` | integer | The seed the fight is played with, whether you passed it or not. |
 | `timeLimit` | number | Sim seconds before a draw is called. |
+| `tiebreak` | `'hp'` \| `null` | As requested. |
+| `screen` | integer \| `null` | The display screen (0 to `screens` − 1) the match plays on. `null` while it waits for a free screen. It keeps the number after the match ends. |
 | `queuedAt` | ISO timestamp | |
 | `startedAt` | ISO timestamp \| `null` | When a display started it. Reset to `null` if it goes back to `queued`. |
 | `finishedAt` | ISO timestamp \| `null` | Set when `done` or `cancelled`. |
@@ -188,14 +201,14 @@ neither was given), and `upgrades` is always a flat list of ids.
 | --- | --- | --- |
 | `winner` | `0` \| `1` \| `null` | Index into `fighters`, or `null` for a draw. |
 | `winnerName` | string \| `null` | The winner's `name`, or its weapon id if it has no name. `null` for a draw. |
-| `reason` | `'ko'` \| `'time'` | `'time'` when nobody had won at `timeLimit`. Otherwise `'ko'`. |
+| `reason` | `'ko'` \| `'time'` \| `'hp'` | `'time'` when nobody had won at `timeLimit`. `'hp'` when the `hp` tiebreak picked the winner. Otherwise `'ko'`. |
 | `time` | number | Sim seconds the match lasted. |
 | `hp` | `[number, number]` | HP left per fighter, in `fighters` order. |
 
 A draw is `winner: null`. It is usually `reason: 'time'`, but two fighters
 knocked out in the same step is also a draw, with `reason: 'ko'`. Check
 `winner`, not `reason`. A bracket has to decide what to do with a draw, such as
-replaying with another seed.
+replaying with another seed, or it can queue its matches with `tiebreak: 'hp'`.
 
 #### `GET /api/matches/:id`
 
@@ -221,14 +234,16 @@ playing stops on the display, and the next one in the queue goes on. Waiters on
 #### `GET /api/status`
 
 ```json
-{ "displays": 1, "current": { "...": "a Match" }, "queued": 3 }
+{ "displays": 1, "screens": 4, "onScreen": [{ "...": "a Match" }], "current": { "...": "a Match" }, "queued": 3 }
 ```
 
 | Field | Type | |
 | --- | --- | --- |
 | `displays` | number | Display pages connected right now. Matches only play while this is above 0. |
-| `current` | `Match` \| `null` | The match on screen (`playing`), or the next one to go on screen (`queued`). |
-| `queued` | number | Matches not done yet, including `current`. |
+| `screens` | number | Matches the display plays at the same time (the `SCREENS` setting). |
+| `onScreen` | `Match[]` | The matches on the screens now, `playing` or about to start (`queued`). |
+| `current` | `Match` \| `null` | The first of `onScreen`, or `null`. For callers that play one match at a time. |
+| `queued` | number | Matches not done yet, including the ones on screen. |
 
 #### `GET /api/catalog`
 
@@ -264,7 +279,7 @@ Every error is `{ "error": "message" }` with one of these statuses:
 | 400 | Invalid request. The message names the field, e.g. `fighters[1]: Unknown weapon: axe` or `fighters[0]: Upgrade "quick-drop" can't go on weapon "sword"`. Also a body that isn't a JSON object. |
 | 404 | Unknown route, or no match with that id. |
 | 405 | The route exists but not for that method. |
-| 409 | Cancelling a match that already finished, or (display side) reporting on a match that isn't the one on screen. |
+| 409 | Cancelling a match that already finished, or (display side) reporting on a match that is not on a screen. |
 | 413 | Body over 64 KB. |
 | 500 | Server error. |
 
@@ -275,21 +290,24 @@ calling program. They are listed for anyone writing another display.
 
 | Route | |
 | --- | --- |
-| `GET /api/display` | A server-sent event stream. Each message's `data` is the JSON of the match to show, or `null` when the queue is empty. One is sent on connecting and another whenever the front of the queue changes. A `: ping` comment goes out every 20 seconds. |
-| `POST /api/matches/:id/start` | The display started playing the match. Moves it to `playing`. Only the match at the front of the queue is accepted (409 otherwise). Safe to repeat. |
-| `POST /api/matches/:id/result` | Body `{ winner: 0 \| 1 \| null, time: number, hp: [number, number] }`. Marks the match `done` and builds `result` (the server works out `winnerName` and `reason`). The first result in wins: a later one for a finished match just returns it. 409 if it isn't the match on screen, 400 for a malformed body. |
+| `GET /api/display` | A server-sent event stream. Each message's `data` is `{ screens: (Match \| null)[] }`: the match on each screen, or `null` for a free screen. One is sent on connecting and another whenever a screen changes. A `: ping` comment goes out every 20 seconds. |
+| `POST /api/matches/:id/start` | The display started playing the match. Moves it to `playing`. Only a match on a screen is accepted (409 otherwise). Safe to repeat. |
+| `POST /api/matches/:id/result` | Body `{ winner: 0 \| 1 \| null, time: number, hp: [number, number], decidedBy?: 'ko' \| 'hp' }`. Marks the match `done` and builds `result` (the server works out `winnerName` and `reason`). `decidedBy: 'hp'` needs a winner and a match with the `hp` tiebreak. The first result in wins: a later one for a finished match just returns it. 409 if the match is not on a screen, 400 for a malformed body. |
 
 ### Lifecycle
 
-Matches play one at a time, in the order they were queued, and only while a
-display page is connected. There's a short pause after each one so the winner
-banner stays on screen. A match's status goes `queued` → `playing` → `done`, or
-ends as `cancelled` from either of the first two.
+Up to `screens` matches play at the same time, and only while a display page is
+connected. A free screen takes the next match in the order they were queued, so
+queue a round's matches in bracket order to get match 1 on screen 1. After a
+match, its winner banner stays on its screen for a few seconds before the next
+match starts there. A match's status goes `queued` → `playing` → `done`, or ends
+as `cancelled` from either of the first two.
 
 Each match has a seed (random unless you pass one), so every display page shows
-the same fight. If the last display disconnects mid-match, the match goes back
-to `queued` and restarts from the beginning when a display reconnects. It's the
-same seed, so it's the same fight. The server keeps matches in memory only.
+the same fights on the same screens. If the last display disconnects, the
+matches on screen go back to `queued` and restart from the beginning when a
+display reconnects. It's the same seed, so it's the same fight. The server keeps
+matches in memory only.
 
 Use the same browser on every display. JavaScript engines can differ in the
 last bit of some math functions (`Math.atan2` differs between Node 22 and

@@ -2,8 +2,8 @@
 // (or `npm test` in quiz/). No server or game needed.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSchedule, standings, validateLoadout } from './battle.ts';
-import type { BattleMatch, Catalog } from './types.ts';
+import { advance, currentRound, drawBracket, mulberry32, roundComplete, roundMatches, teamProgress, validateLoadout } from './battle.ts';
+import type { Battle, Catalog } from './types.ts';
 
 const catalog: Catalog = {
   upgradesPerCorrect: 1,
@@ -20,94 +20,118 @@ const catalog: Catalog = {
   ],
 };
 
-test('buildSchedule handles an even team count', () => {
-  const pairs = buildSchedule(['a', 'b', 'c', 'd'], () => 7);
-  assert.equal(pairs.length, 6); // 4 * 3 / 2
-  const keys = pairs.map((p) => [p.a, p.b].sort().join('+'));
-  assert.equal(new Set(keys).size, 6); // every pair exactly once
-  assert.ok(pairs.every((p) => p.seed === 7));
-});
+const ids = (n: number) => Array.from({ length: n }, (_, i) => `t${i + 1}`);
 
-test('buildSchedule gives an odd team count a bye instead of a match', () => {
-  const pairs = buildSchedule(['a', 'b', 'c'], () => 1);
-  assert.equal(pairs.length, 3);
-  assert.deepEqual(
-    pairs.map((p) => [p.a, p.b].sort().join('+')).sort(),
-    ['a+b', 'a+c', 'b+c'],
-  );
-  assert.ok(pairs.every((p) => p.a && p.b));
-});
-
-test('buildSchedule needs two teams', () => {
-  assert.deepEqual(buildSchedule([], () => 1), []);
-  assert.deepEqual(buildSchedule(['a'], () => 1), []);
-});
-
-test('buildSchedule gives every pairing one unique seed', () => {
-  let n = 0;
-  const pairs = buildSchedule(['a', 'b', 'c', 'd', 'e'], () => n++);
-  assert.equal(pairs.length, 10);
-  assert.equal(new Set(pairs.map((p) => p.seed)).size, 10);
-});
-
-function match(a: string, b: string, winner: string | null, hp: [number, number] = [100, 0]): BattleMatch {
-  return {
-    id: `${a}-${b}`,
-    a,
-    b,
-    seed: 1,
-    gameId: null,
-    status: 'done',
-    fighters: [
-      { name: a, weapon: 'sword', upgrades: {} },
-      { name: b, weapon: 'sword', upgrades: {} },
-    ],
-    winner,
-    hp,
-    time: 10,
-  };
+// Plays the current round: the first team in each match wins.
+function playRound(battle: Pick<Battle, 'rounds' | 'matches' | 'seed' | 'champion'>) {
+  const round = currentRound(battle)!;
+  for (const m of roundMatches(battle, round.index)) Object.assign(m, { status: 'done', winner: m.a, decidedBy: 'ko' });
+  round.status = 'done';
+  const next = advance(battle);
+  if ('champion' in next) battle.champion = next.champion;
+  else {
+    battle.rounds.push(next.round);
+    battle.matches.push(...next.matches);
+  }
 }
 
-test('standings count a win, a draw and a loss', () => {
-  const teams = [
-    { id: 'a', name: 'Alpha' },
-    { id: 'b', name: 'Beta' },
-    { id: 'c', name: 'Gamma' },
-  ];
-  const rows = standings(teams, [
-    match('a', 'b', 'a', [100, 0]),
-    match('a', 'c', 'c', [0, 100]),
-    match('b', 'c', null, [50, 50]),
+function bracket(n: number, seed = 42) {
+  return { seed, champion: null as string | null, ...drawBracket(ids(n), seed) };
+}
+
+test('eight teams: quarter-finals, semi-finals, final', () => {
+  const battle = bracket(8);
+  assert.deepEqual(battle.rounds.map((r) => r.name), ['Quarter-finals']);
+  assert.equal(battle.matches.length, 4);
+  assert.equal(battle.rounds[0].bye, null);
+  // Every team is drawn exactly once.
+  assert.deepEqual(battle.matches.flatMap((m) => [m.a, m.b]).sort(), ids(8).sort());
+
+  playRound(battle);
+  playRound(battle);
+  assert.deepEqual(battle.rounds.map((r) => [r.name, roundMatches(battle, r.index).length]), [
+    ['Quarter-finals', 4],
+    ['Semi-finals', 2],
+    ['Final', 1],
   ]);
-  assert.deepEqual(
-    rows.map((r) => [r.name, r.points, r.wins, r.draws, r.losses, r.played]),
-    [
-      ['Gamma', 1.5, 1, 1, 0, 2],
-      ['Alpha', 1, 1, 0, 1, 2],
-      ['Beta', 0.5, 0, 1, 1, 2],
-    ],
-  );
+  playRound(battle);
+  const final = roundMatches(battle, 2)[0];
+  assert.equal(battle.champion, final.a);
 });
 
-test('standings ignore matches that never finished', () => {
-  const teams = [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }];
-  const rows = standings(teams, [
-    { ...match('a', 'b', 'a'), status: 'failed' },
-    { ...match('a', 'b', 'a'), status: 'cancelled' },
-  ]);
-  assert.deepEqual(rows.map((r) => r.points), [0, 0]);
+test('six teams: the odd team out in a round goes through on a bye', () => {
+  const battle = bracket(6);
+  assert.equal(battle.matches.length, 3);
+  assert.equal(battle.rounds[0].bye, null);
+
+  playRound(battle); // 3 winners
+  const semi = battle.rounds[1];
+  assert.equal(roundMatches(battle, 1).length, 1);
+  assert.ok(semi.bye);
+
+  playRound(battle); // the bye team and the semi-final winner
+  const final = roundMatches(battle, 2);
+  assert.equal(final.length, 1);
+  assert.equal(battle.rounds[2].name, 'Final');
+  // The team with the bye plays in the final.
+  assert.ok(final[0].a === semi.bye || final[0].b === semi.bye);
 });
 
-test('standings break a points tie on HP difference', () => {
-  const teams = [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }, { id: 'c', name: 'Gamma' }];
-  // a and b both beat c; a finished with more HP left over.
-  const rows = standings(teams, [
-    match('a', 'c', 'a', [90, 0]),
-    match('b', 'c', 'b', [10, 0]),
-    match('a', 'b', null, [0, 0]),
-  ]);
-  const order = rows.map((r) => r.name);
-  assert.deepEqual(order.slice(0, 2), ['Alpha', 'Beta']);
+test('a team never gets two byes in a row', () => {
+  for (const n of [3, 5, 7, 9, 11]) {
+    const battle = bracket(n, n * 7);
+    let previousBye: string | null = null;
+    while (!battle.champion) {
+      const round = currentRound(battle)!;
+      if (previousBye) assert.notEqual(round.bye, previousBye, `${n} teams, ${round.name}`);
+      previousBye = round.bye;
+      playRound(battle);
+    }
+  }
+});
+
+test('the same seed gives the same draw and match seeds', () => {
+  const one = drawBracket(ids(8), 1234);
+  const two = drawBracket(ids(8), 1234);
+  assert.deepEqual(one, two);
+  const other = drawBracket(ids(8), 99);
+  assert.notDeepEqual(one.matches.map((m) => [m.a, m.b]), other.matches.map((m) => [m.a, m.b]));
+  assert.equal(new Set(one.matches.map((m) => m.seed)).size, 4);
+});
+
+test('drawBracket needs two teams', () => {
+  assert.throws(() => drawBracket(['a'], 1));
+  const two = drawBracket(['a', 'b'], 1);
+  assert.equal(two.rounds[0].name, 'Final');
+});
+
+test('advance refuses a round with a match still to play', () => {
+  const battle = bracket(4);
+  assert.equal(roundComplete(battle, 0), false);
+  assert.throws(() => advance(battle));
+});
+
+test('teamProgress follows a team through the bracket', () => {
+  const battle = bracket(4);
+  const [m1] = battle.matches;
+  assert.deepEqual(teamProgress(battle, m1.a), { state: 'waiting', opponent: m1.b });
+  battle.rounds[0].status = 'playing';
+  assert.equal(teamProgress(battle, m1.a).state, 'fighting');
+  Object.assign(m1, { status: 'done', winner: m1.a });
+  assert.equal(teamProgress(battle, m1.a).state, 'through');
+  assert.equal(teamProgress(battle, m1.b).state, 'out');
+  playRound(battle); // the rest of the semi-finals
+  const final = roundMatches(battle, 1)[0];
+  assert.deepEqual(teamProgress(battle, final.b), { state: 'waiting', opponent: final.a });
+  playRound(battle); // the final; the first team wins
+  assert.equal(teamProgress(battle, final.a).state, 'champion');
+  assert.equal(teamProgress(battle, final.b).state, 'out');
+});
+
+test('mulberry32 matches the game', () => {
+  // First values of src/sim/random.js with seed 1.
+  const random = mulberry32(1);
+  assert.deepEqual([random(), random()].map((x) => x.toFixed(6)), ['0.627074', '0.002736']);
 });
 
 test('validateLoadout accepts a loadout the game would take', () => {

@@ -1,8 +1,15 @@
-// Pure battle logic: who fights whom, who is winning, and whether a loadout is
-// one the game will accept. Shared by the quiz server (which queues the
-// matches) and the React pages (which show the standings), so it must not
-// import anything from either side.
-import type { BattleMatch, Catalog } from './types.ts';
+// Pure battle logic: the knockout bracket, where each team is in it, and
+// whether a loadout is one the game will accept. Shared by the quiz server
+// (which queues the matches) and the React pages (which show the bracket), so
+// it must not import anything from either side.
+//
+// The bracket: the first round is a seeded random draw. Teams are paired in
+// order (1 v 2, 3 v 4, ...). With an odd count the last team gets a bye and
+// goes through without a match. The next round lists the bye team first, then
+// the winners in match order, so the team with a bye always fights next round
+// and never gets two byes in a row. Every match has a winner: the game breaks a
+// draw on HP (see the tiebreak in server/matches.js), and the host can pick one.
+import type { Battle, BattleMatch, BattleRound, Catalog, TeamBattleState } from './types.ts';
 
 // A team as this file needs it.
 export interface LoadoutTeam {
@@ -11,87 +18,105 @@ export interface LoadoutTeam {
   upgrades: Record<string, number>;
 }
 
-export interface Pairing {
-  a: string;
-  b: string;
-  seed: number;
+// Seeded random numbers in [0, 1). The same PRNG as the game (src/sim/random.js).
+export function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-// Every team plays every other team once. Pairings come from the circle
-// method, so no team plays twice in the same round and an odd team count gives
-// one rotating bye per round instead of a match. Returns [] for fewer than two
-// teams.
-export function buildSchedule(teamIds: string[], seedOf: () => number): Pairing[] {
-  if (teamIds.length < 2) return [];
-  const ids = [...teamIds];
-  const bye = '';
-  if (ids.length % 2 === 1) ids.push(bye); // the bye sits in the rotation
-  const half = ids.length / 2;
-  const pairings: Pairing[] = [];
-  for (let round = 0; round < ids.length - 1; round++) {
-    for (let i = 0; i < half; i++) {
-      const a = ids[i];
-      const b = ids[ids.length - 1 - i];
-      if (a !== bye && b !== bye) pairings.push({ a, b, seed: seedOf() });
-    }
-    // Keep the first team fixed and rotate the rest.
-    ids.splice(1, 0, ids.pop() as string);
-  }
-  return pairings;
+// Each round has its own random sequence, so a round drawn again after a
+// server restart gets the same match seeds.
+function roundRandom(battleSeed: number, round: number) {
+  return mulberry32((battleSeed + Math.imul(round + 1, 0x9e3779b9)) >>> 0);
 }
 
-export interface Standing {
-  teamId: string;
-  name: string;
-  played: number;
-  wins: number;
-  draws: number;
-  losses: number;
-  points: number; // win 1, draw 0.5, loss 0
-  hpFor: number;
-  hpAgainst: number;
+export function roundName(teamCount: number, index: number): string {
+  if (teamCount <= 2) return 'Final';
+  if (teamCount <= 4) return 'Semi-finals';
+  if (teamCount <= 8) return 'Quarter-finals';
+  return `Round ${index + 1}`;
 }
 
-// The table, best first: most points, then the best HP difference, then name.
-// Only 'done' matches count; a cancelled or failed one never happened.
-export function standings(teams: { id: string; name: string }[], matches: BattleMatch[]): Standing[] {
-  const rows = new Map<string, Standing>();
-  for (const team of teams) {
-    rows.set(team.id, { teamId: team.id, name: team.name, played: 0, wins: 0, draws: 0, losses: 0, points: 0, hpFor: 0, hpAgainst: 0 });
+// One round: pairs `teams` in order; an odd team out gets the bye.
+export function drawRound(teams: string[], index: number, battleSeed: number): { round: BattleRound; matches: BattleMatch[] } {
+  const random = roundRandom(battleSeed, index);
+  const matches: BattleMatch[] = [];
+  for (let i = 0; i + 1 < teams.length; i += 2) {
+    matches.push({
+      id: `r${index + 1}m${matches.length + 1}`,
+      round: index,
+      a: teams[i],
+      b: teams[i + 1],
+      seed: Math.floor(random() * 2 ** 32),
+      gameId: null,
+      status: 'pending',
+      fighters: null,
+      winner: null,
+      decidedBy: null,
+      hp: null,
+      time: null,
+    });
   }
-  for (const match of matches) {
-    if (match.status !== 'done') continue;
-    const a = rows.get(match.a);
-    const b = rows.get(match.b);
-    if (!a || !b) continue; // a team was deleted after the battle started
-    const hp = match.hp ?? [0, 0];
-    a.played++;
-    b.played++;
-    a.hpFor += hp[0];
-    a.hpAgainst += hp[1];
-    b.hpFor += hp[1];
-    b.hpAgainst += hp[0];
-    if (match.winner === match.a) {
-      a.wins++;
-      b.losses++;
-      a.points += 1;
-    } else if (match.winner === match.b) {
-      b.wins++;
-      a.losses++;
-      b.points += 1;
-    } else {
-      a.draws++;
-      b.draws++;
-      a.points += 0.5;
-      b.points += 0.5;
-    }
+  const bye = teams.length % 2 === 1 ? teams[teams.length - 1] : null;
+  return { round: { index, name: roundName(teams.length, index), teams: [...teams], bye, status: 'waiting' }, matches };
+}
+
+// The first round, with the teams in a seeded random order. Needs two teams or more.
+export function drawBracket(teamIds: string[], seed: number): { rounds: BattleRound[]; matches: BattleMatch[] } {
+  if (teamIds.length < 2) throw new Error('A knockout needs at least two teams.');
+  const random = mulberry32(seed);
+  const order = [...teamIds];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
   }
-  return [...rows.values()].sort(
-    (x, y) =>
-      y.points - x.points ||
-      y.hpFor - y.hpAgainst - (x.hpFor - x.hpAgainst) ||
-      x.name.localeCompare(y.name),
-  );
+  const first = drawRound(order, 0, seed);
+  return { rounds: [first.round], matches: first.matches };
+}
+
+export function currentRound(battle: Pick<Battle, 'rounds'>): BattleRound | null {
+  return battle.rounds[battle.rounds.length - 1] ?? null;
+}
+
+export function roundMatches(battle: Pick<Battle, 'matches'>, round: number): BattleMatch[] {
+  return battle.matches.filter((match) => match.round === round);
+}
+
+// True when every match in the round has a winner.
+export function roundComplete(battle: Pick<Battle, 'matches'>, round: number): boolean {
+  return roundMatches(battle, round).every((match) => match.status === 'done' && match.winner !== null);
+}
+
+// What comes after a complete round: the next round, or the champion.
+export function advance(battle: Pick<Battle, 'rounds' | 'matches' | 'seed'>):
+  | { champion: string }
+  | { round: BattleRound; matches: BattleMatch[] } {
+  const round = currentRound(battle);
+  if (!round || !roundComplete(battle, round.index)) throw new Error('The round is not finished.');
+  const winners = roundMatches(battle, round.index).map((match) => match.winner as string);
+  const through = round.bye ? [round.bye, ...winners] : winners;
+  if (through.length === 1) return { champion: through[0] };
+  return drawRound(through, round.index + 1, battle.seed);
+}
+
+// Where one team is now. `opponent` is a team id.
+export function teamProgress(battle: Pick<Battle, 'rounds' | 'matches' | 'champion'>, teamId: string): { state: TeamBattleState; opponent: string | null } {
+  if (battle.champion === teamId) return { state: 'champion', opponent: null };
+  const lost = battle.matches.some((m) => m.status === 'done' && m.winner !== null && m.winner !== teamId && (m.a === teamId || m.b === teamId));
+  if (lost) return { state: 'out', opponent: null };
+  const round = currentRound(battle);
+  if (!round || !round.teams.includes(teamId)) return { state: 'out', opponent: null };
+  if (round.bye === teamId) return { state: 'bye', opponent: null };
+  const match = roundMatches(battle, round.index).find((m) => m.a === teamId || m.b === teamId);
+  if (!match) return { state: 'out', opponent: null };
+  const opponent = match.a === teamId ? match.b : match.a;
+  if (match.status === 'done') return { state: 'through', opponent };
+  return { state: round.status === 'playing' ? 'fighting' : 'waiting', opponent };
 }
 
 // Why the game would reject this loadout, as a list of short strings. Mirrors

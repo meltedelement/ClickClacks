@@ -1,7 +1,7 @@
 // Client for the game's match API (server/matches.js in the repo root).
 //
 //   const s = await game.status();                     // display pages connected
-//   const match = await game.queueMatch(fighters, seed);
+//   const match = await game.queueMatch(fighters, seed, { tiebreak: 'hp' });
 //   const done = await game.getMatch(match.id, true);  // holds until it is played
 //
 // GAME_API points at the game server. `npm start` in the repo root serves it on
@@ -32,9 +32,9 @@ export interface GameFighterInput {
 }
 
 export interface GameResult {
-  winner: 0 | 1 | null; // null is a draw
+  winner: 0 | 1 | null; // null is a draw (never with the 'hp' tiebreak)
   winnerName: string | null;
-  reason: 'ko' | 'time';
+  reason: 'ko' | 'time' | 'hp'; // 'hp': the tiebreak picked the winner at the time limit or after a double KO
   time: number; // sim seconds
   hp: [number, number];
 }
@@ -45,12 +45,16 @@ export interface GameMatch {
   fighters: { name: string | null; weapon: string; upgrades: string[] }[];
   seed: number;
   timeLimit: number;
+  tiebreak: 'hp' | null;
+  screen: number | null; // the display screen it plays on, once it has one
   queuedAt: string;
   result: GameResult | null;
 }
 
 export interface GameStatus {
   displays: number;
+  screens: number; // matches the display plays at the same time
+  onScreen: GameMatch[];
   current: GameMatch | null;
   queued: number;
 }
@@ -59,10 +63,15 @@ export function status(): Promise<GameStatus> {
   return request<GameStatus>('/status');
 }
 
-export function queueMatch(fighters: GameFighterInput[], seed: number, timeLimit?: number): Promise<GameMatch> {
+export interface QueueOptions {
+  timeLimit?: number;
+  tiebreak?: 'hp' | null;
+}
+
+export function queueMatch(fighters: GameFighterInput[], seed: number, { timeLimit, tiebreak }: QueueOptions = {}): Promise<GameMatch> {
   return request<GameMatch>('/matches', {
     method: 'POST',
-    body: { fighters, seed, ...(timeLimit === undefined ? {} : { timeLimit }) },
+    body: { fighters, seed, ...(timeLimit === undefined ? {} : { timeLimit }), ...(tiebreak ? { tiebreak } : {}) },
   });
 }
 

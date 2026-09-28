@@ -3,7 +3,8 @@
 // which team answered or what one team chose. One button moves the quiz on.
 import { useEffect, useState } from 'react';
 import type { AdminView } from '../shared/types.ts';
-import { standings } from '../shared/battle.ts';
+import { currentRound } from '../shared/battle.ts';
+import { Bracket } from './Bracket.tsx';
 import { roundPosition, startsRound } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
 import { Brand, LETTERS, RoundProgress, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
@@ -27,8 +28,14 @@ function nextStep({ state }: AdminView, intro: number | null): Step | null {
       return { label: 'Reveal answer', action: { type: 'setPhase', phase: 'reveal' } };
     case 'reveal':
       return hasNext ? goTo(state.questionIndex + 1) : { label: 'Start battle', action: { type: 'setPhase', phase: 'battle' } };
-    case 'battle':
-      return hasNext ? goTo(state.questionIndex + 1) : null;
+    case 'battle': {
+      // The host starts each knockout round from here; the next round waits for this button.
+      const battle = state.battle;
+      const round = battle && currentRound(battle);
+      if (!battle) return state.teams.length >= 2 ? { label: 'Draw the bracket', action: { type: 'battleCreate' } } : null;
+      if (round && !battle.champion && round.status === 'waiting') return { label: `Start the ${round.name.toLowerCase()}`, action: { type: 'battleStartRound' } };
+      return null;
+    }
   }
 }
 
@@ -144,7 +151,7 @@ export function PresenterPage() {
               </h1>
             </div>
             <BattleBoard view={view} />
-            <TeamList teams={state.teams} weaponName={weaponName} />
+            {!state.battle && <TeamList teams={state.teams} weaponName={weaponName} />}
           </section>
         )}
 
@@ -211,7 +218,7 @@ export function PresenterPage() {
               {step.label} →
             </button>
           ) : (
-            <span className="muted">End of the quiz</span>
+            <span className="muted">{state.phase === 'battle' && state.battle && !state.battle.champion ? 'Round in progress' : 'End of the quiz'}</span>
           )}
         </div>
       </footer>
@@ -245,65 +252,25 @@ function TeamList({ teams, weaponName }: { teams: AdminView['state']['teams']; w
   );
 }
 
-// What the room watches while the arena plays: who is on screen, who is next,
-// and the table. The display page decides each result; the quiz only records it.
+// What the room watches while the arena plays: the bracket, and who won.
+// The display page decides each result; the quiz only records it.
 function BattleBoard({ view }: { view: AdminView }) {
   const { state, game } = view;
   const battle = state.battle;
-  if (!battle) return <p className="muted">The battle has not started yet.</p>;
+  if (!battle) return <p className="muted">The bracket is not drawn yet.</p>;
 
   const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '(deleted team)';
-  const rows = standings(state.teams, battle.matches);
-  const current =
-    battle.matches.find((m) => m.status === 'queued' || m.status === 'playing') ??
-    battle.matches.find((m) => m.status === 'pending') ??
-    null;
 
   return (
-    <div className="stack">
+    <div className="stack loose">
       {battle.note && <p className="banner">{battle.note}</p>}
       {!game.reachable && <p className="banner">The game server is not answering at {game.url}.</p>}
       {game.reachable && game.displays === 0 && (
         <p className="banner">No display page is open. Show {game.url.replace(/\/api\/?$/, '/?display')} on the big screen.</p>
       )}
-      {current && (
-        <div>
-          <p className="eyebrow">{current.status === 'pending' ? 'Up next' : 'On screen now'}</p>
-          <h2 className="present-q" style={{ marginTop: 8 }}>
-            {teamName(current.a)} vs {teamName(current.b)}
-          </h2>
-        </div>
-      )}
-      {battle.finishedAt && rows[0] && <h2 className="present-q">{rows[0].name} wins the round-robin</h2>}
+      {battle.champion && <h2 className="present-q">{teamName(battle.champion)} wins the battle</h2>}
       <div className="scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Team</th>
-              <th>Played</th>
-              <th>W</th>
-              <th>D</th>
-              <th>L</th>
-              <th>Points</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={row.teamId} className={i === 0 ? 'correct' : ''}>
-                <td className="num">{i + 1}</td>
-                <td>{row.name}</td>
-                <td className="num">{row.played}</td>
-                <td className="num">{row.wins}</td>
-                <td className="num">{row.draws}</td>
-                <td className="num">{row.losses}</td>
-                <td className="num">
-                  <strong>{row.points}</strong>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Bracket battle={battle} teamName={teamName} />
       </div>
     </div>
   );

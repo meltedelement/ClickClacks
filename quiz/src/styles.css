@@ -424,3 +424,23 @@ pre { margin: 10px 0 0; padding: 12px; border-radius: var(--radius-sm); backgrou
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* ---- Knockout bracket (admin page and presenter view) ---- */
+.bracket { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 1fr); gap: 16px; align-items: stretch; }
+.bracket-round { display: flex; flex-direction: column; gap: 10px; }
+.bracket-slots { flex: 1; display: flex; flex-direction: column; justify-content: space-around; gap: 10px; }
+.bracket-round.current h3 { color: var(--accent-strong); }
+.bracket-state { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--muted); }
+.bracket-match { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); overflow: hidden; }
+.bracket-match.live { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line); }
+.bracket-match.bye { border-style: dashed; }
+.bracket-match.empty { background: transparent; border-style: dashed; }
+.bracket-team { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; }
+.bracket-team + .bracket-team { border-top: 1px solid var(--border); }
+.bracket-team.won { font-weight: 650; color: var(--good-text); }
+.bracket-team.lost { color: var(--faint); text-decoration: line-through; }
+.bracket-meta { padding: 6px 12px; border-top: 1px solid var(--border); background: var(--surface-2); font-size: 12px; color: var(--muted); }
+.bracket-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--border); }
+.present .bracket { grid-auto-columns: minmax(240px, 1fr); }
+.present .bracket-team { padding: 10px 14px; font-size: 20px; }
+.present .bracket-meta { font-size: 14px; }

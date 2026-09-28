@@ -252,24 +252,7 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
         {view.phase === 'battle' && (
           <section className="card stack">
             <h2>Battle time</h2>
-            {view.battle ? (
-              <>
-                <p className="muted">
-                  {view.battle.opponent ? (
-                    <>
-                      You are fighting <strong>{view.battle.opponent}</strong>.
-                    </>
-                  ) : (
-                    'Waiting for your next match.'
-                  )}
-                </p>
-                <p className="muted">
-                  Place <strong>{view.battle.rank ?? '–'}</strong> · {view.battle.played} played · {view.battle.points} points
-                </p>
-              </>
-            ) : (
-              <p className="muted">The battle has not started yet.</p>
-            )}
+            {view.battle ? <BattleStatus battle={view.battle} /> : <p className="muted">The bracket is not drawn yet.</p>}
             <p className="muted">Watch the arena on the big screen.</p>
           </section>
         )}
@@ -307,4 +290,23 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
       </main>
     </>
   );
+}
+
+function BattleStatus({ battle }: { battle: NonNullable<TeamView['battle']> }) {
+  const { round, state, opponent, champion } = battle;
+  const vs = opponent && <strong>{opponent}</strong>;
+  switch (state) {
+    case 'champion':
+      return <p className="notice good">You won the battle!</p>;
+    case 'out':
+      return <p className="notice bad">You are out.{champion && <> {champion} won the battle.</>}</p>;
+    case 'bye':
+      return <p className="notice good">{round}: you have a bye and go through to the next round.</p>;
+    case 'through':
+      return <p className="notice good">You won against {vs}. Wait for the next round.</p>;
+    case 'fighting':
+      return <p className="notice">{round}: you are fighting {vs} now.</p>;
+    case 'waiting':
+      return <p className="notice">{round}: you fight {vs} next. The host starts the round.</p>;
+  }
 }

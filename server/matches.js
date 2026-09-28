@@ -5,21 +5,23 @@
 //
 // For the tournament program:
 //   GET    /api/catalog               weapons and upgrades the game knows
-//   GET    /api/status                displays connected, match on screen, queue length
+//   GET    /api/status                displays connected, matches on screen, queue length
 //   POST   /api/matches               queue a match -> the match (201)
 //   GET    /api/matches               every match this server has seen
 //   GET    /api/matches/:id           one match; add ?wait=1 to hold the request until it's done
 //   DELETE /api/matches/:id           cancel a match that isn't done yet
 // For the display page (src/ui/TournamentDisplay.js):
-//   GET    /api/display               server-sent events: the match to show (or null)
+//   GET    /api/display               server-sent events: the match on each screen (or null)
 //   POST   /api/matches/:id/start     the display started playing it
 //   POST   /api/matches/:id/result    the display finished it
 //
-// Matches are played one at a time in the order they were queued. Every
-// connected display plays the current match; they all show the same fight
-// because the match is seeded. The first result in counts. If the last display
-// disconnects mid-match, the match goes back to queued and restarts from the
-// beginning (same seed, same fight) when a display comes back.
+// The display page is split into SCREENS arenas (default 4, set with the
+// SCREENS environment variable, 1 to 4). Each screen plays one match; a free
+// screen takes the next match in the order they were queued. Every connected
+// display plays the same matches on the same screens; they all show the same
+// fights because the matches are seeded. The first result in counts. If the
+// last display disconnects, the matches on screen go back to queued and restart
+// from the beginning (same seed, same fight) when a display comes back.
 //
 // State lives in memory only: restarting the server forgets every match.
 import { randomUUID } from 'node:crypto';
@@ -31,9 +33,13 @@ const MAX_TIME_LIMIT = 600;
 const MAX_BODY = 64 * 1024;
 const MAX_COUNT = 100; // copies of one upgrade in the { id: count } form, whatever its maxStacks
 const PING_INTERVAL = 20_000; // keeps display connections open through proxies
+const MAX_SCREENS = 4; // the display lays out at most a 2×2 grid
+const SCREENS = Math.min(MAX_SCREENS, Math.max(1, Math.floor(Number(process.env.SCREENS ?? MAX_SCREENS)) || 1));
+const TIEBREAKS = new Set(['hp']);
 
 const matches = new Map(); // id -> match, in the order they were queued
-const queue = []; // matches not yet done; queue[0] is the one on screen
+const queue = []; // matches not yet done, in the order they were queued
+const screens = Array(SCREENS).fill(null); // the match on each screen, or null
 const displays = new Set(); // open /api/display responses
 const waiters = new Map(); // match id -> callbacks for ?wait=1 requests
 
@@ -129,7 +135,14 @@ function catalog() {
 }
 
 function status() {
-  return { displays: displays.size, current: queue[0] ?? null, queued: queue.length };
+  const onScreen = screens.filter(Boolean);
+  return {
+    displays: displays.size,
+    screens: SCREENS,
+    onScreen,
+    current: onScreen[0] ?? null,
+    queued: queue.length,
+  };
 }
 
 function queueMatch(body) {
@@ -142,6 +155,8 @@ function queueMatch(body) {
     fighters: body.fighters.map(parseFighter),
     seed: body.seed === undefined ? Math.floor(Math.random() * 2 ** 32) : parseSeed(body.seed),
     timeLimit: body.timeLimit === undefined ? DEFAULT_TIME_LIMIT : parseTimeLimit(body.timeLimit),
+    tiebreak: parseTiebreak(body.tiebreak),
+    screen: null,
     queuedAt: new Date().toISOString(),
     startedAt: null,
     finishedAt: null,
@@ -149,8 +164,22 @@ function queueMatch(body) {
   };
   matches.set(match.id, match);
   queue.push(match);
-  if (queue.length === 1) broadcast();
+  if (fillScreens()) broadcast();
   return match;
+}
+
+// Puts the next queued matches on the free screens. Returns true if any moved.
+function fillScreens() {
+  let changed = false;
+  for (let i = 0; i < screens.length; i++) {
+    if (screens[i]) continue;
+    const next = queue.find((match) => match.screen === null);
+    if (!next) break;
+    next.screen = i;
+    screens[i] = next;
+    changed = true;
+  }
+  return changed;
 }
 
 // A fighter is { name?, weapon, upgrades? }. `team` is accepted in place of
@@ -199,6 +228,18 @@ function parseTimeLimit(timeLimit) {
   return timeLimit;
 }
 
+// null (a draw is possible) or 'hp' (the fighter with the most HP left wins at the time limit).
+function parseTiebreak(tiebreak) {
+  if (tiebreak === undefined || tiebreak === null) return null;
+  if (!TIEBREAKS.has(tiebreak)) throw new ApiError(400, '"tiebreak" must be "hp" or null');
+  return tiebreak;
+}
+
+// A finished match keeps its `screen` number as a record, so check the screen itself.
+function isOnScreen(match) {
+  return match.screen !== null && screens[match.screen] === match;
+}
+
 function isFinished(match) {
   return match.status === 'done' || match.status === 'cancelled';
 }
@@ -225,13 +266,17 @@ function cancel(match) {
   return match;
 }
 
-// Takes a match that just finished off the queue and tells everyone who cares.
+// Takes a match that just finished off the queue and its screen, and tells everyone who cares.
 function settle(match) {
-  const wasCurrent = queue[0] === match;
   queue.splice(queue.indexOf(match), 1);
+  const wasOnScreen = isOnScreen(match);
+  if (wasOnScreen) screens[match.screen] = null;
   for (const reply of waiters.get(match.id) ?? []) reply();
   waiters.delete(match.id);
-  if (wasCurrent) broadcast();
+  if (wasOnScreen) {
+    fillScreens();
+    broadcast();
+  }
 }
 
 // ---- Display side --------------------------------------------------------------
@@ -243,17 +288,19 @@ function openDisplay(req, res) {
   send(res);
   res.on('close', () => {
     displays.delete(res);
-    // Nobody is watching the match any more; play it again from the start later.
-    const current = queue[0];
-    if (displays.size === 0 && current?.status === 'playing') {
-      current.status = 'queued';
-      current.startedAt = null;
+    if (displays.size > 0) return;
+    // Nobody is watching the matches any more; play them again from the start later.
+    for (const match of screens) {
+      if (match?.status !== 'playing') continue;
+      match.status = 'queued';
+      match.startedAt = null;
     }
   });
 }
 
+// One message holds every screen, so a display never sees half an update.
 function send(res) {
-  res.write(`data: ${JSON.stringify(queue[0] ?? null)}\n\n`);
+  res.write(`data: ${JSON.stringify({ screens })}\n\n`);
 }
 
 function broadcast() {
@@ -261,7 +308,7 @@ function broadcast() {
 }
 
 function start(match) {
-  if (match !== queue[0]) throw new ApiError(409, 'That match is not the one on screen');
+  if (!isOnScreen(match)) throw new ApiError(409, 'That match is not on screen');
   if (match.status === 'queued') {
     match.status = 'playing';
     match.startedAt = new Date().toISOString();
@@ -269,12 +316,17 @@ function start(match) {
   return match;
 }
 
-// Body: { winner: fighter index or null for a draw, time: sim seconds, hp: [hp left per fighter] }
+// Body: { winner: fighter index or null for a draw, time: sim seconds, hp: [hp left per fighter],
+//         decidedBy?: 'ko' | 'hp' (how the winner was found) }
 function finish(match, body) {
   if (match.status === 'done') return match; // another display got there first
-  if (match !== queue[0]) throw new ApiError(409, 'That match is not the one on screen');
+  if (!isOnScreen(match)) throw new ApiError(409, 'That match is not on screen');
 
-  const { winner, time, hp } = body;
+  const { winner, time, hp, decidedBy = 'ko' } = body;
+  if (decidedBy !== 'ko' && decidedBy !== 'hp') throw new ApiError(400, '"decidedBy" must be "ko" or "hp"');
+  if (decidedBy === 'hp' && (winner === null || match.tiebreak !== 'hp')) {
+    throw new ApiError(400, '"decidedBy": "hp" needs a winner and a match with the hp tiebreak');
+  }
   if (winner !== null && !(Number.isInteger(winner) && winner >= 0 && winner < match.fighters.length)) {
     throw new ApiError(400, '"winner" must be a fighter index or null');
   }
@@ -287,7 +339,7 @@ function finish(match, body) {
   match.result = {
     winner,
     winnerName: winner === null ? null : (match.fighters[winner].name ?? match.fighters[winner].weapon),
-    reason: winner === null && time >= match.timeLimit ? 'time' : 'ko',
+    reason: decidedBy === 'hp' ? 'hp' : winner === null && time >= match.timeLimit ? 'time' : 'ko',
     time,
     hp,
   };

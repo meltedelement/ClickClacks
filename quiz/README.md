@@ -1,6 +1,6 @@
 # Weapon Balls Quiz
 
-The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick. When the quiz reaches the battle phase the quiz server drives the game's match API (see [Battle](#battle)).
+The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick. When the quiz reaches the battle phase, the quiz server runs a knockout through the game's match API (see [Battle](#battle)).
 
 ## Run
 
@@ -88,30 +88,72 @@ The quiz stores only upgrade ids and counts. The game decides what each upgrade 
 
 ## Battle
 
-When the quiz reaches the `battle` phase the quiz server runs a round-robin
-through the game's match API: every team fights every other team once, one match
-at a time, and the standings rank by most wins.
+When the quiz reaches the `battle` phase, the quiz server runs a knockout
+tournament through the game's match API. The winners go through, and the last
+team left wins.
 
-- Start it with the presenter's **Start battle** button, or **Start battle** on
-  the admin page. Moving the phase to `battle` starts it automatically.
-- The game server must be running and its display page must be open and visible
-  on the big screen: `http://localhost:3002/?display` after
-  `npm run build && npm start` in the repo root, or `http://localhost:5173/?display`
-  under `npm run dev`. A match only plays while a display page is connected, and
-  the admin page shows how many are.
-- Point the quiz at the game with `GAME_API` (default `http://localhost:3002/api`).
-  The admin page shows the address and whether it answers.
-- Loadouts are copied when the battle starts, so a later change on the admin
-  page does not change a match that is already set. **Resync loadouts** copies
-  the current loadouts into the matches that have not been played yet.
-- A win is 1 point, a draw 0.5. Ties are broken by HP difference, then team
-  name. A match still going at the game's time limit is a draw.
-- Results are kept in `state.json`, so restarting the quiz server does not lose
-  them and an interrupted battle carries on. The game keeps its matches in
-  memory only, so if the game server restarts the match on screen is queued
-  again with the same seed — the same fight.
-- **Stop** cancels the match on screen. **Skip** gives up on one match; it is
-  cancelled, not drawn, so it never counts in the table.
+### The bracket
+
+- The first round is a random draw from a seed. The same seed and the same teams
+  give the same draw and the same fights. The admin page shows the seed, and you
+  can type one before you draw the bracket.
+- Teams fight in pairs in bracket order: match 1, match 2, and so on.
+- With an odd number of teams, the last team in the round gets a **bye**. It goes
+  through to the next round without a match. In the next round, the bye team is
+  listed first, so it always fights. A team never gets two byes in a row.
+- The rounds are named by team count: **Quarter-finals** (5 to 8 teams),
+  **Semi-finals** (3 or 4), **Final** (2). More teams than 8 start at "Round 1".
+
+| Teams | Rounds |
+| --- | --- |
+| 8 | 4 quarter-finals → 2 semi-finals → final |
+| 6 | 3 quarter-finals → 1 semi-final + 1 bye → final |
+| 5 | 2 quarter-finals + 1 bye → 1 semi-final + 1 bye → final |
+
+- Every match has a winner. The quiz sends each match with the game's `hp`
+  tiebreak: at the time limit, or after a double KO, the team with more HP left
+  (as a share of its max HP) wins. An exact tie is a coin flip from the match
+  seed. The arena banner says "WINS ON HP".
+
+### Running it
+
+1. Start the game server and open its display page on the big screen:
+   `http://localhost:3002/?display` after `npm run build && npm start` in the repo
+   root, or `http://localhost:5173/?display` under `npm run dev`. Keep the page
+   visible. A match plays only while a display page is connected.
+2. Move the quiz to the `battle` phase. This draws the bracket. You can also
+   click **Draw the bracket** on the admin page.
+3. Start each round with the presenter's Next button (**Start the
+   quarter-finals**) or on the admin page. The quiz sends all matches of the
+   round to the game at the same time. The display plays up to four at once.
+4. When all the matches of a round have a winner, the quiz draws the next round
+   and waits. Nothing plays until you start the next round.
+
+Point the quiz at the game with `GAME_API` (default `http://localhost:3002/api`).
+The admin page shows the address, whether it answers, and the number of display
+pages.
+
+### Host controls (admin page)
+
+- **Stop the round**: takes the round's unfinished matches off the game. They
+  wait until you start the round again, with the same seeds.
+- **Team wins**: you decide a match that is not on the game, for example one that
+  failed. The match shows "Decided by the host".
+- **Replay**: plays a match of the current round again with a new seed. For the
+  final, this also removes the champion.
+- **Reset battle**: removes the bracket and every result.
+
+### Loadouts, restarts and errors
+
+- The quiz copies each team's loadout when its round starts. Thus, a change on
+  the admin page between rounds applies to the next round.
+- A loadout that the game refuses fails only that match. Fix the loadout, then
+  replay the match or pick its winner.
+- The bracket and the results are kept in `state.json`. If the quiz server
+  restarts, a round that was playing continues. The quiz picks up the matches
+  that it already sent to the game.
+- The game keeps its matches in memory only. If the game server restarts, the
+  quiz sends the unfinished matches again with the same seeds: the same fights.
 
 The quiz takes its weapons and upgrades from the game's `GET /api/catalog`, so
 an offer can never name an upgrade the game does not know. If the game is not

@@ -1,7 +1,8 @@
 import { Fragment } from 'react';
 import type { AdminView, Team } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
-import { standings } from '../shared/battle.ts';
+import { currentRound } from '../shared/battle.ts';
+import { Bracket } from './Bracket.tsx';
 import { groupRounds, roundPosition } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
 import { Brand, LETTERS, Status, ThemeToggle } from './ui.tsx';
@@ -285,16 +286,14 @@ export function AdminPage() {
   );
 }
 
-// The round-robin: start / stop it, see the table, and see what each match is
-// doing. The quiz server queues matches on the game's match API and records the
-// result the display page reports.
+// The knockout: draw the bracket, start each round, and fix a match the game
+// could not finish. The quiz server queues matches on the game's match API and
+// records the result the display page reports.
 function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string, unknown>) => void }) {
   const { state, game } = view;
   const battle = state.battle;
-  const rows = standings(state.teams, battle?.matches ?? []);
+  const round = battle && currentRound(battle);
   const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '(deleted team)';
-  const planned = state.teams.length >= 2 ? (state.teams.length * (state.teams.length - 1)) / 2 : 0;
-  const running = !!battle && !battle.finishedAt;
   const displayUrl = game.url.replace(/\/api\/?$/, '/?display');
 
   return (
@@ -302,12 +301,12 @@ function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string,
       <div className="card-head" style={{ marginBottom: 0 }}>
         <h2>Battle</h2>
         <span className="muted num">
-          {battle ? `${battle.matches.filter((m) => m.status === 'done').length} / ${battle.matches.length} played` : `${planned} matches`}
+          {battle ? `${battle.matches.filter((m) => m.status === 'done').length} / ${battle.matches.length} played · seed ${battle.seed}` : `${state.teams.length} teams`}
         </span>
       </div>
       <p className="hint">
-        Every team fights every other team once; the best record wins. The game plays one match at a time on the display page. Open{' '}
-        <code>{displayUrl}</code> and leave it visible.
+        Knockout: a seeded random draw, and the winners go through. An odd team out gets a bye. At the time limit the team with more HP left wins. The game
+        plays up to four matches at once on the display page. Open <code>{displayUrl}</code> and leave it visible.
       </p>
       <div className="row start">
         <span className={game.reachable ? 'pill good' : 'pill'}>{game.reachable ? 'Game API up' : 'Game API down'}</span>
@@ -316,98 +315,73 @@ function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string,
         </span>
         <span className="faint mono">{game.url}</span>
       </div>
-      <div className="row start">
-        {!battle && (
-          <button className="primary" disabled={state.teams.length < 2} onClick={() => act({ type: 'battleStart' })}>
-            Start battle
-          </button>
-        )}
-        {running && (
-          <button onClick={() => act({ type: 'battleStop' })}>Stop</button>
-        )}
-        {running && <button onClick={() => act({ type: 'battleResync' })}>Resync loadouts</button>}
-        {battle && (
-          <button className="danger" onClick={() => confirm('Reset the battle? Every result is lost.') && act({ type: 'battleReset' })}>
-            Reset battle
-          </button>
-        )}
-      </div>
-      {battle?.note && <p className="hint">{battle.note}</p>}
-      {battle?.finishedAt && <p className="hint">Battle finished. {rows[0]?.name} wins the round-robin.</p>}
 
-      {battle && (
-        <div className="scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Team</th>
-                <th>Played</th>
-                <th>W</th>
-                <th>D</th>
-                <th>L</th>
-                <th>HP +/−</th>
-                <th>Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => (
-                <tr key={row.teamId}>
-                  <td className="num">{i + 1}</td>
-                  <td>{row.name}</td>
-                  <td className="num">{row.played}</td>
-                  <td className="num">{row.wins}</td>
-                  <td className="num">{row.draws}</td>
-                  <td className="num">{row.losses}</td>
-                  <td className="num">{row.hpFor - row.hpAgainst > 0 ? `+${row.hpFor - row.hpAgainst}` : row.hpFor - row.hpAgainst}</td>
-                  <td className="num">
-                    <strong>{row.points}</strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {!battle && (
+        <form
+          className="row start"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const seed = String(new FormData(e.currentTarget).get('seed') ?? '').trim();
+            act({ type: 'battleCreate', ...(seed ? { seed: Number(seed) } : {}) });
+          }}
+        >
+          <input name="seed" inputMode="numeric" placeholder="Seed (optional)" size={16} />
+          <button className="primary" disabled={state.teams.length < 2}>
+            Draw the bracket
+          </button>
+        </form>
       )}
 
       {battle && (
-        <div className="scroll" style={{ maxHeight: 320 }}>
-          <table>
-            <thead>
-              <tr>
-                <th>Match</th>
-                <th>Status</th>
-                <th>Winner</th>
-                <th>Time</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {battle.matches.map((match) => {
-                const open = match.status === 'pending' || match.status === 'queued' || match.status === 'playing';
-                return (
-                  <tr key={match.id}>
-                    <td>
-                      <span className="faint num">{match.id}</span> {teamName(match.a)} vs {teamName(match.b)}
-                    </td>
-                    <td className={match.status === 'failed' ? 'error' : ''}>
-                      {match.status}
-                      {match.error ? ` — ${match.error}` : ''}
-                    </td>
-                    <td>{match.status === 'done' ? (match.winner ? teamName(match.winner) : 'draw') : '–'}</td>
-                    <td className="num">{match.time === null ? '–' : `${Math.round(match.time)}s`}</td>
-                    <td>
-                      {open && (
-                        <button className="small ghost" onClick={() => act({ type: 'battleSkip', matchId: match.id })}>
-                          Skip
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="row start">
+          {round && !battle.champion && round.status === 'waiting' && (
+            <button className="primary" onClick={() => act({ type: 'battleStartRound' })}>
+              Start the {round.name.toLowerCase()}
+            </button>
+          )}
+          {round?.status === 'playing' && <button onClick={() => act({ type: 'battleStopRound' })}>Stop the {round.name.toLowerCase()}</button>}
+          <button className="danger" onClick={() => confirm('Reset the battle? The bracket and every result are lost.') && act({ type: 'battleReset' })}>
+            Reset battle
+          </button>
+        </div>
+      )}
+      {battle?.note && <p className="notice">{battle.note}</p>}
+      {battle?.champion && <p className="notice good">{teamName(battle.champion)} wins the battle.</p>}
+
+      {battle && (
+        <div className="scroll">
+          <Bracket
+            battle={battle}
+            teamName={teamName}
+            actions={(match) => {
+              const roundOpen = battle.rounds[match.round]?.status !== 'done';
+              const isFinal = match.round === battle.rounds.length - 1;
+              if (match.status === 'queued') return null;
+              if (match.status === 'done' && !(isFinal && battle.champion) && !roundOpen) return null;
+              return (
+                <>
+                  {match.status !== 'done' && roundOpen && (
+                    <>
+                      <button className="small ghost" onClick={() => act({ type: 'battleSetWinner', matchId: match.id, winner: match.a })}>
+                        {teamName(match.a)} wins
+                      </button>
+                      <button className="small ghost" onClick={() => act({ type: 'battleSetWinner', matchId: match.id, winner: match.b })}>
+                        {teamName(match.b)} wins
+                      </button>
+                    </>
+                  )}
+                  {(match.status === 'cancelled' || match.status === 'failed' || match.status === 'done') && (
+                    <button
+                      className="small ghost"
+                      onClick={() => (match.status !== 'done' || confirm('Play this match again? Its result is removed.')) && act({ type: 'battleReplay', matchId: match.id })}
+                    >
+                      Replay
+                    </button>
+                  )}
+                </>
+              );
+            }}
+          />
         </div>
       )}
     </section>

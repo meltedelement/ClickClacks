@@ -71,7 +71,7 @@ export class Renderer {
     ctx.strokeRect(2, 2, width - 4, height - 4);
 
     if (!sim) this.drawBanner(width, height, 'WAITING FOR MATCH', '#ffffff', '');
-    else if (sim.over) this.drawBanner(width, height, winnerText(sim.winner), sim.winner?.color, endHint);
+    else if (sim.over) this.drawBanner(width, height, winnerText(sim), sim.winner?.color, endHint);
     else if (paused) this.drawBanner(width, height, 'PAUSED', '#ffffff', 'Space to resume');
   }
 
@@ -135,6 +135,7 @@ export class Renderer {
   }
 }
 
-function winnerText(winner) {
-  return winner ? `${winner.name.toUpperCase()} WINS` : 'DRAW';
+function winnerText({ winner, decidedBy }) {
+  if (!winner) return 'DRAW';
+  return `${winner.name.toUpperCase()} WINS${decidedBy === 'hp' ? ' ON HP' : ''}`;
 }

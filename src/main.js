@@ -7,12 +7,14 @@ import { TournamentDisplay } from './ui/TournamentDisplay.js';
 // through the match API (server/matches.js) instead of the menu's matchup.
 const displayMode = new URLSearchParams(location.search).has('display');
 
-const game = new Game(document.getElementById('arena'), {
-  chooseMatch: () => (displayMode ? display.currentMatch : { fighters: controls.lineup }),
-  onMatchEnd: (sim) => display?.onMatchEnd(sim),
-});
-const controls = new Controls(game, { fighters: 2, displayMode });
-const display = displayMode ? new TournamentDisplay(game) : null;
-
-controls.startMatch();
-game.start();
+if (displayMode) {
+  const display = new TournamentDisplay(document.querySelector('.stage'));
+  new Controls(display.games, { fighters: 2, displayMode });
+} else {
+  const game = new Game(document.getElementById('arena'), {
+    chooseMatch: () => ({ fighters: controls.lineup }),
+  });
+  const controls = new Controls([game], { fighters: 2 });
+  controls.startMatch();
+  game.start();
+}

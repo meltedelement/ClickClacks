@@ -8,41 +8,67 @@ const MIN_GAP = 0.03; // s between two plays of the same sound, so fast-forward 
 // Weapons that hit with a dull thud instead of a sharp slice.
 const BLUNT = new Set(['mace']);
 
-export class Sound {
-  constructor() {
-    this.ctx = null;
-    this.lastPlayed = new Map();
-    this.muted = loadMuted();
+// One audio context for the page, shared by every Sound (the display page runs
+// several games at once, and browsers limit how many contexts a page can open).
+let audio = null; // { ctx, master, noiseBuffer } once unlocked
+let masterMuted = loadMuted(STORAGE_KEY);
 
-    const unlock = () => {
-      this.init();
-      if (this.ctx?.state === 'suspended') this.ctx.resume();
-    };
-    window.addEventListener('pointerdown', unlock);
-    window.addEventListener('keydown', unlock);
+function unlockAudio() {
+  if (!audio) {
+    const AudioContext = window.AudioContext ?? window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    // Compressor keeps a burst of overlapping hits from clipping.
+    const compressor = new DynamicsCompressorNode(ctx, { threshold: -12, ratio: 6 });
+    compressor.connect(ctx.destination);
+    const master = new GainNode(ctx, { gain: 0.5 });
+    master.connect(compressor);
+    audio = { ctx, master, noiseBuffer: makeNoise(ctx) };
+  }
+  if (audio.ctx.state === 'suspended') audio.ctx.resume();
+}
+window.addEventListener('pointerdown', unlockAudio);
+window.addEventListener('keydown', unlockAudio);
+
+export class Sound {
+  // Mutes every Sound on the page. Saved across visits.
+  static get muted() {
+    return masterMuted;
   }
 
+  static set muted(muted) {
+    masterMuted = muted;
+    saveMuted(STORAGE_KEY, muted);
+  }
+
+  // `key` names this Sound's own mute switch (e.g. one per display screen) so
+  // it is saved across visits. Without a key it has none.
+  constructor({ key = null } = {}) {
+    this.key = key && `${STORAGE_KEY}:${key}`;
+    this.lastPlayed = new Map();
+    this._muted = this.key ? loadMuted(this.key) : false;
+  }
+
+  // This Sound's own mute, on top of the page-wide Sound.muted.
   get muted() {
     return this._muted;
   }
 
   set muted(muted) {
     this._muted = muted;
-    saveMuted(muted);
+    if (this.key) saveMuted(this.key, muted);
   }
 
-  init() {
-    if (this.ctx) return;
-    const AudioContext = window.AudioContext ?? window.webkitAudioContext;
-    if (!AudioContext) return;
+  get ctx() {
+    return audio?.ctx ?? null;
+  }
 
-    this.ctx = new AudioContext();
-    // Compressor keeps a burst of overlapping hits from clipping.
-    const compressor = new DynamicsCompressorNode(this.ctx, { threshold: -12, ratio: 6 });
-    compressor.connect(this.ctx.destination);
-    this.master = new GainNode(this.ctx, { gain: 0.5 });
-    this.master.connect(compressor);
-    this.noiseBuffer = makeNoise(this.ctx);
+  get master() {
+    return audio.master;
+  }
+
+  get noiseBuffer() {
+    return audio.noiseBuffer;
   }
 
   // ---- Game sounds -----------------------------------------------------------
@@ -190,7 +216,7 @@ export class Sound {
 
   // True if the sound should play now. Also rate-limits each sound by key.
   ready(key) {
-    if (this.muted || !this.ctx || this.ctx.state !== 'running') return false;
+    if (masterMuted || this.muted || !this.ctx || this.ctx.state !== 'running') return false;
     const now = this.ctx.currentTime;
     if (now - (this.lastPlayed.get(key) ?? -1) < MIN_GAP) return false;
     this.lastPlayed.set(key, now);
@@ -274,17 +300,17 @@ function vary(amount) {
   return 1 + (Math.random() - 0.5) * 0.12 * amount;
 }
 
-function loadMuted() {
+function loadMuted(key) {
   try {
-    return localStorage.getItem(STORAGE_KEY) === '1';
+    return localStorage.getItem(key) === '1';
   } catch {
     return false;
   }
 }
 
-function saveMuted(muted) {
+function saveMuted(key, muted) {
   try {
-    localStorage.setItem(STORAGE_KEY, muted ? '1' : '0');
+    localStorage.setItem(key, muted ? '1' : '0');
   } catch {
     // Storage blocked (private mode etc.); the setting just won't persist.
   }

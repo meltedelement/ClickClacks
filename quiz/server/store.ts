@@ -5,8 +5,10 @@ import path from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
 import type {
   AdminView,
+  Battle,
   BattleMatch,
   BattleMatchStatus,
+  DecidedBy,
   Fighter,
   Loadout,
   Phase,
@@ -17,7 +19,7 @@ import type {
 } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
 import { roundPosition } from '../shared/rounds.ts';
-import { standings } from '../shared/battle.ts';
+import { advance, currentRound, teamProgress } from '../shared/battle.ts';
 import { getCatalog } from './catalog.ts';
 import { GAME_API } from './game.ts';
 
@@ -74,8 +76,8 @@ function freshState(questions: Question[], teams: Team[] = []): State {
 export let state: State = fs.existsSync(STATE_FILE) ? readJson<State>(STATE_FILE) : freshState(loadQuestions());
 // The old 'upgrades' phase was removed: teams now pick as soon as they earn an upgrade.
 if (!PHASES.includes(state.phase)) state.phase = 'lobby';
-// A state.json from before the battle existed, or a damaged one.
-if (!state.battle || !Array.isArray(state.battle.matches)) state.battle = null;
+// A state.json from before the knockout existed (or from the old round-robin), or a damaged one.
+if (!state.battle || !Array.isArray(state.battle.rounds) || !Array.isArray(state.battle.matches)) state.battle = null;
 
 const listeners = new Set<() => void>();
 export function onChange(fn: () => void) {
@@ -192,27 +194,22 @@ export function teamView(team: Team): TeamView {
   };
 }
 
-// What one team needs to know about the round-robin: who is next, and where
-// they sit. Null until the host starts the battle.
+// Where one team is in the knockout. Null until the host draws the bracket.
 function battleForTeam(team: Team): TeamView['battle'] {
   const battle = state.battle;
-  if (!battle) return null;
-  const mine = (m: BattleMatch) => m.a === team.id || m.b === team.id;
-  const active =
-    battle.matches.find((m) => (m.status === 'queued' || m.status === 'playing') && mine(m)) ??
-    battle.matches.find((m) => m.status === 'pending' && mine(m)) ??
-    null;
-  const opponentId = active ? (active.a === team.id ? active.b : active.a) : null;
-  const rows = standings(state.teams, battle.matches);
-  const rank = rows.findIndex((row) => row.teamId === team.id);
-  const row = rank >= 0 ? rows[rank] : null;
+  const round = battle && currentRound(battle);
+  if (!battle || !round) return null;
+  const { state: where, opponent } = teamProgress(battle, team.id);
   return {
-    opponent: opponentId ? (state.teams.find((t) => t.id === opponentId)?.name ?? null) : null,
-    status: active?.status ?? null,
-    rank: rank >= 0 ? rank + 1 : null,
-    points: row?.points ?? 0,
-    played: row?.played ?? 0,
+    round: round.name,
+    state: where,
+    opponent: opponent ? teamName(opponent) : null,
+    champion: battle.champion ? teamName(battle.champion) : null,
   };
+}
+
+function teamName(id: string): string {
+  return state.teams.find((t) => t.id === id)?.name ?? 'a deleted team';
 }
 
 export function adminView(online: string[]): AdminView {
@@ -303,16 +300,66 @@ export function pick(team: Team, upgradeId: string, picksUsed?: number) {
 }
 
 // ---- Battle -----------------------------------------------------------------
-// State changes for the round-robin, used by server/battle.ts (which talks to
-// the game) and by the views. They only touch `state.battle`.
+// State changes for the knockout, used by server/battle.ts (which talks to the
+// game) and by the views. They only touch `state.battle`.
 
 function findBattleMatch(id: string): BattleMatch | undefined {
   return state.battle?.matches.find((m) => m.id === id);
 }
 
-export function beginBattle(matches: BattleMatch[]) {
+export function beginBattle(battle: Battle) {
   mutate(() => {
-    state.battle = { startedAt: new Date().toISOString(), finishedAt: null, matches, note: '' };
+    state.battle = battle;
+  });
+}
+
+// The current round goes on the game. Each of its unplayed matches gets the
+// two teams' loadouts as they are now.
+export function startRound(fighters: Map<string, Fighter>) {
+  mutate(() => {
+    const round = state.battle && currentRound(state.battle);
+    if (!state.battle || !round) return;
+    round.status = 'playing';
+    for (const match of state.battle.matches) {
+      if (match.round !== round.index || match.status !== 'pending') continue;
+      const a = fighters.get(match.a);
+      const b = fighters.get(match.b);
+      if (a && b) match.fighters = [a, b];
+    }
+  });
+}
+
+// The current round goes back to waiting. Matches sent to the game go back to
+// pending (the driver cancels them there); played matches keep their result.
+export function stopRound() {
+  mutate(() => {
+    const round = state.battle && currentRound(state.battle);
+    if (!state.battle || !round || round.status !== 'playing') return;
+    round.status = 'waiting';
+    for (const match of state.battle.matches) {
+      if (match.round === round.index && match.status === 'queued') {
+        match.status = 'pending';
+        match.gameId = null;
+      }
+    }
+  });
+}
+
+// Every match in the current round has a winner: draw the next round, or crown the champion.
+export function finishRound() {
+  mutate(() => {
+    const battle = state.battle;
+    const round = battle && currentRound(battle);
+    if (!battle || !round || round.status === 'done') return;
+    const next = advance(battle);
+    round.status = 'done';
+    if ('champion' in next) {
+      battle.champion = next.champion;
+      battle.finishedAt = new Date().toISOString();
+    } else {
+      battle.rounds.push(next.round);
+      battle.matches.push(...next.matches);
+    }
   });
 }
 
@@ -326,15 +373,51 @@ export function setMatchGame(id: string, gameId: string | null, status: BattleMa
 }
 
 // A duplicate result (two displays, or a retry) is a no-op.
-export function recordResult(id: string, result: { winner: string | null; hp: [number, number]; time: number }) {
+export function recordResult(id: string, result: { winner: string; decidedBy: DecidedBy; hp: [number, number]; time: number }) {
   mutate(() => {
     const match = findBattleMatch(id);
     if (!match || match.status === 'done') return;
     match.status = 'done';
     match.winner = result.winner;
+    match.decidedBy = result.decidedBy;
     match.hp = result.hp;
     match.time = result.time;
     delete match.error;
+  });
+}
+
+// The host decides a match, e.g. one the game could not play.
+export function setWinner(id: string, winner: string) {
+  const match = findBattleMatch(id);
+  if (!match) throw new UserError('Unknown match.');
+  if (winner !== match.a && winner !== match.b) throw new UserError('The winner must be one of the two teams.');
+  if (match.status === 'queued') throw new UserError('That match is on the game now. Stop the round first.');
+  if (state.battle?.rounds[match.round]?.status === 'done') throw new UserError('That round is finished.');
+  mutate(() => {
+    match.status = 'done';
+    match.winner = winner;
+    match.decidedBy = 'host';
+    match.gameId = null;
+    delete match.error;
+  });
+}
+
+// The match is played again, with a new seed so it is a new fight.
+export function replayMatch(id: string, seed: number) {
+  const match = findBattleMatch(id);
+  if (!match) throw new UserError('Unknown match.');
+  if (match.status === 'queued') throw new UserError('That match is on the game now.');
+  const round = state.battle?.rounds[match.round];
+  if (!round || round !== currentRound(state.battle!)) throw new UserError('Only a match in the current round can be played again.');
+  mutate(() => {
+    Object.assign(match, { status: 'pending', seed, gameId: null, winner: null, decidedBy: null, hp: null, time: null });
+    delete match.error;
+    // Only the final can be replayed after it is done: that undoes the champion.
+    if (round.status === 'done') {
+      round.status = 'waiting';
+      state.battle!.champion = null;
+      state.battle!.finishedAt = null;
+    }
   });
 }
 
@@ -359,48 +442,15 @@ export function failMatch(id: string, error: string) {
 }
 
 export function setBattleNote(note: string) {
-  if (state.battle?.note === note) return;
+  if (!state.battle || state.battle.note === note) return;
   mutate(() => {
     if (state.battle) state.battle.note = note;
-  });
-}
-
-export function finishBattle() {
-  mutate(() => {
-    if (state.battle) state.battle.finishedAt = new Date().toISOString();
   });
 }
 
 export function resetBattle() {
   mutate(() => {
     state.battle = null;
-  });
-}
-
-// A match left over from an earlier run of this server is played again from the
-// start: the game keeps its matches in memory, so after a restart it may not
-// have the one we remember.
-export function resetUnfinishedMatches() {
-  mutate(() => {
-    for (const match of state.battle?.matches ?? []) {
-      if (match.status === 'queued' || match.status === 'playing') {
-        match.status = 'pending';
-        match.gameId = null;
-      }
-    }
-  });
-}
-
-// Re-copy the teams' current loadouts into the matches that have not been
-// played yet. Played matches keep the loadouts they were fought with.
-export function resyncFighters(fighters: Map<string, Fighter>) {
-  mutate(() => {
-    for (const match of state.battle?.matches ?? []) {
-      if (match.status !== 'pending') continue;
-      const a = fighters.get(match.a);
-      const b = fighters.get(match.b);
-      if (a && b) match.fighters = [a, b];
-    }
   });
 }
 

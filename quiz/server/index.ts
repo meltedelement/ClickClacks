@@ -137,26 +137,30 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
 // store.
 async function adminAction(body: any) {
   switch (body?.type) {
-    case 'battleStart':
-      return battle.start();
-    case 'battleStop':
-      return battle.stop();
-    case 'battleResync':
-      return battle.resync();
-    case 'battleSkip':
-      return battle.skip(String(body.matchId));
+    case 'battleCreate':
+      return battle.create(body.seed === undefined || body.seed === '' || body.seed === null ? undefined : body.seed);
+    case 'battleStartRound':
+      return battle.startRound();
+    case 'battleStopRound':
+      return battle.stopRound();
+    case 'battleReplay':
+      return battle.replay(String(body.matchId));
+    case 'battleSetWinner':
+      return battle.setWinner(String(body.matchId), String(body.winner));
     case 'battleReset':
-      battle.stop();
-      return store.resetBattle();
+      return battle.reset();
     case 'refreshCatalog':
       return refreshCatalog();
   }
+  // A quiz reset also drops the battle: take its matches off the game first.
+  if (body?.type === 'reset') battle.reset();
   store.adminAction(body);
-  // Moving the quiz into the battle starts it, so the presenter's last Next
-  // button is all the host needs. A loadout the game would refuse comes back as
-  // a 400 with the reason, which both the admin and the presenter pages show.
+  // Moving the quiz into the battle draws the bracket, so the presenter's Next
+  // button is all the host needs: the next press starts the first round. A
+  // loadout the game would refuse comes back as a 400 with the reason, which
+  // both the admin and the presenter pages show.
   if (body?.type === 'setPhase' && body.phase === 'battle' && !store.state.battle && store.state.teams.length >= 2) {
-    await battle.start();
+    battle.create();
   }
 }
 
