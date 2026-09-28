@@ -99,6 +99,17 @@ export class Ball {
     return this.statuses.some((status) => status.guardBroken);
   }
 
+  // True if any status stops this ball from dealing damage.
+  get stunned() {
+    return this.statuses.some((status) => status.stunned);
+  }
+
+  // This ball bounced off a wall: tell its upgrades and statuses.
+  registerWallBounce(sim) {
+    this.weapon.registerWallBounce(sim);
+    for (const status of this.statuses) status.onWallBounce(sim);
+  }
+
   // A status modifier multiplied across every status (1 if there are none).
   statusMultiplier(key) {
     let value = 1;

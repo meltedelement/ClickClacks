@@ -36,10 +36,17 @@ export class Status {
     return false;
   }
 
+  // True while the ball can't deal damage: its weapon hits do nothing and its
+  // non-weapon damage (spikes, thorns, burns it caused...) is skipped.
+  get stunned() {
+    return false;
+  }
+
   // ---- Hooks ----------------------------------------------------------------
 
   onApply(sim) {} // just put on this.ball
   onUpdate(dt, sim) {} // every physics step until it expires
+  onWallBounce(sim) {} // the ball bounced off a wall
 
   draw(ctx) {}
 

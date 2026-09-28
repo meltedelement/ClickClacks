@@ -118,6 +118,7 @@ export class Upgrade {
   onBlock(attackerWeapon, sim) {} // this weapon's shield stopped an enemy weapon
   preventHit(attackerWeapon, sim) { return false; } // return true to cancel a weapon hit on this ball
   onWallBounce(sim) {} // this ball bounced off a wall
+  onBump(otherBall, sim) {} // this ball's body touched another ball (every step they touch)
   onAbilityStart(ability, sim) {}
   onAbilityEnd(ability, sim) {}
 

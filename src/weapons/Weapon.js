@@ -109,6 +109,13 @@ export class Weapon {
     return this.parryCooldown <= 0;
   }
 
+  // Whether this weapon is stopped by touching `otherWeapon` right now. If
+  // not, it swings straight through: no parry, and it can still hit, but the
+  // other weapon is blocked as usual. Shields still stop it.
+  clashesWith(otherWeapon) {
+    return true;
+  }
+
   // Draw the weapon pointing along +x, starting at x = `start`.
   // The canvas is already translated to the ball's centre and rotated.
   drawLocal(ctx, start) {
@@ -160,6 +167,11 @@ export class Weapon {
   // This weapon's ball bounced off a wall.
   registerWallBounce(sim) {
     for (const upgrade of this.upgrades) upgrade.onWallBounce(sim);
+  }
+
+  // This weapon's ball bumped into `other` ball (their bodies touched).
+  registerBump(other, sim) {
+    for (const upgrade of this.upgrades) upgrade.onBump(other, sim);
   }
 
   // A modifier multiplied across the ability and every upgrade (1 if none change it).

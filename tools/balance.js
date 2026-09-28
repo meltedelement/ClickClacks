@@ -8,6 +8,8 @@
 //                         A fighter is a weapon id, optionally with upgrades:
 //                         sword+extra-blade+lifesteal. Upgrades stack: repeat
 //                         an id or add :N, e.g. sword+damage:3+crit
+//   -T, --transformations every transformation (sword+stalwart, mace+devil, ...) as a
+//                         fighter, all fighting each other. Ignored if -w is given
 //   -l, --list            list weapon and upgrade ids (by weapon)
 //   -m, --mirror          also run mirror matches (sword vs sword, ...)
 //   -t, --time-limit S    simulated seconds before a match is called a draw (default 180)
@@ -19,6 +21,7 @@
 //
 // Examples:
 //   npm run balance -- 2000
+//   npm run balance -- -T -g 200 --seed 1 --json transformations.json
 //   npm run balance -- -g 5000 -w sword,mace --csv matches.csv
 //   npm run balance -- -g 1000 --seed 42 --json before.json
 //   npm run balance -- -g 2000 -w sword,sword+extra-blade,spear,mace,daggers
@@ -177,6 +180,7 @@ function readOptions() {
     options: {
       games: { type: 'string', short: 'g' },
       weapons: { type: 'string', short: 'w' },
+      transformations: { type: 'boolean', short: 'T', default: false },
       list: { type: 'boolean', short: 'l', default: false },
       mirror: { type: 'boolean', short: 'm', default: false },
       'time-limit': { type: 'string', short: 't', default: '180' },
@@ -198,7 +202,8 @@ function readOptions() {
     process.exit(0);
   }
 
-  const weapons = values.weapons ? values.weapons.split(',').map((spec) => spec.trim()) : WEAPONS.map((W) => W.id);
+  const defaults = values.transformations ? transformationFighters() : WEAPONS.map((W) => W.id);
+  const weapons = values.weapons ? values.weapons.split(',').map((spec) => spec.trim()) : defaults;
   for (const spec of weapons) {
     try {
       parseFighter(spec);
@@ -219,6 +224,11 @@ function readOptions() {
     json: values.json,
     csv: values.csv,
   };
+}
+
+// One fighter spec per transformation, e.g. 'sword+stalwart'.
+function transformationFighters() {
+  return UPGRADES.filter((U) => U.transformation).flatMap((U) => U.weapons.map((w) => `${w}+${U.id}`));
 }
 
 // The usage text is the comment block at the top of this file.

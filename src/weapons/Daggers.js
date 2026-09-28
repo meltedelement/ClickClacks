@@ -18,6 +18,7 @@ export class Daggers extends Weapon {
     this.spinPerHit = 0.3;
     this.damagePerHit = 0.1;
     this.parryLock = 0.5; // s a dagger can't re-parry the same weapon it just parried
+    this.style = 'dagger'; // 'dagger' | 'hatchet' (the Axeman transformation)
     this.ability = new DashFlurry(this);
 
     // Fast dual blades tend to clash with the same weapon over and over;
@@ -38,6 +39,13 @@ export class Daggers extends Weapon {
     return super.canParry(otherWeapon) && !this.parryLocks.has(otherWeapon);
   }
 
+  // Against other Daggers, a dagger that can't parry right now (drawn red)
+  // swings through their blades instead of getting stuck on them. Otherwise
+  // two sets of fast blades lock each other out of hitting until time runs out.
+  clashesWith(otherWeapon) {
+    return !(otherWeapon instanceof Daggers) || this.canParry(otherWeapon);
+  }
+
   update(dt, sim) {
     super.update(dt, sim);
     for (const [weapon, time] of this.parryLocks) {
@@ -52,6 +60,10 @@ export class Daggers extends Weapon {
   }
 
   drawLocal(ctx, start) {
+    if (this.style === 'hatchet') {
+      drawHatchet(ctx, start, start + this.length, this.parryLocked);
+      return;
+    }
     const end = start + this.length;
     const bladeStart = start + 12;
 
@@ -74,4 +86,33 @@ export class Daggers extends Weapon {
     ctx.closePath();
     ctx.fill();
   }
+}
+
+// A wooden handle with an iron head at the end: a curved bit on one side and a
+// short poll on the other. Sized for Axeman's thicker hitbox.
+function drawHatchet(ctx, start, end, locked) {
+  // Handle
+  ctx.fillStyle = '#7a5530';
+  ctx.fillRect(start, -2.5, end - start - 3, 5);
+
+  // Head
+  ctx.fillStyle = '#6f7780';
+  ctx.beginPath();
+  ctx.moveTo(end - 16, -6);
+  ctx.lineTo(end - 3, -6);
+  ctx.lineTo(end - 3, 2);
+  ctx.lineTo(end - 16, 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bit, with the cutting edge along the far side
+  ctx.fillStyle = locked ? '#e8493f' : '#e3e8ee';
+  ctx.beginPath();
+  ctx.moveTo(end - 14, 2);
+  ctx.lineTo(end - 5, 2);
+  ctx.quadraticCurveTo(end + 1, 6, end + 1, 11);
+  ctx.quadraticCurveTo(end - 9, 13, end - 18, 10);
+  ctx.quadraticCurveTo(end - 13, 7, end - 14, 2);
+  ctx.closePath();
+  ctx.fill();
 }

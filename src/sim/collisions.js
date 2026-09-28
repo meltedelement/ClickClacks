@@ -36,11 +36,12 @@ export function bounceOffWalls(ball, arena) {
 
 // Elastic bounce between two equal-mass balls. An unstoppable ball acts as if
 // it had infinite mass: the other ball takes all the push and bounces off it.
+// Returns true if the balls were touching.
 export function resolveBallCollision(a, b) {
   const delta = sub(b.pos, a.pos);
   const dist = length(delta);
   const minDist = a.radius + b.radius;
-  if (dist >= minDist || dist < 1e-9) return;
+  if (dist >= minDist || dist < 1e-9) return false;
 
   const aHeavy = a.weapon.unstoppable;
   const bHeavy = b.weapon.unstoppable;
@@ -55,11 +56,13 @@ export function resolveBallCollision(a, b) {
   b.pos.y += n.y * overlap * bShare;
 
   const approach = dot(sub(a.vel, b.vel), n);
-  if (approach <= 0) return;
-  a.vel.x -= n.x * approach * 2 * aShare;
-  a.vel.y -= n.y * approach * 2 * aShare;
-  b.vel.x += n.x * approach * 2 * bShare;
-  b.vel.y += n.y * approach * 2 * bShare;
+  if (approach > 0) {
+    a.vel.x -= n.x * approach * 2 * aShare;
+    a.vel.y -= n.y * approach * 2 * aShare;
+    b.vel.x += n.x * approach * 2 * bShare;
+    b.vel.y += n.y * approach * 2 * bShare;
+  }
+  return true;
 }
 
 // Returns the contact point if any blade of the weapon touches the ball, otherwise null.

@@ -67,9 +67,13 @@ export class Simulation {
 
     for (const ball of balls) ball.update(dt, this);
     for (const ball of balls) {
-      if (bounceOffWalls(ball, this.arena)) ball.weapon.registerWallBounce(this);
+      if (bounceOffWalls(ball, this.arena)) ball.registerWallBounce(this);
     }
-    forEachPair(balls, resolveBallCollision);
+    forEachPair(balls, (a, b) => {
+      if (!resolveBallCollision(a, b)) return;
+      a.weapon.registerBump(b, this);
+      b.weapon.registerBump(a, this);
+    });
 
     // Once the match is decided the winner keeps bouncing around, but nothing fights.
     if (!this.over) this.resolveCombat(balls);
@@ -81,11 +85,15 @@ export class Simulation {
 
     forEachPair(balls, (a, b) => {
       if (a.weapon.unblockable || b.weapon.unblockable || a.guardBroken || b.guardBroken) return;
+      // A weapon that doesn't clash right now swings through; the other is still stopped by it.
+      const aClashes = a.weapon.clashesWith(b.weapon);
+      const bClashes = b.weapon.clashesWith(a.weapon);
+      if (!aClashes && !bClashes) return;
       const point = weaponsClash(a.weapon, b.weapon);
       if (!point) return;
-      blocked.add(a.weapon);
-      blocked.add(b.weapon);
-      if (a.weapon.canParry(b.weapon) && b.weapon.canParry(a.weapon)) {
+      if (aClashes) blocked.add(a.weapon);
+      if (bClashes) blocked.add(b.weapon);
+      if (aClashes && bClashes && a.weapon.canParry(b.weapon) && b.weapon.canParry(a.weapon)) {
         this.applyParry(a, b, point);
       }
     });
@@ -159,6 +167,9 @@ export class Simulation {
   applyHit(attacker, target, point) {
     const weapon = attacker.weapon;
 
+    // A stunned ball's weapon passes through harmlessly.
+    if (attacker.stunned) return;
+
     // A dodge wastes the swing: no damage, no knockback, and the usual hit
     // cooldown so it isn't rerolled every step while the blade passes through.
     if (target.dodges()) {
@@ -190,9 +201,10 @@ export class Simulation {
 
   // Damage that doesn't come from a weapon hit (thorns, spiked shields, burning...):
   // no knockback, no hit cooldown, and armor and dodging don't apply. Hooks
-  // aren't triggered either, so thorns can't bounce off thorns forever.
+  // aren't triggered either, so thorns can't bounce off thorns forever. A
+  // stunned source deals none.
   dealDamage(source, target, damage, { reason, color } = {}) {
-    if (!target.alive || damage <= 0) return;
+    if (!target.alive || damage <= 0 || source?.stunned) return;
     const dealt = target.takeDamage(damage);
     this.onEvent('damage', { source, target, damage, dealt, reason, color });
     if (!target.alive) this.onEvent('death', { ball: target });
