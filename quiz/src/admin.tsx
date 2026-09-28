@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import type { AdminView } from '../shared/types.ts';
 import { post, useEvents } from './api.ts';
+import { Brand, ThemeToggle } from './ui.tsx';
 
 const KEY_STORAGE = 'quiz-admin-key';
 
@@ -31,18 +32,31 @@ export function useAdmin() {
 export function AdminLogin({ title, admin }: { title: string; admin: ReturnType<typeof useAdmin> }) {
   const { key, saveKey, connected } = admin;
   return (
-    <main>
-      <h1>{title}</h1>
-      <p>{connected ? 'Loading…' : key ? 'Wrong admin key, or the server is not running.' : 'Enter the admin key to continue.'}</p>
+    <main className="center">
       <form
+        className="card stack loose"
         onSubmit={(e) => {
           e.preventDefault();
           saveKey((new FormData(e.currentTarget).get('key') as string).trim());
         }}
       >
-        <input name="key" type="password" placeholder="Admin key" defaultValue={key} autoFocus /> <button>Connect</button>
+        <div className="stack">
+          <div className="row">
+            <Brand />
+            <ThemeToggle />
+          </div>
+          <h1 className="title">{title}</h1>
+          <p className={key && !connected ? 'error' : 'muted'}>
+            {connected ? 'Loading…' : key ? 'Wrong admin key, or the server is not running.' : 'Enter the admin key to continue.'}
+          </p>
+        </div>
+        <label className="field">
+          <span>Admin key</span>
+          <input name="key" type="password" defaultValue={key} autoFocus />
+          <small>The server prints the admin key when it starts.</small>
+        </label>
+        <button className="primary large block">Connect</button>
       </form>
-      <p className="hint">The server prints the admin key when it starts.</p>
     </main>
   );
 }

@@ -4,8 +4,7 @@
 import { useEffect } from 'react';
 import type { AdminView } from '../shared/types.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
-
-const LETTERS = 'ABCDEFGH';
+import { Brand, LETTERS, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
 
 interface Step {
   label: string;
@@ -53,92 +52,153 @@ export function PresenterPage() {
   const { state, catalog } = view;
   const q = state.questions[state.questionIndex];
   const answers = (q && state.answers[q.id]) ?? {};
+  const answerCount = Object.keys(answers).length;
   const revealed = !!q && state.phase === 'reveal';
   const showQuestion = q && (state.phase === 'question' || state.phase === 'locked' || state.phase === 'reveal');
   const weaponName = (id: string) => catalog.weapons.find((w) => w.id === id)?.name ?? id;
+  const phaseLabel = { lobby: 'Lobby', question: 'Answers open', locked: 'Answers closed', reveal: 'Answer', battle: 'Battle' }[state.phase];
 
   return (
-    <main className="present">
-      <header className="row">
-        <div className="hint">
-          {q ? `Question ${state.questionIndex + 1} / ${state.questions.length} · ${q.round}` : 'No questions'} · {state.phase}
-        </div>
-        <span className={connected ? 'ok' : 'error'}>{connected ? 'connected' : 'reconnecting…'}</span>
-      </header>
-      {error && <p className="error">{error}</p>}
-      {state.message && <p className="banner">{state.message}</p>}
-
-      {state.phase === 'lobby' && (
-        <section>
-          <h1 className="big">Join the quiz</h1>
-          <p className="question">
-            Open <strong>{location.origin}</strong> on your phone.
-          </p>
-        </section>
-      )}
-
-      {state.phase === 'battle' && <h1 className="big">Battle time!</h1>}
-
-      {showQuestion && (
-        <section>
-          <h1 className="big">{q.text}</h1>
-          <p className="hint">
-            {Object.keys(answers).length} / {state.teams.length} teams answered
-          </p>
-          <div className="options-grid">
-            {q.options.map((option, i) => {
-              const votes = Object.values(answers).filter((choice) => choice === i).length;
-              const percent = Object.keys(answers).length ? Math.round((votes / Object.keys(answers).length) * 100) : 0;
-              const classes = ['present-option'];
-              if (revealed) classes.push(i === q.answer ? 'correct' : 'dim');
-              return (
-                <div key={i} className={classes.join(' ')}>
-                  <div className="row">
-                    <span>
-                      <strong>{LETTERS[i]}</strong> {option}
-                    </span>
-                    {revealed && <span className="count">{percent}%</span>}
-                  </div>
-                  {revealed && (
-                    <div className="bar">
-                      <div style={{ width: `${percent}%` }} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {(state.phase === 'lobby' || state.phase === 'battle') && (
-        <section>
-          <h2>Teams ({state.teams.length})</h2>
-          <div className="chips">
-            {state.teams.length === 0 && <span className="hint">No teams yet.</span>}
-            {state.teams.map((t) => (
-              <span key={t.id} className="chip">
-                {t.name}
-                <span className="hint"> · {weaponName(t.weapon)}</span>
+    <div className="present">
+      <header className="topbar">
+        <div className="topbar-inner">
+          <Brand name="Weapon Balls quiz" />
+          <div className="row">
+            {q && state.phase !== 'lobby' && (
+              <span className="muted num">
+                Question {state.questionIndex + 1} of {state.questions.length}
               </span>
-            ))}
+            )}
+            <span className={state.phase === 'question' ? 'pill accent' : state.phase === 'reveal' ? 'pill good' : 'pill'}>{phaseLabel}</span>
+            <Status connected={connected} />
+            <ThemeToggle />
           </div>
-        </section>
+        </div>
+      </header>
+      {q && state.phase !== 'lobby' && (
+        <div className="progress" style={{ borderRadius: 0, height: 3 }}>
+          <div style={{ width: `${((state.questionIndex + 1) / state.questions.length) * 100}%` }} />
+        </div>
       )}
 
-      <footer className="row">
-        <button disabled={state.questionIndex <= 0} onClick={() => act({ type: 'setQuestion', index: state.questionIndex - 1 })}>
-          ◀ Prev question
-        </button>
-        {step ? (
-          <button className="next" onClick={() => act(step.action)}>
-            {step.label} ▶
-          </button>
-        ) : (
-          <span className="hint">End of the quiz</span>
+      <main className="present-body">
+        {error && <p className="error">{error}</p>}
+        {state.message && <p className="banner">{state.message}</p>}
+
+        {state.phase === 'lobby' && (
+          <section className="join">
+            <div>
+              <p className="eyebrow">Get your phones out</p>
+              <h1 className="present-q" style={{ marginTop: 12 }}>
+                Join the quiz
+              </h1>
+              <p className="muted" style={{ marginTop: 16, fontSize: 20 }}>
+                Open this address, choose a team name and a weapon.
+              </p>
+              <span className="join-url">{location.host}</span>
+            </div>
+            <TeamList teams={state.teams} weaponName={weaponName} />
+          </section>
         )}
+
+        {state.phase === 'battle' && (
+          <section className="stack loose">
+            <div>
+              <p className="eyebrow">Watch the arena</p>
+              <h1 className="present-q" style={{ marginTop: 12 }}>
+                Battle time
+              </h1>
+            </div>
+            <TeamList teams={state.teams} weaponName={weaponName} />
+          </section>
+        )}
+
+        {showQuestion && (
+          <section className="stack loose">
+            <div className="stack">
+              <p className="eyebrow">{q.round}</p>
+              <h1 className="present-q">{q.text}</h1>
+            </div>
+            <div className="present-grid">
+              {q.options.map((option, i) => {
+                const votes = Object.values(answers).filter((choice) => choice === i).length;
+                const percent = answerCount ? Math.round((votes / answerCount) * 100) : 0;
+                const classes = ['present-option'];
+                if (revealed) classes.push(i === q.answer ? 'correct' : 'dim');
+                return (
+                  <div key={i} className={classes.join(' ')}>
+                    <div className="line">
+                      <span className="letter">{LETTERS[i]}</span>
+                      <span className="text">{option}</span>
+                      {revealed && <span className="percent">{percent}%</span>}
+                    </div>
+                    {revealed && (
+                      <div className="progress">
+                        <div style={{ width: `${percent}%` }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* The dots fill in join order, not by team, so the screen never shows which team answered. */}
+            <div className="answered present-meta">
+              <div className="answered-dots" aria-hidden="true">
+                {state.teams.map((t, i) => (
+                  <span key={t.id} className={i < answerCount ? 'on' : ''} />
+                ))}
+              </div>
+              <span className="num">
+                {answerCount} of {state.teams.length} teams answered
+              </span>
+            </div>
+          </section>
+        )}
+      </main>
+
+      <footer className="present-footer">
+        <button className="ghost" disabled={state.questionIndex <= 0} onClick={() => act({ type: 'setQuestion', index: state.questionIndex - 1 })}>
+          ← Previous question
+        </button>
+        <div className="row">
+          <span className="hint">
+            <kbd>Space</kbd> or <kbd>→</kbd>
+          </span>
+          {step ? (
+            <button className="primary" onClick={() => act(step.action)}>
+              {step.label} →
+            </button>
+          ) : (
+            <span className="muted">End of the quiz</span>
+          )}
+        </div>
       </footer>
-      <p className="hint">Space, Enter or → also does the next step.</p>
-    </main>
+    </div>
+  );
+}
+
+function TeamList({ teams, weaponName }: { teams: AdminView['state']['teams']; weaponName: (id: string) => string }) {
+  return (
+    <div className="stack">
+      <div className="row">
+        <h2 className="eyebrow">Teams</h2>
+        <span className="muted num">{teams.length}</span>
+      </div>
+      {teams.length === 0 ? (
+        <p className="muted">No teams yet.</p>
+      ) : (
+        <div className="team-grid">
+          {teams.map((t) => (
+            <div key={t.id} className="team-card">
+              <strong>{t.name}</strong>
+              <span className="row start" style={{ gap: 8 }}>
+                <WeaponSwatch id={t.weapon} />
+                {weaponName(t.weapon)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

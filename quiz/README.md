@@ -42,6 +42,15 @@ The host moves through these phases on the admin page:
 
 Picks are calculated again from the answers each time. Picks left = correct revealed answers × `upgradesPerCorrect` + bonus picks − picks used. Thus, if you change an answer or a "revealed" box on the admin page, the pick count is correct immediately.
 
+## Live updates and poor connections
+
+The server pushes the full state to each device with server-sent events (`/api/events`). There is no polling. Each action is a normal `POST`.
+
+- The server sends a ping event every 15 seconds. If a device gets nothing for 35 seconds, it opens a new connection.
+- A device also connects again when the page becomes visible or the network comes back.
+- A `POST` stops after 10 seconds with an error. The buttons stay disabled until the server replies.
+- A pick includes the `picksUsed` value that the device saw. Thus, a repeated pick is rejected and does not use a second pick.
+
 ## Presenter view
 
 `/present` shows the current question and the teams. Show it on a projector or a shared screen.

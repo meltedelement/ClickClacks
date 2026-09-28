@@ -47,10 +47,16 @@ function broadcast() {
 }
 store.onChange(broadcast);
 
-// Keep connections open through proxies.
+// Only the admin view shows who is online.
+function sendAdmins() {
+  for (const client of clients) if (client.teamId === null) send(client);
+}
+
+// Keeps connections open through proxies, and lets clients see that the
+// connection is alive (src/api.ts reconnects after 35 s of silence).
 setInterval(() => {
-  for (const { res } of clients) res.write(': ping\n\n');
-}, 20_000);
+  for (const { res } of clients) res.write('event: ping\ndata: {}\n\n');
+}, 15_000);
 
 function json(res: http.ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -72,21 +78,19 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
 
   if (route === 'GET /api/events') {
     const token = url.searchParams.get('token');
-    let client: Client;
-    if (token) {
-      if (!store.findTeam(token)) return json(res, 404, { error: 'Unknown team' });
-      client = { res, teamId: token };
-    } else {
-      if (!isAdmin(url.searchParams.get('key'))) return json(res, 401, { error: 'Wrong admin key' });
-      client = { res, teamId: null };
-    }
+    if (!token && !isAdmin(url.searchParams.get('key'))) return json(res, 401, { error: 'Wrong admin key' });
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    // A team deleted while its device was offline: send null so the device
+    // leaves, instead of an error that it would keep retrying.
+    if (token && !store.findTeam(token)) return res.end('data: null\n\n');
+    const client: Client = { res, teamId: token };
     clients.add(client);
     req.on('close', () => {
       clients.delete(client);
-      broadcast(); // update the online list on the admin page
+      sendAdmins();
     });
-    return broadcast();
+    if (client.teamId) send(client);
+    return sendAdmins();
   }
 
   // Read by the game: one { team, weapon, upgrades } per team.
@@ -117,7 +121,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     return json(res, 200, { ok: true });
   }
   if (route === 'POST /api/pick') {
-    store.pick(team!, (await readBody(req)).upgradeId);
+    const body = await readBody(req);
+    store.pick(team!, body.upgradeId, body.picksUsed);
     return json(res, 200, { ok: true });
   }
 

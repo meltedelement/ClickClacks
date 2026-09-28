@@ -79,6 +79,7 @@ export interface TeamView {
     weapon: string;
     upgrades: Record<string, number>;
     picks: number;
+    picksUsed: number;
     offer: string[] | null;
   };
 }

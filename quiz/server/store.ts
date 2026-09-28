@@ -142,6 +142,7 @@ export function teamView(team: Team): TeamView {
       weapon: team.weapon,
       upgrades: team.upgrades,
       picks: picksAvailable(team),
+      picksUsed: team.picksUsed,
       offer: team.offer,
     },
   };
@@ -214,7 +215,10 @@ export function chooseWeapon(team: Team, weapon: string) {
   });
 }
 
-export function pick(team: Team, upgradeId: string) {
+// `picksUsed` is the count the device saw when it sent the pick. If it no
+// longer matches, the pick is a repeat (double tap, or a retry after a timeout).
+export function pick(team: Team, upgradeId: string, picksUsed?: number) {
+  if (picksUsed !== undefined && picksUsed !== team.picksUsed) throw new UserError('That pick is already saved');
   if (picksAvailable(team) <= 0 || !team.offer?.includes(upgradeId)) throw new UserError('That upgrade is not on offer');
   mutate(() => {
     team.upgrades[upgradeId] = (team.upgrades[upgradeId] ?? 0) + 1;
