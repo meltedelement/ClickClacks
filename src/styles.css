@@ -1,0 +1,168 @@
+:root {
+  --bg: #0f1116;
+  --panel: rgba(27, 31, 40, 0.92);
+  --panel-border: #2a303c;
+  --control: #252a35;
+  --text: #e6e9ef;
+  --muted: #8b93a3;
+  --accent: #5b8cff;
+  --radius: 10px;
+  --gutter: 12px;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* The arena is square, so it fills whichever screen dimension is smaller. */
+.stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+#arena {
+  --size: calc(min(100vw, 100vh) - var(--gutter) * 2);
+  display: block;
+  width: var(--size);
+  height: var(--size);
+  border-radius: var(--radius);
+}
+
+/* ---- Menu ---- */
+
+.menu {
+  position: fixed;
+  top: var(--gutter);
+  right: var(--gutter);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.menu-toggle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: var(--panel);
+  backdrop-filter: blur(6px);
+}
+
+.menu-panel {
+  width: min(300px, calc(100vw - var(--gutter) * 2));
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.menu-panel[hidden] {
+  display: none;
+}
+
+.menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+h2 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fighter-selects {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field-label {
+  flex: 0 0 72px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+select,
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+select {
+  flex: 1;
+}
+
+select:hover,
+button:hover {
+  border-color: var(--accent);
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.buttons button {
+  flex: 1;
+}
+
+input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+output {
+  width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.check input {
+  accent-color: var(--accent);
+}
