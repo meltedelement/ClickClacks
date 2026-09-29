@@ -78,6 +78,7 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
   const [name, setName] = useState('');
   const [weapon, setWeapon] = useState('');
   const [code, setCode] = useState('');
+  const [rejoin, setRejoin] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -93,7 +94,7 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const { token } = await post('/api/join', { name, weapon, code });
+      const { token } = await post('/api/join', rejoin ? { code } : { name, weapon });
       onJoin(token);
     } catch (err) {
       setError((err as Error).message);
@@ -108,22 +109,37 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
           <h1 className="title">Join the quiz</h1>
           <p className="lead">Every correct answer earns your team an upgrade. After every second round, your ball fights in the arena.</p>
         </div>
-        <form onSubmit={submit} className="card stack loose">
-          <label className="field">
-            <span>Team name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} autoComplete="off" autoFocus />
-          </label>
-          <WeaponPicker weapons={weapons} value={weapon} onChange={setWeapon} />
-          <label className="field">
-            <span>Team code</span>
-            <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="off" placeholder="Optional" />
-            <small>Only to rejoin a team from another phone.</small>
-          </label>
-          {error && <p className="error">{error}</p>}
-          <button type="submit" className="primary large block" disabled={!name.trim()}>
-            Join
-          </button>
-        </form>
+        {rejoin ? (
+          <form onSubmit={submit} className="card stack loose">
+            <label className="field">
+              <span>Team code</span>
+              <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="off" autoFocus />
+              <small>Shown on your team's other phone, or ask the host.</small>
+            </label>
+            {error && <p className="error">{error}</p>}
+            <button type="submit" className="primary large block" disabled={!code.trim()}>
+              Rejoin
+            </button>
+            <button type="button" className="ghost" onClick={() => { setRejoin(false); setError(''); }}>
+              Make a new team instead
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={submit} className="card stack loose">
+            <label className="field">
+              <span>Team name</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} autoComplete="off" autoFocus />
+            </label>
+            <WeaponPicker weapons={weapons} value={weapon} onChange={setWeapon} />
+            {error && <p className="error">{error}</p>}
+            <button type="submit" className="primary large block" disabled={!name.trim()}>
+              Join
+            </button>
+            <button type="button" className="ghost" onClick={() => { setRejoin(true); setError(''); }}>
+              Rejoin with a team code
+            </button>
+          </form>
+        )}
       </main>
     </>
   );

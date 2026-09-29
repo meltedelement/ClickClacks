@@ -10,6 +10,12 @@ npm run dev     # API server (port 3001) + Vite client (port 5174), with reload
 npm run build && npm start   # one server on port 3001 that serves the built client
 ```
 
+From the repo root, `npm run dev:all` (or `npm run start:all`, which builds both
+first) runs the quiz and the game together and points the quiz at the match API
+for you. See the [main README](../README.md#running). You can also run the quiz
+alone from here. Then set `GAME_API` so that the battle finds the game
+(`GAME_API=http://localhost:5173/api npm run dev`, or the built `:3002`).
+
 - Teams open `http://<your-ip>:5174/` (dev) or `http://<your-ip>:3001/` (start).
 - The host opens `/admin` and enters the admin key.
 - The host shows `/present` on the big screen. It uses the same admin key.
@@ -74,7 +80,7 @@ The server pushes the full state to each device with server-sent events (`/api/e
 - Reload the questions. Reset the quiz, with or without the teams.
 - See the raw state. Copy the loadouts JSON.
 
-A team that loses its device can rejoin with the same team name and the team code. The team page and the admin page show the code.
+A team that loses its device can rejoin with the team code only. Tap "Rejoin with a team code" on the join page. The team page and the admin page show the code.
 
 ## Game interface
 

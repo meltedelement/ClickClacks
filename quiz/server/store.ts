@@ -275,20 +275,32 @@ function checkWeapon(weapon: string) {
   if (!getCatalog().weapons.some((w) => w.id === weapon)) throw new UserError('Unknown weapon');
 }
 
+// A code alone rejoins its team, so codes must be unique.
+function newCode(): string {
+  let code: string;
+  do code = String(randomInt(1000, 10000));
+  while (state.teams.some((t) => t.code === code));
+  return code;
+}
+
 export function join(name: string, weapon: string, code: string): Team {
+  code = String(code ?? '').trim();
+  if (code) {
+    const team = state.teams.find((t) => t.code === code);
+    if (!team) throw new UserError('No team has that code. The host can see the codes.');
+    return team;
+  }
+
   name = String(name ?? '').trim().slice(0, 30);
   if (!name) throw new UserError('Enter a team name');
-
-  const existing = state.teams.find((t) => t.name.toLowerCase() === name.toLowerCase());
-  if (existing) {
-    if (String(code ?? '').trim() === existing.code) return existing;
-    throw new UserError('That team name is taken. To rejoin, enter the team code (the host can see it).');
+  if (state.teams.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+    throw new UserError('That team name is taken. To rejoin, use the team code (the host can see it).');
   }
 
   checkWeapon(weapon);
   const team: Team = {
     id: randomUUID(),
-    code: String(randomInt(1000, 10000)),
+    code: newCode(),
     name,
     weapon,
     upgrades: {},

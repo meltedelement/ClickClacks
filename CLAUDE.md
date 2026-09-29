@@ -8,6 +8,7 @@ Weapon Balls: balls with spinning weapons bounce around an arena and fight. Vani
 
 ```sh
 npm run dev                              # Vite dev server with hot reload
+npm run dev:all                          # game + quiz together, quiz pointed at the match API (tools/run-all.js)
 npm run build                            # production build to dist/
 npm run balance                          # headless balance run, 500 matches per pairing
 npm run balance -- -g 2000 -w sword,mace # subset of weapons, more matches
