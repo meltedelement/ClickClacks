@@ -122,7 +122,9 @@ stages 4 and 5 after round 7.
 
 Transformations are the big upgrades that reshape a weapon. The quiz never
 offers them for correct answers. Instead, before each stage, each team that is
-still in the battle picks one transformation on its phone. The team keeps every
+still in the battle picks one transformation on its phone. The phone shows 3
+random transformations from the ones that fit the team's weapon. The offer stays
+the same until the team picks. The team keeps every
 transformation it picks. A pick that the team does not use carries over. A
 weapon with no transformations (mace, daggers) gets no pick. The presenter and
 the admin page show the teams that still have to pick. The host does not have to

@@ -26,6 +26,9 @@ import { advance, currentRound, drawLosers as drawLosersIn, eligibleTransformati
 import { getCatalog } from './catalog.ts';
 import { GAME_API, type GameStatus as GameApiStatus } from './game.ts';
 
+// How many random transformations a team sees when it has a pick.
+const TRANSFORM_OFFER_SIZE = 3;
+
 const DATA_DIR = path.join(import.meta.dirname, '..', 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 // The quiz file lives at the repo root, next to the game.
@@ -199,13 +202,17 @@ function eligibleUpgrades(team: Team) {
   );
 }
 
-function rollOffer(team: Team): string[] {
-  const pool = eligibleUpgrades(team).map((u) => u.id);
-  const offer: string[] = [];
-  while (offer.length < getCatalog().offerSize && pool.length > 0) {
-    offer.push(pool.splice(randomInt(pool.length), 1)[0]);
+function randomSample(pool: string[], size: number): string[] {
+  pool = [...pool];
+  const sample: string[] = [];
+  while (sample.length < size && pool.length > 0) {
+    sample.push(pool.splice(randomInt(pool.length), 1)[0]);
   }
-  return offer;
+  return sample;
+}
+
+function rollOffer(team: Team): string[] {
+  return randomSample(eligibleUpgrades(team).map((u) => u.id), getCatalog().offerSize);
 }
 
 // A team still in the battle gets one transformation pick for each stage: the
@@ -221,10 +228,18 @@ export function transformPicks(team: Team): number {
 }
 
 // Give every team with picks left an offer, and remove offers from teams without picks.
+// A transformation offer is rolled again when it names one the team can no
+// longer take (a new weapon, a host edit, a new catalog).
 function reconcile() {
   for (const team of state.teams) {
     if (picksAvailable(team) <= 0) team.offer = null;
     else if (!team.offer || team.offer.length === 0) team.offer = rollOffer(team);
+
+    const eligible = eligibleTransformations(team, getCatalog());
+    if (transformPicks(team) <= 0) team.transformOffer = null;
+    else if (!team.transformOffer?.length || !team.transformOffer.every((id) => eligible.includes(id))) {
+      team.transformOffer = randomSample(eligible, TRANSFORM_OFFER_SIZE);
+    }
   }
 }
 
@@ -258,7 +273,7 @@ export function teamView(team: Team): TeamView {
       picksUsed: team.picksUsed,
       offer: team.offer,
       transformPicks: transformPicks(team),
-      transformOffer: transformPicks(team) > 0 ? eligibleTransformations(team, getCatalog()) : [],
+      transformOffer: transformPicks(team) > 0 ? (team.transformOffer ?? []) : [],
     },
     battle: battleForTeam(team),
   };
@@ -371,6 +386,7 @@ export function join(name: string, weapon: string, color: string, code: string):
     picksUsed: 0,
     bonusPicks: 0,
     offer: null,
+    transformOffer: null,
   };
   mutate(() => state.teams.push(team));
   return team;
@@ -419,8 +435,11 @@ export function pick(team: Team, upgradeId: string, picksUsed?: number) {
 export function pickTransformation(team: Team, id: string, count?: number) {
   if (count !== undefined && count !== team.transformations.length) throw new UserError('That pick is already saved');
   if (transformPicks(team) <= 0) throw new UserError('You have no transformation to pick now');
-  if (!eligibleTransformations(team, getCatalog()).includes(id)) throw new UserError('That transformation is not on offer');
-  mutate(() => team.transformations.push(id));
+  if (!team.transformOffer?.includes(id)) throw new UserError('That transformation is not on offer');
+  mutate(() => {
+    team.transformations.push(id);
+    team.transformOffer = null;
+  });
 }
 
 // ---- Battle -----------------------------------------------------------------
@@ -689,7 +708,7 @@ export function adminAction(a: Action) {
     case 'reset': {
       const questions = loadQuestions();
       const teams = a.keepTeams
-        ? state.teams.map((t) => ({ ...t, upgrades: {}, transformations: [], picksUsed: 0, bonusPicks: 0, offer: null }))
+        ? state.teams.map((t) => ({ ...t, upgrades: {}, transformations: [], picksUsed: 0, bonusPicks: 0, offer: null, transformOffer: null }))
         : [];
       return mutate(() => (state = freshState(questions, teams)));
     }

@@ -51,6 +51,7 @@ export interface Team {
   picksUsed: number;
   bonusPicks: number; // manual adjustment by the host
   offer: string[] | null; // upgrade ids the team can pick from now
+  transformOffer?: string[] | null; // transformation ids the team can pick from now
 }
 
 export interface State {
