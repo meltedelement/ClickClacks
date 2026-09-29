@@ -117,7 +117,7 @@ export function PresenterPage() {
     <div className="present">
       <header className="topbar">
         <div className="topbar-inner">
-          <Brand name="Weapon Balls quiz" />
+          <Brand name="The Quiz of Doom" />
           <div className="row">
             {introRound ? (
               <span className="muted num">
@@ -159,7 +159,7 @@ export function PresenterPage() {
             <div>
               <p className="eyebrow">Get your phones out</p>
               <h1 className="present-q" style={{ marginTop: 12 }}>
-                Join the quiz
+                Join the Quiz of Doom
               </h1>
               <p className="muted" style={{ marginTop: 16, fontSize: 20 }}>
                 Open this address, choose a team name and a weapon.

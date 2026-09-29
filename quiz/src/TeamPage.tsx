@@ -133,7 +133,7 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
       <TopBar />
       <main className="page">
         <div className="stack">
-          <h1 className="title">Join the quiz</h1>
+          <h1 className="title">Join the Quiz of Doom</h1>
           <p className="lead">Every correct answer earns your team an upgrade. After every second round, your ball fights in the arena.</p>
         </div>
         {rejoin ? (

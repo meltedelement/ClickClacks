@@ -8,6 +8,7 @@ import {
   drawBracket,
   drawLosers,
   eligibleTransformations,
+  fitLoadout,
   lossCount,
   mulberry32,
   plannedStages,
@@ -268,6 +269,21 @@ test('eligibleTransformations offers the ones that fit and are not taken', () =>
   assert.deepEqual(eligibleTransformations({ name: 'A', weapon: 'sword', upgrades: {}, transformations: ['captain'] }, catalog), ['stalwart']);
   assert.deepEqual(eligibleTransformations({ name: 'A', weapon: 'spear', upgrades: {} }, catalog), ['hoplite']);
   assert.deepEqual(eligibleTransformations({ name: 'A', weapon: 'mace', upgrades: {} }, catalog), []);
+});
+
+test('fitLoadout drops what does not fit the weapon, then what required it', () => {
+  const spear = { name: 'A', weapon: 'spear', upgrades: { damage: 1, crit: 1, 'crit-damage': 2 }, transformations: ['hoplite'] };
+  assert.deepEqual(fitLoadout(spear, catalog), { upgrades: spear.upgrades, transformations: ['hoplite'], dropped: 0 });
+  assert.deepEqual(fitLoadout({ ...spear, weapon: 'sword' }, catalog), { upgrades: { damage: 1, crit: 1 }, transformations: [], dropped: 2 });
+  // A shared upgrade that requires a spear-only one goes too.
+  const chained: Catalog = { ...catalog, upgrades: [...catalog.upgrades, { id: 'bleed', name: 'Bleed', description: '+', requires: ['crit-damage'] }] };
+  assert.deepEqual(fitLoadout({ ...spear, weapon: 'mace', upgrades: { ...spear.upgrades, bleed: 1 } }, chained), {
+    upgrades: { damage: 1, crit: 1 },
+    transformations: [],
+    dropped: 3,
+  });
+  // Ids the catalog does not know stay, for validateLoadout to report.
+  assert.deepEqual(fitLoadout({ name: 'A', weapon: 'mace', upgrades: { mystery: 1 } }, catalog).upgrades, { mystery: 1 });
 });
 
 test('a battle break follows every second round and the last round', () => {

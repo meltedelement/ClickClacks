@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import type { AdminView, Team } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
-import { currentRound } from '../shared/battle.ts';
+import { currentRound, fitLoadout, fitsWeapon } from '../shared/battle.ts';
 import { Bracket } from './Bracket.tsx';
 import { BATTLE_EVERY, groupRounds, roundPosition, stagesAllowed } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
@@ -448,7 +448,19 @@ function TeamRow({ team, view, picks, transformPicks, online, act }: TeamRowProp
   const setUpgrade = (id: string, n: number) => update({ upgrades: { ...team.upgrades, [id]: n } });
   const upgradeName = (id: string) => catalog.upgrades.find((u) => u.id === id)?.name ?? id;
   const transformationName = (id: string) => catalog.transformations.find((u) => u.id === id)?.name ?? id;
-  const fits = catalog.transformations.filter((t) => (!t.weapons || t.weapons.includes(team.weapon)) && !team.transformations.includes(t.id));
+  const fits = catalog.transformations.filter((t) => fitsWeapon(t, team.weapon) && !team.transformations.includes(t.id));
+  const upgradesThatFit = catalog.upgrades.filter((u) => fitsWeapon(u, team.weapon));
+  // The server drops upgrades and transformations that do not fit the new weapon.
+  const changeWeapon = (weapon: string) => {
+    const fitted = fitLoadout({ ...team, weapon }, catalog);
+    const lost = [
+      ...Object.keys(team.upgrades).filter((id) => team.upgrades[id] > 0 && !(id in fitted.upgrades)).map(upgradeName),
+      ...team.transformations.filter((id) => !fitted.transformations.includes(id)).map(transformationName),
+    ];
+    const weaponName = catalog.weapons.find((w) => w.id === weapon)?.name ?? weapon;
+    if (lost.length > 0 && !confirm(`${weaponName} removes ${[...new Set(lost)].join(', ')} from ${team.name}. Change the weapon?`)) return;
+    update({ weapon });
+  };
 
   return (
     <tr>
@@ -481,7 +493,7 @@ function TeamRow({ team, view, picks, transformPicks, online, act }: TeamRowProp
         </span>
       </td>
       <td>
-        <select value={team.weapon} onChange={(e) => update({ weapon: e.target.value })}>
+        <select value={team.weapon} onChange={(e) => changeWeapon(e.target.value)}>
           {catalog.weapons.map((w) => (
             <option key={w.id} value={w.id}>
               {w.name}
@@ -517,7 +529,7 @@ function TeamRow({ team, view, picks, transformPicks, online, act }: TeamRowProp
         ))}
         <select value="" onChange={(e) => e.target.value && setUpgrade(e.target.value, (team.upgrades[e.target.value] ?? 0) + 1)}>
           <option value="">+ add…</option>
-          {catalog.upgrades.map((u) => (
+          {upgradesThatFit.map((u) => (
             <option key={u.id} value={u.id}>
               {u.name}
             </option>

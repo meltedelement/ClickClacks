@@ -18,11 +18,12 @@ import type {
   State,
   Team,
   TeamView,
+  Upgrade,
 } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
 import { roundPosition } from '../shared/rounds.ts';
 import { TEAM_COLORS } from '../shared/colors.ts';
-import { advance, currentRound, drawLosers as drawLosersIn, eligibleTransformations, stillIn, teamProgress, undrawLosers } from '../shared/battle.ts';
+import { advance, currentRound, drawLosers as drawLosersIn, eligibleTransformations, fitLoadout, fitsWeapon, stillIn, teamProgress, undrawLosers } from '../shared/battle.ts';
 import { getCatalog } from './catalog.ts';
 import { GAME_API, type GameStatus as GameApiStatus } from './game.ts';
 
@@ -196,7 +197,7 @@ function eligibleUpgrades(team: Team) {
   const owned = Object.keys(team.upgrades).filter((id) => (team.upgrades[id] ?? 0) > 0);
   return getCatalog().upgrades.filter(
     (u) =>
-      (!u.weapons || u.weapons.includes(team.weapon)) &&
+      fitsWeapon(u, team.weapon) &&
       (u.maxStacks === undefined || (team.upgrades[u.id] ?? 0) < u.maxStacks) &&
       (!u.requires || u.requires.every((id) => owned.includes(id))),
   );
@@ -332,6 +333,39 @@ function checkWeapon(weapon: string) {
   if (!getCatalog().weapons.some((w) => w.id === weapon)) throw new UserError('Unknown weapon');
 }
 
+// Upgrades and transformations are locked to their weapons. A new weapon drops
+// the ones that only fit the old one (and the ones that required those), and
+// the team gets the picks for the dropped upgrades back. Call inside mutate().
+function setWeapon(team: Team, weapon: string) {
+  if (weapon === team.weapon) return;
+  const fitted = fitLoadout({ ...team, weapon }, getCatalog());
+  team.weapon = weapon;
+  team.upgrades = fitted.upgrades;
+  team.transformations = fitted.transformations;
+  team.picksUsed = Math.max(0, team.picksUsed - fitted.dropped);
+  team.offer = null; // the old offer may hold upgrades for the old weapon
+}
+
+// The host may add only upgrades and transformations that fit the weapon.
+// Only ids whose count goes up are checked, so the host can still remove one
+// that does not fit.
+function checkFits(before: Record<string, number>, after: Record<string, number>, list: Upgrade[], weapon: string) {
+  for (const [id, n] of Object.entries(after)) {
+    if (n <= (before[id] ?? 0)) continue;
+    const upgrade = list.find((u) => u.id === id);
+    if (upgrade && !fitsWeapon(upgrade, weapon)) {
+      const weaponName = getCatalog().weapons.find((w) => w.id === weapon)?.name ?? weapon;
+      throw new UserError(`${upgrade.name} does not fit the ${weaponName}`);
+    }
+  }
+}
+
+function countIds(ids: string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const id of ids) counts[id] = (counts[id] ?? 0) + 1;
+  return counts;
+}
+
 // Colours that belong to a team other than `except`.
 export function takenColors(except?: Team): string[] {
   return state.teams.flatMap((t) => (t !== except && t.color ? [t.color] : []));
@@ -405,10 +439,7 @@ export function answer(team: Team, choice: number) {
 export function chooseWeapon(team: Team, weapon: string) {
   if (state.phase !== 'lobby' || state.weaponsLocked) throw new UserError('Weapons can only be changed in the lobby');
   checkWeapon(weapon);
-  mutate(() => {
-    team.weapon = weapon;
-    team.offer = null; // the old offer may hold upgrades for the old weapon
-  });
+  mutate(() => setWeapon(team, weapon));
 }
 
 // Same rule as the weapon: the team chooses in the lobby, the host at any time.
@@ -668,14 +699,16 @@ export function adminAction(a: Action) {
       const team = teamById(a.teamId);
       const patch = a.patch ?? {};
       if (patch.weapon !== undefined) checkWeapon(patch.weapon);
+      const weapon = patch.weapon ?? team.weapon;
+      if (patch.upgrades !== undefined) checkFits(team.upgrades, patch.upgrades, getCatalog().upgrades, weapon);
+      if (Array.isArray(patch.transformations)) {
+        checkFits(countIds(team.transformations), countIds(patch.transformations.map(String)), getCatalog().transformations, weapon);
+      }
       const color = patch.color !== undefined ? checkColor(patch.color, team) : undefined;
       return mutate(() => {
         if (patch.name !== undefined) team.name = String(patch.name).trim().slice(0, 30) || team.name;
         if (color !== undefined) team.color = color;
-        if (patch.weapon !== undefined && patch.weapon !== team.weapon) {
-          team.weapon = patch.weapon;
-          team.offer = null;
-        }
+        if (patch.weapon !== undefined) setWeapon(team, patch.weapon);
         if (patch.bonusPicks !== undefined) team.bonusPicks = Number(patch.bonusPicks) || 0;
         if (patch.upgrades !== undefined) {
           team.upgrades = Object.fromEntries(

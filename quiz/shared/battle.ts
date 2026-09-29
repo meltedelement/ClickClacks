@@ -26,7 +26,7 @@
 //
 // Every match has a winner: the game breaks a draw on HP (see the tiebreak in
 // server/matches.js), and the host can pick one.
-import type { Battle, BattleMatch, BattleRound, BracketGroup, BracketSide, Catalog, TeamBattleState } from './types.ts';
+import type { Battle, BattleMatch, BattleRound, BracketGroup, BracketSide, Catalog, TeamBattleState, Upgrade } from './types.ts';
 
 // A team as this file needs it.
 export interface LoadoutTeam {
@@ -321,6 +321,37 @@ export function stillIn(battle: Pick<Battle, 'rounds' | 'matches' | 'champion'>,
   return teamProgress(battle, teamId).state !== 'out';
 }
 
+// True when the upgrade or transformation can go on the weapon. The game
+// decides this with the upgrade's `static weapons` (src/upgrades/Upgrade.js).
+export function fitsWeapon(upgrade: Pick<Upgrade, 'weapons'>, weapon: string): boolean {
+  return !upgrade.weapons || upgrade.weapons.includes(weapon);
+}
+
+// The team's upgrades and transformations without the ones that do not fit its
+// weapon, then without the ones whose requirements went with them (again and
+// again, in case requirements chain). `dropped` is the number of upgrade copies
+// removed. Ids the catalog does not know stay; validateLoadout reports them.
+export function fitLoadout(team: LoadoutTeam, catalog: Catalog): { upgrades: Record<string, number>; transformations: string[]; dropped: number } {
+  const byId = new Map([...catalog.upgrades, ...catalog.transformations].map((u) => [u.id, u]));
+  const fits = (id: string) => {
+    const upgrade = byId.get(id);
+    return !upgrade || fitsWeapon(upgrade, team.weapon);
+  };
+  let upgrades = Object.fromEntries(Object.entries(team.upgrades).filter(([id, n]) => n > 0 && fits(id)));
+  let transformations = (team.transformations ?? []).filter(fits);
+  for (;;) {
+    const owned = new Set([...Object.keys(upgrades), ...transformations]);
+    const met = (id: string) => (byId.get(id)?.requires ?? []).every((required) => owned.has(required));
+    const keptUpgrades = Object.fromEntries(Object.entries(upgrades).filter(([id]) => met(id)));
+    const keptTransformations = transformations.filter(met);
+    if (Object.keys(keptUpgrades).length === Object.keys(upgrades).length && keptTransformations.length === transformations.length) break;
+    upgrades = keptUpgrades;
+    transformations = keptTransformations;
+  }
+  const copies = (list: Record<string, number>) => Object.values(list).reduce((sum, n) => sum + Math.max(0, n), 0);
+  return { upgrades, transformations, dropped: copies(team.upgrades) - copies(upgrades) };
+}
+
 // Transformations the team can still take: they fit the weapon, the team does
 // not have them, and it has what they require.
 export function eligibleTransformations(team: LoadoutTeam, catalog: Catalog): string[] {
@@ -329,7 +360,7 @@ export function eligibleTransformations(team: LoadoutTeam, catalog: Catalog): st
   return catalog.transformations
     .filter(
       (t) =>
-        (!t.weapons || t.weapons.includes(team.weapon)) &&
+        fitsWeapon(t, team.weapon) &&
         picked.filter((id) => id === t.id).length < (t.maxStacks ?? Infinity) &&
         (t.requires ?? []).every((id) => owned.has(id)),
     )
@@ -358,7 +389,7 @@ export function validateLoadout(team: LoadoutTeam, catalog: Catalog): string[] {
       else problems.push(`unknown ${transformation ? 'transformation' : 'upgrade'} "${id}"`);
       continue;
     }
-    if (upgrade.weapons && !upgrade.weapons.includes(team.weapon)) problems.push(`"${id}" does not fit ${team.weapon}`);
+    if (!fitsWeapon(upgrade, team.weapon)) problems.push(`"${id}" does not fit ${team.weapon}`);
     if (upgrade.maxStacks !== undefined && count > upgrade.maxStacks) {
       problems.push(`"${id}" ×${count} is over its limit of ${upgrade.maxStacks}`);
     }

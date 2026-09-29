@@ -1,4 +1,4 @@
-# Weapon Balls Quiz
+# The Quiz of Doom
 
 The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick. After every second round, the quiz stops for a battle break: each team picks a transformation, and one stage of a double elimination plays through the game's match API (see [Battle](#battle)).
 
@@ -79,6 +79,7 @@ The server pushes the full state to each device with server-sent events (`/api/e
 - Reroll a team's upgrade offer. Delete a team.
 - Show a banner message to all teams. Lock the colour and weapon choice in the lobby.
 - Change a team's colour or weapon at any time (teams can change them only in the lobby). A colour that another team has is disabled in the list.
+- Add only the upgrades and transformations that fit the team's weapon. A new weapon removes the upgrades and transformations that do not fit it, and the ones that require them. The team gets those upgrade picks back.
 - Reload the questions. Reset the quiz, with or without the teams.
 - See the raw state. Copy the loadouts JSON.
 
@@ -126,7 +127,7 @@ still in the battle picks one transformation on its phone. The phone shows 3
 random transformations from the ones that fit the team's weapon. The offer stays
 the same until the team picks. The team keeps every
 transformation it picks. A pick that the team does not use carries over. A
-weapon with no transformations (mace, daggers) gets no pick. The presenter and
+weapon with no transformations gets no pick. The presenter and
 the admin page show the teams that still have to pick. The host does not have to
 wait for them.
 
