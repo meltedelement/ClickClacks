@@ -48,10 +48,28 @@ function nextStep({ state }: AdminView, intro: number | null): Step | null {
   }
 }
 
+// The address teams type in to join. A presenter opened on localhost would
+// show "localhost", which no phone can reach, so it asks the server for its
+// address on the local network and keeps this page's port.
+function useJoinAddress(): string {
+  const [address, setAddress] = useState(location.host);
+  useEffect(() => {
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) return;
+    fetch('/api/lan')
+      .then((res) => res.json())
+      .then(({ addresses }: { addresses: string[] }) => {
+        if (addresses[0]) setAddress(location.port ? `${addresses[0]}:${location.port}` : addresses[0]);
+      })
+      .catch(() => {}); // keep showing location.host
+  }, []);
+  return address;
+}
+
 export function PresenterPage() {
   const admin = useAdmin();
   const { view, connected, act, error } = admin;
   const [intro, setIntro] = useState<number | null>(null);
+  const joinAddress = useJoinAddress();
   const step = view ? nextStep(view, intro) : null;
 
   // Any change from the server (from this screen or the admin page) ends the round title.
@@ -146,7 +164,7 @@ export function PresenterPage() {
               <p className="muted" style={{ marginTop: 16, fontSize: 20 }}>
                 Open this address, choose a team name and a weapon.
               </p>
-              <span className="join-url">{location.host}</span>
+              <span className="join-url">{joinAddress}</span>
             </div>
             <TeamList teams={state.teams} weaponName={weaponName} />
           </section>

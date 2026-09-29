@@ -27,6 +27,18 @@ function readAdminKey() {
 }
 const ADMIN_KEY = readAdminKey();
 
+// This machine's IPv4 addresses on the local network. Addresses in the private
+// ranges come first, so a VPN address (Tailscale's 100.x, say) is not the one
+// the presenter shows to the room.
+function lanAddresses(): string[] {
+  const isPrivate = (ip: string) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip);
+  return Object.values(os.networkInterfaces())
+    .flat()
+    .filter((a) => a && a.family === 'IPv4' && !a.internal)
+    .map((a) => a!.address)
+    .sort((a, b) => Number(isPrivate(b)) - Number(isPrivate(a)));
+}
+
 interface Client {
   res: http.ServerResponse;
   teamId: string | null; // null = admin
@@ -101,6 +113,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
   if (route === 'GET /api/weapons') return json(res, 200, store.getCatalog().weapons);
   // The join form asks for this every few seconds, so it can grey out the colours other teams took.
   if (route === 'GET /api/colors') return json(res, 200, { taken: store.takenColors() });
+  // The presenter shows the first one as the join address when it is opened on localhost.
+  if (route === 'GET /api/lan') return json(res, 200, { addresses: lanAddresses() });
 
   if (route === 'POST /api/join') {
     const body = await readBody(req);
@@ -234,11 +248,7 @@ http
     }
   })
   .listen(PORT, () => {
-    const addresses = Object.values(os.networkInterfaces())
-      .flat()
-      .filter((a) => a && a.family === 'IPv4' && !a.internal)
-      .map((a) => a!.address);
-    console.log(`Quiz server on port ${PORT} (${['localhost', ...addresses].join(', ')})`);
+    console.log(`Quiz server on port ${PORT} (${['localhost', ...lanAddresses()].join(', ')})`);
     const source = process.env.ADMIN_KEY
       ? 'from ADMIN_KEY'
       : `stored in ${path.relative(process.cwd(), KEY_FILE)} — delete that file for a new one`;
