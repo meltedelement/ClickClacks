@@ -61,7 +61,7 @@ src/
     Ability.js         Base class for special moves on a cooldown
     SpinSwipe.js       Sword: one rapid full spin for bonus damage
     ChargeDash.js      Spear: stop, aim, lunge for bonus damage
-    SpearThrow.js      Spear (Olympian): stop, aim, throw the spear, dash after it
+    SpearThrow.js      Spear (Olympian): stop, aim, throw the spear round a loop back to hand
     DropSlam.js        Mace: from high up, plunge to the floor; damage grows with the fall
     DashFlurry.js      Daggers: gather both blades, then three rapid dashes
     Buzzsaw.js         Daggers (Saw): launch the blades as a saw that chases the enemy
@@ -445,6 +445,7 @@ every step:
 | Modifier              | Effect                                                        |
 | --------------------- | ------------------------------------------------------------- |
 | `spinMultiplier`      | Multiplies weapon spin speed (0 freezes it so you can aim it) |
+| `bonusDamage`         | Flat damage added to the weapon's own before any multiplier; bonuses add up |
 | `damageMultiplier`    | Multiplies damage dealt                                       |
 | `knockbackMultiplier` | Multiplies how hard hits launch the target                    |
 | `controlsMovement`    | When true, the ball stops easing back to its normal speed, so the ability can set `owner.vel` itself |
@@ -511,16 +512,19 @@ Modifier getters and hooks run once however many copies there are, so scale them
 with `this.stacks` (e.g. `return 1 + 0.2 * this.stacks`).
 
 After the weapon, its ability and its shields are built, upgrades are applied in
-loadout order, except that transformations go first (see below). Then the ball's HP is
+loadout order, except that transformations go first (see below) and, within each group,
+a lower `static order` (default 0) goes first. The same order holds for every hook, e.g. which
+upgrade's `preventHit` is asked first (Slippery's -1 puts it before Rogue). Then the ball's HP is
 filled to `maxHp`. An upgrade can do any mix of these:
 
 | What                       | How                                                           |
 | -------------------------- | ------------------------------------------------------------- |
 | Change starting stats      | `apply()`: `this.weapon.blades += 1`, `this.owner.maxHp += 20`, `this.ability.windup *= 0.5` |
 | Combat stats               | `weapon.critChance`, `weapon.critMultiplier`, `owner.armor`, `owner.dodgeChance`, `contactDamage` on each of `weapon.shields`, `weapon.widthScale` (draw width, set it with `thickness`) |
-| Change behaviour live      | The same modifier getters as abilities. Multipliers multiply together; flags are on if anything turns them on |
+| Change behaviour live      | The same modifier getters as abilities. Multipliers multiply together, `bonusDamage` adds up (use it for "+N damage on your next hit", not a multiplier, or two such bonuses multiply each other); flags are on if anything turns them on |
 | React to things            | `onUpdate`, `onHit(target, sim, damage, point)`, `onParry`, `onOwnerHit(attacker, sim, damage)`, `onBlock(attacker, sim)`, `onWallBounce(sim)`, `onBump(otherBall, sim)` (the balls' bodies touched, every step they do), `onAbilityStart`, `onAbilityEnd` |
 | Care where a hit landed    | `critsAt(point)`: return true to make that hit always crit. `damageMultiplierAt(point)`: scale its damage. `point` is on the blade, e.g. `Spear.headHit(point)` tells the head from the shaft |
+| Hold an ability back       | `allowsAbilityStart(ability, sim)`: return false and that ability of this weapon won't start this step (Dancer keeps its dance and Charge Dash from overlapping) |
 | Cancel a hit               | `preventHit(attacker, sim)`: return true and a weapon hit on this ball does nothing (after dodge, before crit) |
 | Deal extra damage          | `sim.dealDamage(this.owner, target, amount, { reason, color })`: no knockback, ignores armor and dodge |
 | Put an effect on a ball    | `target.addStatus(new Burning({ source: this.owner, ... }), sim)`: see `src/sim/Status.js` |

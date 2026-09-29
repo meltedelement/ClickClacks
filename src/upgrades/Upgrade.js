@@ -16,6 +16,7 @@ import { distance } from '../sim/math.js';
 // shields have been built, and before the ball's HP is filled to maxHp.
 // Transformations (big upgrades that reshape the weapon) are applied before
 // all the others, so small upgrades like Big Shield also affect what they add.
+// `static order` moves an upgrade ahead of (or behind) the rest of its group.
 //
 // Upgrades stack: listing an id several times gives one instance whose
 // `stacks` counts the copies, and apply() runs once per copy (with `stacks`
@@ -34,6 +35,10 @@ export class Upgrade {
   // True for a transformation: a big upgrade that reshapes the weapon. Applied
   // before the others and listed separately in the menu.
   static transformation = false;
+  // Within transformations and within small upgrades, lower goes first,
+  // whatever the loadout order. That covers apply() and every hook (e.g. which
+  // upgrade's preventHit is asked first). Ties keep loadout order.
+  static order = 0;
 
   static canApplyTo(weaponId) {
     return this.weapons === null || this.weapons.includes(weaponId);
@@ -64,10 +69,16 @@ export class Upgrade {
   apply() {}
 
   // ---- Modifiers: combined with the ability's and every other upgrade's ------
-  // Multipliers are multiplied together; flags are on if anything turns them on.
+  // Multipliers are multiplied together; bonuses are added up; flags are on if
+  // anything turns them on.
 
   get spinMultiplier() {
     return 1;
+  }
+
+  // Flat damage added to the weapon's own, before any multiplier.
+  get bonusDamage() {
+    return 0;
   }
 
   get damageMultiplier() {
@@ -119,6 +130,7 @@ export class Upgrade {
   preventHit(attackerWeapon, sim) { return false; } // return true to cancel a weapon hit on this ball
   onWallBounce(sim) {} // this ball bounced off a wall
   onBump(otherBall, sim) {} // this ball's body touched another ball (every step they touch)
+  allowsAbilityStart(ability, sim) { return true; } // return false to hold an ability of this weapon back from starting
   onAbilityStart(ability, sim) {}
   onAbilityEnd(ability, sim) {}
 

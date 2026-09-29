@@ -37,6 +37,8 @@ export class Weapon {
     this.ability = null;
     // Off-hand shields that block enemy weapons, e.g. `this.shields = [new Shield(this, { ... })]`. See Shield.js.
     this.shields = [];
+    // Burning ground the ability lays down, if an upgrade (Runner) gives it one.
+    this.fireTrail = null;
     // Roguelike upgrades from the loadout, added by Ball after construction. See src/upgrades/.
     this.upgrades = [];
   }
@@ -46,10 +48,11 @@ export class Weapon {
   }
 
   // Damage this weapon deals right now, including ability and upgrade bonuses.
+  // Flat bonuses are added to the base first, then everything is multiplied.
   // With `point` (where a hit landed), upgrades that care where the blade
   // connected get a say too.
   getDamage(point) {
-    let damage = this.damage * this.multiplier('damageMultiplier');
+    let damage = (this.damage + this.sum('bonusDamage')) * this.multiplier('damageMultiplier');
     if (point) for (const upgrade of this.upgrades) damage *= upgrade.damageMultiplierAt(point);
     return damage;
   }
@@ -178,6 +181,13 @@ export class Weapon {
   multiplier(key) {
     let value = this.ability?.[key] ?? 1;
     for (const upgrade of this.upgrades) value *= upgrade[key];
+    return value;
+  }
+
+  // A modifier added up across the ability and every upgrade (0 if none change it).
+  sum(key) {
+    let value = this.ability?.[key] ?? 0;
+    for (const upgrade of this.upgrades) value += upgrade[key];
     return value;
   }
 

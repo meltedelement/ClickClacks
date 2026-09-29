@@ -150,8 +150,8 @@ export class Thief extends DaggersTransformation {
   }
 
   // Adds the loot to the daggers' own damage, before other multipliers.
-  get damageMultiplier() {
-    return this.stolen > 0 ? 1 + this.stolen / this.weapon.damage : 1;
+  get bonusDamage() {
+    return this.stolen;
   }
 
   onUpdate(dt) {
@@ -179,9 +179,10 @@ export class Thief extends DaggersTransformation {
     this.stolen = 0;
   }
 
-  // Gold coins over the ball, one per steal waiting.
+  // A bandit's mask, and gold coins above the ball, one per steal waiting.
   drawOver(ctx) {
     const { owner } = this;
+    drawBanditMask(ctx, owner);
     ctx.save();
     ctx.fillStyle = GOLD;
     ctx.strokeStyle = '#b8860b';
@@ -189,7 +190,7 @@ export class Thief extends DaggersTransformation {
     for (let i = 0; i < this.steals; i++) {
       const px = owner.pos.x + (i - (this.steals - 1) / 2) * 11;
       ctx.beginPath();
-      ctx.arc(px, owner.pos.y - owner.radius * 0.55, 4, 0, TAU);
+      ctx.arc(px, owner.pos.y - owner.radius - 8, 4.5, 0, TAU);
       ctx.fill();
       ctx.stroke();
     }
@@ -208,6 +209,46 @@ export class Thief extends DaggersTransformation {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+// A black band across the ball with two eye holes, its ties trailing off the side.
+function drawBanditMask(ctx, { pos, radius }) {
+  const { x, y } = pos;
+  const top = y - 27;
+  const height = 14;
+  ctx.save();
+  ctx.fillStyle = '#1d1d22';
+
+  // Ties
+  const knot = { x: x + radius - 1, y: top + height / 2 };
+  for (const [dx, dy] of [[16, -9], [18, 4]]) {
+    ctx.beginPath();
+    ctx.moveTo(knot.x, knot.y - 3);
+    ctx.lineTo(knot.x + dx, knot.y + dy - 3);
+    ctx.lineTo(knot.x + dx - 2, knot.y + dy + 3);
+    ctx.lineTo(knot.x, knot.y + 3);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, radius + 1, 0, TAU);
+  ctx.clip();
+  ctx.fillRect(x - radius - 1, top, (radius + 1) * 2, height);
+  ctx.restore();
+
+  for (const dir of [-1, 1]) {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(x + dir * 13, top + height / 2, 6.5, 4, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#1d1d22';
+    ctx.beginPath();
+    ctx.arc(x + dir * 13 + 2, top + height / 2, 2.2, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 // ---- Saw ------------------------------------------------------------------------
@@ -265,11 +306,13 @@ export class Trickster extends DaggersTransformation {
     this.cooldownLeft = this.interval / 2;
 
     this.throws = 0;
+    this.time = 0; // for the bells' jingle
     // While one is flying: { pos, heading, speed, phase: 'out' | 'back', travelled, time, backTime, curve, spin, hit: Set }
     this.flying = null;
   }
 
   onUpdate(dt, sim) {
+    this.time += dt;
     if (!this.flying) {
       this.cooldownLeft -= dt;
       if (this.cooldownLeft <= 0 && !sim.over) this.tryThrow(sim);
@@ -338,8 +381,9 @@ export class Trickster extends DaggersTransformation {
     this.emit(sim, 'catch');
   }
 
-  // The flying dagger, drawn like it is in hand, spinning about its middle.
+  // A jester's hat, and the flying dagger, drawn like it is in hand, spinning about its middle.
   drawOver(ctx) {
+    drawJesterHat(ctx, this.owner, this.time);
     if (!this.flying) return;
     const { weapon } = this;
     const { pos, spin } = this.flying;
@@ -353,6 +397,64 @@ export class Trickster extends DaggersTransformation {
   }
 }
 
+const JESTER_PURPLE = '#7b3fb5';
+const JESTER_YELLOW = '#f2c230';
+
+// A three-pointed jester's hat: two floppy points drooping over the sides and
+// one standing up, each with a bell on the end.
+function drawJesterHat(ctx, { pos, radius }, time) {
+  const { x, y } = pos;
+  const r = radius;
+  const band = y - r + 13; // bottom of the hat
+  const top = y - r;
+  const jingle = 2 * Math.sin(time * 9);
+  const points = [
+    { from: x - r * 0.72, to: x - r * 0.05, tip: { x: x - r - 16, y: top + 12 + jingle }, c1: { x: x - r * 0.75, y: top - 22 }, c2: { x: x - r * 0.4, y: top - 8 }, color: JESTER_PURPLE },
+    { from: x + r * 0.05, to: x + r * 0.72, tip: { x: x + r + 16, y: top + 12 - jingle }, c1: { x: x + r * 0.4, y: top - 8 }, c2: { x: x + r * 0.75, y: top - 22 }, color: JESTER_PURPLE },
+    { from: x - r * 0.35, to: x + r * 0.35, tip: { x: x + jingle, y: top - 30 }, c1: { x: x - 6, y: top - 10 }, c2: { x: x + 6, y: top - 10 }, color: JESTER_YELLOW },
+  ];
+  ctx.save();
+  ctx.strokeStyle = '#2e1a45';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  for (const { from, to, tip, c1, c2, color } of points) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(from, band);
+    ctx.quadraticCurveTo(c1.x, c1.y, tip.x, tip.y);
+    ctx.quadraticCurveTo(c2.x, c2.y, to, band);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  for (const { tip } of points) {
+    ctx.fillStyle = '#ffd23f';
+    ctx.beginPath();
+    ctx.arc(tip.x, tip.y, 4.5, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Band round the brim, in diamonds
+  const edge = Math.sqrt(r * r - (y - band) * (y - band));
+  ctx.fillStyle = JESTER_PURPLE;
+  ctx.beginPath();
+  ctx.roundRect(x - edge - 2, band - 3, (edge + 2) * 2, 7, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = JESTER_YELLOW;
+  for (let dx = -edge + 6; dx <= edge - 6; dx += 10) {
+    ctx.beginPath();
+    ctx.moveTo(x + dx, band - 2);
+    ctx.lineTo(x + dx + 3, band + 0.5);
+    ctx.lineTo(x + dx, band + 3);
+    ctx.lineTo(x + dx - 3, band + 0.5);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 // ---- Multidexterous -------------------------------------------------------------
 
 export class Multidexterous extends DaggersTransformation {
@@ -360,9 +462,43 @@ export class Multidexterous extends DaggersTransformation {
   static displayName = 'Multidexterous';
   static description = 'Gain a third dagger.';
 
-  // The extra blade is drawn and collides like the rest, so it needs no visuals of its own.
   apply() {
     this.weapon.blades += 1;
+  }
+
+  // A white cartoon glove gripping each dagger in hand (not ones thrown or flying as a saw).
+  drawOver(ctx) {
+    const { owner, weapon } = this;
+    if (weapon.disarmed) return;
+    const grip = owner.radius + weapon.gap + 4;
+    ctx.save();
+    ctx.fillStyle = '#f7f7f2';
+    ctx.strokeStyle = '#2a2a2a';
+    ctx.lineWidth = 1.5;
+    for (const angle of weapon.bladeAngles()) {
+      ctx.save();
+      ctx.translate(owner.pos.x, owner.pos.y);
+      ctx.rotate(angle);
+      // Cuff
+      ctx.beginPath();
+      ctx.roundRect(grip - 13, -6, 6, 12, 2);
+      ctx.fill();
+      ctx.stroke();
+      // Fist
+      ctx.beginPath();
+      ctx.ellipse(grip, 0, 7, 7.5, 0, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+      // Knuckles
+      ctx.beginPath();
+      for (const y of [-2.5, 2.5]) {
+        ctx.moveTo(grip + 2, y);
+        ctx.lineTo(grip + 6.5, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
   }
 }
 
@@ -374,6 +510,8 @@ export class Slippery extends DaggersTransformation {
   static id = 'slippery';
   static displayName = 'Slippery';
   static description = '20% chance for a hit on you to slide right off: no damage, and you squirt away from the attacker. Rolled separately from dodging.';
+  // Asked before Rogue, so a slip doesn't use up a ready vanish.
+  static order = -1;
 
   constructor(weapon) {
     super(weapon);
@@ -423,8 +561,8 @@ export class Careful extends DaggersTransformation {
   }
 
   // Adds the bonus to the daggers' own damage, before other multipliers.
-  get damageMultiplier() {
-    return this.parries > 0 ? 1 + (this.parries * this.damagePerParry) / this.weapon.damage : 1;
+  get bonusDamage() {
+    return this.parries * this.damagePerParry;
   }
 
   onParry(otherWeapon, sim) {
@@ -437,8 +575,21 @@ export class Careful extends DaggersTransformation {
     this.parries = 0;
   }
 
-  // The blades glow brighter the bigger the bonus.
+  // Sai prongs curving forward off the guard, and a glow on the blades that
+  // gets brighter the bigger the bonus.
   drawBlade(ctx, start) {
+    ctx.save();
+    ctx.strokeStyle = '#c3cad3';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      ctx.moveTo(start + 9, side * 3);
+      ctx.quadraticCurveTo(start + 10, side * 13, start + 26, side * 11);
+    }
+    ctx.stroke();
+    ctx.restore();
+
     if (this.parries === 0) return;
     const charge = this.parries / this.maxParries;
     ctx.save();

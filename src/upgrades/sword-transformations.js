@@ -36,6 +36,39 @@ export class Stalwart extends SwordTransformation {
     shields[0].offset = Math.PI - Y_ARM;
     extra.offset = Math.PI + Y_ARM;
   }
+
+  // A steel knight's helm over the top of the ball: an eye slit, a ridge down
+  // the middle and a row of rivets along the bottom edge.
+  drawOver(ctx) {
+    const { x, y } = this.owner.pos;
+    const r = this.owner.radius + 3;
+    const brow = 12; // px above the centre where the helm stops, clear of the HP number
+    const side = Math.asin(brow / r);
+    const edge = Math.sqrt(r * r - brow * brow);
+    ctx.save();
+    ctx.fillStyle = '#a3adb8';
+    ctx.strokeStyle = '#4a525b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, r, Math.PI + side, TAU - side);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#d5dbe2';
+    ctx.fillRect(x - 3, y - r + 1, 6, r - brow - 2);
+
+    ctx.fillStyle = '#1f2328';
+    for (const dir of [-1, 1]) ctx.fillRect(x + dir * 5 - (dir < 0 ? 24 : 0), y - 25, 24, 5);
+
+    ctx.fillStyle = '#4a525b';
+    for (let i = -3; i <= 3; i++) {
+      ctx.beginPath();
+      ctx.arc(x + (i * (edge - 6)) / 3, y - brow - 3, 1.8, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 }
 
 // ---- Wildling -------------------------------------------------------------------
@@ -70,8 +103,10 @@ export class Wildling extends SwordTransformation {
     return true;
   }
 
-  // A pulsing green ring while the ward is up.
+  // A wolf-pelt hood with ears and green war paint, plus a pulsing green ring
+  // while the ward is up.
   drawOver(ctx) {
+    drawWolfHood(ctx, this.owner);
     if (!this.warded) return;
     const { owner } = this;
     ctx.save();
@@ -87,6 +122,68 @@ export class Wildling extends SwordTransformation {
   }
 }
 
+function drawWolfHood(ctx, { pos, radius }) {
+  const { x, y } = pos;
+  const r = radius + 3;
+  const brow = 17; // px above the centre where the fur ends
+  const side = Math.asin(brow / r);
+  const edge = Math.sqrt(r * r - brow * brow);
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#3e3a34';
+  ctx.lineWidth = 2;
+
+  // Ears
+  for (const dir of [-1, 1]) {
+    const base = -Math.PI / 2 + dir * 0.62;
+    const a = add(pos, fromAngle(base - 0.28, r - 2));
+    const b = add(pos, fromAngle(base + 0.28, r - 2));
+    const tip = add(pos, fromAngle(base + dir * 0.08, r + 20));
+    ctx.fillStyle = '#7d766b';
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    const inner = add(pos, fromAngle(base + dir * 0.07, r + 11));
+    ctx.fillStyle = '#d9a6a0';
+    ctx.beginPath();
+    ctx.arc(inner.x, inner.y, 3.5, 0, TAU);
+    ctx.fill();
+  }
+
+  // Pelt, with a ragged fringe along the bottom
+  ctx.fillStyle = '#8d8579';
+  ctx.beginPath();
+  ctx.arc(x, y, r, Math.PI + side, TAU - side);
+  const tufts = 9;
+  for (let i = 1; i <= tufts; i++) {
+    const tx = x + edge - (2 * edge * i) / tufts;
+    ctx.lineTo(tx + edge / tufts, y - brow + 6);
+    ctx.lineTo(tx, y - brow);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // War paint: three green claw marks on each cheek
+  ctx.strokeStyle = WARD_COLOR;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  for (const dir of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      const cx = x + dir * (24 + i * 4.5);
+      ctx.beginPath();
+      ctx.moveTo(cx, y - 4);
+      ctx.lineTo(cx + dir * 2, y + 11);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 // ---- Dizzy ----------------------------------------------------------------------
 
 const STARS = 3;
@@ -96,12 +193,23 @@ export class Dizzy extends SwordTransformation {
   static displayName = 'Dizzy';
   static description = 'Spin Swipe spins two extra full turns.';
 
+  constructor(weapon) {
+    super(weapon);
+    this.propeller = 0; // angle of the beanie's propeller
+  }
+
   apply() {
     if (this.ability instanceof SpinSwipe) this.ability.turns += 2;
   }
 
-  // Little stars circling the ball while it spins.
+  // The propeller whirls much faster during Spin Swipe.
+  onUpdate(dt) {
+    this.propeller += (this.ability?.active ? 40 : 9) * dt;
+  }
+
+  // A propeller beanie, and little stars circling the ball while it spins.
   drawOver(ctx) {
+    drawBeanie(ctx, this.owner, this.propeller);
     const { ability, owner } = this;
     if (!(ability instanceof SpinSwipe) || !ability.active) return;
     ctx.save();
@@ -113,6 +221,56 @@ export class Dizzy extends SwordTransformation {
     }
     ctx.restore();
   }
+}
+
+const BEANIE_PANELS = ['#e8493f', '#ffd23f', '#3f7fe8', '#4fc36b'];
+
+// A four-coloured cap on top of the ball with a propeller seen from the side,
+// its blades stretching and shrinking as it turns.
+function drawBeanie(ctx, { pos, radius }, spin) {
+  const { x, y } = pos;
+  const r = radius + 2;
+  const brim = r - 16; // px above the centre where the cap's brim sits
+  const top = y - r;
+  ctx.save();
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x - r, top - 1, r * 2, r - brim + 1);
+  ctx.clip();
+  const from = Math.PI + Math.asin(brim / r);
+  const to = TAU - Math.asin(brim / r);
+  BEANIE_PANELS.forEach((color, i) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.arc(x, y, r, from + ((to - from) * i) / 4, from + ((to - from) * (i + 1)) / 4);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.restore();
+  const edge = Math.sqrt(r * r - brim * brim);
+  ctx.fillStyle = '#2b2b33';
+  ctx.fillRect(x - edge, y - brim - 2, edge * 2, 4);
+
+  // Stalk and propeller
+  ctx.strokeStyle = '#2b2b33';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(x, top);
+  ctx.lineTo(x, top - 9);
+  ctx.stroke();
+  const reach = 17 * Math.cos(spin);
+  for (const [color, dir] of [['#e8493f', 1], ['#3f7fe8', -1]]) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x + (dir * reach) / 2, top - 10, Math.abs(reach) / 2 + 1, 3.5, 0, 0, TAU);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#ffd23f';
+  ctx.beginPath();
+  ctx.arc(x, top - 10, 2.5, 0, TAU);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawStar(ctx, { x, y }, r) {
@@ -151,6 +309,13 @@ export class Captain extends SwordTransformation {
     this.vel = vec();
     this.travelled = 0;
     this.spin = 0;
+  }
+
+  // Paints the shield red, white and blue with a star. Stalwart's copy gets it too.
+  apply() {
+    for (const shield of this.weapon.shields) {
+      if (!(shield instanceof OffhandSword)) shield.style = 'captain';
+    }
   }
 
   onUpdate(dt, sim) {
@@ -229,6 +394,11 @@ export class FireEater extends SwordTransformation {
     this.timer = this.igniteTime;
     this.lit = false;
     this.time = 0; // for the flicker
+  }
+
+  // The sword becomes a blackened flamberge with glowing edges.
+  apply() {
+    this.weapon.blade = 'wavy';
   }
 
   onUpdate(dt, sim) {
@@ -348,7 +518,10 @@ export class Piercer extends SwordTransformation {
     this.target = null;
   }
 
+  // The sword becomes a rapier (keeping Fire Eater's flamberge blade if it has one).
   apply() {
+    this.weapon.hilt = 'swept';
+    if (this.weapon.blade === 'straight') this.weapon.blade = 'needle';
     const { ability } = this;
     if (!(ability instanceof SpinSwipe)) return;
     ability.cooldown *= 1 + this.cooldownPenalty;
@@ -462,6 +635,9 @@ export class DualWielder extends SwordTransformation {
   static displayName = 'Dual Wielder';
   static description =
     'Swap your shield for a short second sword. It still blocks, deals 3 damage to enemies it touches (+0.5 each time your sword hits), and gets your shield upgrades.';
+  // Swap the shield before anything else changes it, so e.g. Stalwart shrinks
+  // and copies the off-hand sword rather than having its changes thrown away.
+  static order = -1;
 
   constructor(weapon) {
     super(weapon);
@@ -539,13 +715,62 @@ export class Gladiator extends SwordTransformation {
     this.emit(sim, 'net-throw');
   }
 
-  // The flying net opens up as it goes.
+  // A plumed bronze helmet, and the flying net opening up as it goes.
   drawOver(ctx) {
+    drawGladiatorHelmet(ctx, this.owner);
     if (!this.net) return;
     const { pos, spin, travelled } = this.net;
     const r = this.netRadius * (0.6 + 0.6 * Math.min(1, travelled / 150));
     drawNet(ctx, pos, r, spin, 1);
   }
+}
+
+// A bronze helmet with a wide brim and a tall red crest running over the top.
+function drawGladiatorHelmet(ctx, { pos, radius }) {
+  const { x, y } = pos;
+  const r = radius + 2;
+  const brim = 18; // px above the centre where the brim sits
+  const side = Math.asin(brim / r);
+  const edge = Math.sqrt(r * r - brim * brim);
+  ctx.save();
+  ctx.strokeStyle = '#6e4a18';
+  ctx.lineWidth = 2;
+
+  // Crest: a red fan of bristles standing up from the top
+  const base = { x, y: y - r + 6 };
+  ctx.fillStyle = '#c62828';
+  ctx.beginPath();
+  ctx.arc(base.x, base.y, 27, Math.PI, TAU);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#8e1b1b';
+  ctx.lineWidth = 1.5;
+  for (let i = 1; i < 10; i++) {
+    const a = Math.PI + (Math.PI * i) / 10;
+    const tip = add(base, fromAngle(a, 26));
+    ctx.beginPath();
+    ctx.moveTo(base.x, base.y);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.stroke();
+  }
+
+  // Bowl
+  ctx.fillStyle = '#c9913a';
+  ctx.strokeStyle = '#6e4a18';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, r, Math.PI + side, TAU - side);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Brim, sticking out past the ball on both sides
+  ctx.fillStyle = '#a8742a';
+  ctx.beginPath();
+  ctx.roundRect(x - edge - 8, y - brim - 3, (edge + 8) * 2, 6, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
 }
 
 export class Netted extends Status {

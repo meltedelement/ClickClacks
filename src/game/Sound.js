@@ -139,6 +139,9 @@ export class Sound {
       case 'catch':
         this.clang([520, 790], 0.15, 0.12);
         break;
+      case 'wrap':
+        this.whoosh(0.15, 1200, 2800, 0.3);
+        break;
       case 'portal':
         this.tone({ type: 'sine', freq: 260, freqEnd: 1100, dur: 0.3, gain: 0.3 });
         this.whoosh(0.3, 400, 1800, 0.35);

@@ -10,13 +10,13 @@ export class Daggers extends Weapon {
 
   constructor(owner) {
     super(owner);
-    this.damage = 1;
+    this.damage = 2;
     this.spinSpeed = 4.2;
     this.length = 42;
     this.thickness = 3;
     this.blades = 2;
     this.spinPerHit = 0.3;
-    this.damagePerHit = 0.1;
+    this.damagePerHit = 0.04;
     this.parryLock = 0.5; // s a dagger can't re-parry the same weapon it just parried
     this.style = 'dagger'; // 'dagger' | 'hatchet' (the Axeman transformation)
     this.ability = new DashFlurry(this);

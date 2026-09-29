@@ -1,17 +1,16 @@
 import { ChargeDash } from './ChargeDash.js';
-import { add, clamp, closestPointOnSegment, distance, fromAngle, normalize, scale, sub, vec } from '../sim/math.js';
-
-const MAX_RETRIEVE_TIME = 1.5; // s; safety net in case it somehow never reaches the spear
+import { CONFIG } from '../config.js';
+import { add, closestPointOnSegment, distance, fromAngle, scale, vec } from '../sim/math.js';
 
 // Charge Dash, Olympian style (see the Olympian transformation): wind up and aim
-// the same way, but then hurl the spear instead of lunging with it. It flies
-// until it hits an enemy (launching them hard) or runs out of range, and sticks
-// there. Then the ball dashes over to pick it up, ramming anything in the way.
-// The ball is unarmed from the throw until the pickup.
+// the same way, but then hurl the spear instead of lunging with it. The thrower
+// stays put while the spear flies along the line through the ball: out through
+// the wall ahead, back in through the wall behind, and on until it's back in
+// hand. It pierces every enemy it meets (once each per throw), launching them
+// hard. The ball is unarmed until the spear comes back. With the Runner, the
+// spear's path catches fire (see `weapon.fireTrail`).
 //
-// It's a ChargeDash underneath, so the Charge Dash upgrades still work: Quick
-// Charge shortens the windup, Long Dash lengthens the throw (its range is
-// dashSpeed x dashDuration, the distance a normal dash covers).
+// It's a ChargeDash underneath, so Quick Charge still shortens the windup.
 export class SpearThrow extends ChargeDash {
   static displayName = 'Spear Throw';
 
@@ -22,117 +21,117 @@ export class SpearThrow extends ChargeDash {
     this.throwSpeed = 1100; // px/s
     this.throwDamageMultiplier = 2;
     this.throwKnockbackMultiplier = 3;
-    this.ramDamageMultiplier = 1.5;
-    this.ramKnockbackMultiplier = 2;
 
-    // phase: 'windup' | 'throw' | 'retrieve'
-    this.spear = null; // { pos (hilt), angle, travelled } while it's out of hand
-    this.rammed = new Set(); // balls already rammed on this retrieve
-  }
-
-  get throwRange() {
-    return this.dashSpeed * this.dashDuration;
+    // phase: 'windup' | 'throw'
+    // While thrown, the spear lies along the line through `origin` (the ball's
+    // centre at the throw) in direction `dir`. Distances along that line are
+    // measured from `origin`: the walls are at `ahead` and -`behind`, and the
+    // spear's hilt is at `hilt`. Past the wall ahead it comes back in `lap`
+    // (= ahead + behind) px further back, from the wall behind.
+    this.spear = null; // { origin, dir, ahead, behind, lap, hilt, start }
+    this.pierced = new Set(); // balls the spear has gone through on this throw
   }
 
   get damageMultiplier() {
-    if (this.phase === 'throw') return this.throwDamageMultiplier;
-    if (this.phase === 'retrieve') return this.ramDamageMultiplier;
-    return 1;
+    return this.phase === 'throw' ? this.throwDamageMultiplier : 1;
   }
 
   get knockbackMultiplier() {
-    if (this.phase === 'throw') return this.throwKnockbackMultiplier;
-    if (this.phase === 'retrieve') return this.ramKnockbackMultiplier;
-    return 1;
+    return this.phase === 'throw' ? this.throwKnockbackMultiplier : 1;
   }
 
   get disarmed() {
     return this.spear !== null;
   }
 
-  // Charging after the spear, nothing gets in the way.
-  get unstoppable() {
-    return this.phase === 'retrieve';
-  }
-
   release(sim) {
     const { owner, weapon } = this;
+    const origin = { ...owner.pos };
+    const dir = fromAngle(weapon.angle);
+    const ahead = wallDistance(origin, dir, sim.arena);
+    const behind = wallDistance(origin, scale(dir, -1), sim.arena);
+    const start = owner.radius + weapon.gap;
     this.phase = 'throw';
-    this.spear = { pos: add(owner.pos, fromAngle(weapon.angle, owner.radius + weapon.gap)), angle: weapon.angle, travelled: 0 };
+    this.spear = { origin, dir, ahead, behind, lap: ahead + behind, hilt: start, start };
+    this.pierced.clear();
     this.emit(sim, 'throw', { shake: 3, burst: { color: '#cfd6df', count: 10, speed: 160, life: 0.3 } });
   }
 
   onUpdate(dt, sim) {
-    if (this.phase === 'windup') super.onUpdate(dt, sim);
-    else if (this.phase === 'throw') this.updateThrow(dt, sim);
-    else if (this.phase === 'retrieve') this.updateRetrieve(dt, sim);
+    if (this.phase === 'throw') this.updateThrow(dt, sim);
+    else super.onUpdate(dt, sim);
   }
 
-  // The spear flies straight on while the thrower stays put.
+  // The spear flies its lap, through anyone in the way, while the thrower stays put.
   updateThrow(dt, sim) {
     const { owner, weapon, spear } = this;
     owner.vel = vec(0, 0);
-    const step = this.throwSpeed * dt;
-    spear.pos = add(spear.pos, fromAngle(spear.angle, step));
-    spear.travelled += step;
+    const before = spear.hilt;
+    spear.hilt = Math.min(spear.hilt + this.throwSpeed * dt, spear.start + spear.lap);
+    if (before + weapon.length <= spear.ahead && spear.hilt + weapon.length > spear.ahead) this.emit(sim, 'wrap');
+    this.layTrail(before + weapon.length, spear.hilt + weapon.length);
 
-    const { a, b } = this.spearSegment();
-    for (const enemy of sim.aliveBalls) {
-      if (enemy === owner || sim.over || !enemy.canBeHitBy(weapon)) continue;
-      const point = closestPointOnSegment(enemy.pos, a, b);
-      if (distance(point, enemy.pos) >= enemy.radius + weapon.thickness) continue;
-      sim.applyHit(owner, enemy, point);
-      this.startRetrieve(sim);
-      return;
+    for (const { a, b } of this.spearSegments()) {
+      for (const enemy of sim.aliveBalls) {
+        if (enemy === owner || sim.over || this.pierced.has(enemy)) continue;
+        const point = closestPointOnSegment(enemy.pos, a, b);
+        if (distance(point, enemy.pos) >= enemy.radius + weapon.thickness) continue;
+        this.pierced.add(enemy);
+        enemy.clearHitCooldown(weapon);
+        sim.applyHit(owner, enemy, point);
+      }
     }
 
-    // Out of range or into a wall: it sticks there, tip at the wall.
-    const back = pullBack(b, spear.angle, sim.arena);
-    if (back > 0) spear.pos = sub(spear.pos, fromAngle(spear.angle, back));
-    if (back > 0 || spear.travelled >= this.throwRange) this.startRetrieve(sim);
-  }
-
-  startRetrieve(sim) {
-    this.phase = 'retrieve';
-    this.timer = MAX_RETRIEVE_TIME;
-    this.rammed.clear();
-    // Whoever the spear just hit can still be rammed on the way.
-    for (const ball of sim.balls) ball.clearHitCooldown(this.weapon);
-    this.emit(sim, 'dash', { shake: 4, burst: { color: '#cfd6df', count: 16, speed: 180, life: 0.4 } });
-  }
-
-  // Dash to where the ball can grab the spear by its end, ramming enemies on the way.
-  updateRetrieve(dt, sim) {
-    const { owner, weapon, spear } = this;
-    this.timer -= dt;
-    const { width, height } = sim.arena;
-    const grip = sub(spear.pos, fromAngle(spear.angle, owner.radius + weapon.gap));
-    const goal = vec(clamp(grip.x, owner.radius, width - owner.radius), clamp(grip.y, owner.radius, height - owner.radius));
-    const toGoal = sub(goal, owner.pos);
-    weapon.angle = spear.angle; // keeps any shields facing the way they were thrown
-
-    for (const enemy of sim.aliveBalls) {
-      if (enemy === owner || sim.over || this.rammed.has(enemy)) continue;
-      const gap = distance(enemy.pos, owner.pos) - owner.radius - enemy.radius;
-      if (gap > 2 || !enemy.canBeHitBy(weapon)) continue;
-      this.rammed.add(enemy);
-      const point = add(owner.pos, scale(normalize(sub(enemy.pos, owner.pos)), owner.radius));
-      sim.applyHit(owner, enemy, point);
-    }
-
-    if (distance(goal, owner.pos) <= this.dashSpeed * dt || this.timer <= 0) {
-      owner.vel = scale(fromAngle(spear.angle), this.dashSpeed * this.recoil);
+    if (spear.hilt >= spear.start + spear.lap) {
       this.emit(sim, 'catch');
       this.end(sim);
-      return;
     }
-    owner.vel = scale(normalize(toGoal), this.dashSpeed);
   }
 
-  // The flying spear's blade, like Weapon.getSegments for a single blade.
-  spearSegment() {
-    const { pos, angle } = this.spear;
-    return { a: pos, b: add(pos, fromAngle(angle, this.weapon.length)) };
+  // With the Runner, the spear's tip sets its path on fire (see Runner). `from`
+  // and `to` are distances along the line; the part past the wall ahead is
+  // laid one lap back, coming in from the wall behind.
+  layTrail(from, to) {
+    const trail = this.weapon.fireTrail;
+    if (!trail) return;
+    const { origin, dir, ahead, behind, lap } = this.spear;
+    const at = (d) => add(origin, scale(dir, d));
+    let d = from;
+    while (d < to) {
+      let k = Math.floor((d + behind) / lap); // laps round so far
+      let wall = ahead + k * lap;
+      if (wall <= d) {
+        k += 1;
+        wall += lap;
+      }
+      const end = Math.min(to, wall);
+      trail.lay(at(d - k * lap), at(end - k * lap));
+      d = end;
+    }
+  }
+
+  // The parts of the spear inside the arena: where it is on the line, and the
+  // same shifted one lap back, which is the bit coming back in from behind.
+  spearSegments() {
+    const { origin, dir, ahead, behind, lap, hilt } = this.spear;
+    const segments = [];
+    for (const from of [hilt, hilt - lap]) {
+      const lo = Math.max(from, -behind);
+      const hi = Math.min(from + this.weapon.length, ahead);
+      if (hi > lo) segments.push({ a: add(origin, scale(dir, lo)), b: add(origin, scale(dir, hi)) });
+    }
+    return segments;
+  }
+
+  // The line the spear will fly along, from wall to wall.
+  aimLine() {
+    const { owner, weapon } = this;
+    const dir = fromAngle(weapon.angle);
+    const arena = CONFIG.arena;
+    return {
+      from: add(owner.pos, scale(dir, -wallDistance(owner.pos, scale(dir, -1), arena))),
+      to: add(owner.pos, scale(dir, wallDistance(owner.pos, dir, arena))),
+    };
   }
 
   onHit() {}
@@ -142,33 +141,37 @@ export class SpearThrow extends ChargeDash {
   onEnd() {
     super.onEnd();
     this.spear = null;
-    this.rammed.clear();
+    this.pierced.clear();
   }
 
-  draw(ctx) {
-    if (this.phase === 'windup') this.drawWindup(ctx);
-    else if (this.phase === 'retrieve') this.drawDash(ctx);
-  }
-
-  // The spear in flight or stuck where it landed, drawn like it is in hand.
+  // The spear in flight, drawn like it is in hand, and again one lap back so
+  // it slides out of one wall and in through the other.
   drawOver(ctx) {
     if (!this.spear) return;
     const { weapon } = this;
-    const { pos, angle } = this.spear;
+    const { origin, dir, lap, hilt } = this.spear;
+    const angle = Math.atan2(dir.y, dir.x);
     ctx.save();
-    ctx.translate(pos.x, pos.y);
-    ctx.rotate(angle);
-    ctx.scale(1, weapon.widthScale);
-    weapon.drawLocal(ctx, 0);
-    for (const upgrade of weapon.upgrades) upgrade.drawBlade(ctx, 0);
+    ctx.beginPath();
+    ctx.rect(0, 0, CONFIG.arena.width, CONFIG.arena.height);
+    ctx.clip();
+    for (const from of [hilt, hilt - lap]) {
+      const pos = add(origin, scale(dir, from));
+      ctx.save();
+      ctx.translate(pos.x, pos.y);
+      ctx.rotate(angle);
+      ctx.scale(1, weapon.widthScale);
+      weapon.drawLocal(ctx, 0);
+      for (const upgrade of weapon.upgrades) upgrade.drawBlade(ctx, 0);
+      ctx.restore();
+    }
     ctx.restore();
   }
 }
 
-// How far `tip`, travelling along `angle`, has to move back to be inside the arena (0 if it is).
-function pullBack(tip, angle, arena) {
-  const dir = fromAngle(angle);
-  const outX = Math.max(-tip.x, tip.x - arena.width);
-  const outY = Math.max(-tip.y, tip.y - arena.height);
-  return Math.max(0, outX > 0 ? outX / Math.abs(dir.x) : 0, outY > 0 ? outY / Math.abs(dir.y) : 0);
+// How far from `pos` (inside the arena) along `dir` the arena's edge is.
+function wallDistance(pos, dir, arena) {
+  const dx = dir.x > 1e-9 ? (arena.width - pos.x) / dir.x : dir.x < -1e-9 ? pos.x / -dir.x : Infinity;
+  const dy = dir.y > 1e-9 ? (arena.height - pos.y) / dir.y : dir.y < -1e-9 ? pos.y / -dir.y : Infinity;
+  return Math.max(0, Math.min(dx, dy));
 }

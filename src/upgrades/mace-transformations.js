@@ -210,9 +210,14 @@ export class Metalworker extends MaceTransformation {
     this.lastHp = null;
   }
 
+  // The mace becomes a smith's hammer.
+  apply() {
+    this.weapon.head = 'hammer';
+  }
+
   // Adds the bonus to the mace's own damage, before the slam multiplies it.
-  get damageMultiplier() {
-    return this.clangs > 0 ? 1 + (this.clangs * this.damagePerClang) / this.weapon.damage : 1;
+  get bonusDamage() {
+    return this.clangs * this.damagePerClang;
   }
 
   onUpdate(dt, sim) {
@@ -237,21 +242,20 @@ export class Metalworker extends MaceTransformation {
     this.timer = 0;
   }
 
-  // The head glows hotter the bigger the bonus.
+  // The hammer's head glows hotter the bigger the bonus.
   drawBlade(ctx, start) {
     if (this.clangs === 0) return;
     const heat = this.clangs / this.maxClangs;
     const x = start + this.weapon.length - HEAD_RADIUS;
+    const glow = 4 + 6 * heat;
     ctx.save();
     ctx.fillStyle = HOT;
     ctx.globalAlpha = 0.2 + 0.25 * heat;
     ctx.beginPath();
-    ctx.arc(x, 0, HEAD_RADIUS + 5 + 7 * heat, 0, TAU);
+    ctx.roundRect(x - 9 - glow, -18 - glow, 18 + glow * 2, 36 + glow * 2, glow);
     ctx.fill();
     ctx.globalAlpha = 0.3 + 0.55 * heat;
-    ctx.beginPath();
-    ctx.arc(x, 0, HEAD_RADIUS, 0, TAU);
-    ctx.fill();
+    ctx.fillRect(x - 9, -18, 18, 36);
     ctx.restore();
   }
 }
@@ -334,7 +338,10 @@ const STUN_COLOR = '#ffe066';
 export class Crusher extends MaceTransformation {
   static id = 'crusher';
   static displayName = 'Crusher';
-  static description = 'A Drop Slam hit stuns the enemy for 1 s: they deal no damage and move at 20% speed until it wears off.';
+  static description =
+    'A Drop Slam hit stuns the enemy for 1 s: they deal no damage and move at 20% speed until it wears off. With Rubber Mace, the stun starts once they stop bouncing around.';
+  // After Rubber Mace, so on the same hit the enemy is already Bouncing and the stun waits for it.
+  static order = 1;
 
   constructor(weapon) {
     super(weapon);
@@ -344,8 +351,7 @@ export class Crusher extends MaceTransformation {
 
   onHit(target, sim) {
     if (!slamming(this.ability) || !target.alive || sim.over) return;
-    target.addStatus(new Stunned({ source: this.owner, duration: this.stunDuration, slow: this.stunSlow }), sim);
-    this.emit(sim, 'stun', { pos: target.pos, text: 'STUNNED', color: STUN_COLOR, burst: { color: STUN_COLOR, count: 10, speed: 150, life: 0.4 } });
+    target.addStatus(new Stunned({ source: this.owner, duration: this.stunDuration, slow: this.stunSlow, crusher: this }), sim);
   }
 
   // Heavy iron bands around the head.
@@ -365,28 +371,52 @@ export class Crusher extends MaceTransformation {
 }
 
 // From Crusher: the ball can't deal damage for a while, and is dazed and slow.
+// While Rubber Mace has it Bouncing, the stun waits (and doesn't tick down),
+// then starts in full once the bouncing is over.
 export class Stunned extends Status {
-  constructor({ source, duration, slow }) {
+  constructor({ source, duration, slow, crusher }) {
     super({ source, duration });
     this.slow = slow;
+    this.crusher = crusher; // the Crusher upgrade, to show the stun when it starts
+    this.started = false;
+  }
+
+  get waiting() {
+    return this.ball.hasStatus(Bouncing);
   }
 
   get stunned() {
-    return true;
+    return this.started;
   }
 
   get speedMultiplier() {
-    return this.slow;
+    return this.started ? this.slow : 1;
   }
 
-  // Dazed straight away, so the slam doesn't send them far.
-  onApply() {
+  onApply(sim) {
+    if (!this.waiting) this.start(sim);
+  }
+
+  update(dt, sim) {
+    if (!this.started) {
+      if (this.waiting) return;
+      this.start(sim);
+    }
+    super.update(dt, sim);
+  }
+
+  // Dazed straight away, so the slam (or the last bounce) doesn't send them far.
+  start(sim) {
     const { ball } = this;
+    this.started = true;
     if (!ball.weapon.controlsMovement) ball.vel = scale(ball.vel, this.slow);
+    if (sim.over) return;
+    this.crusher.emit(sim, 'stun', { pos: ball.pos, text: 'STUNNED', color: STUN_COLOR, burst: { color: STUN_COLOR, count: 10, speed: 150, life: 0.4 } });
   }
 
   // Stars circling over the ball.
   draw(ctx) {
+    if (!this.started) return;
     const { pos, radius } = this.ball;
     const stars = 3;
     ctx.save();
