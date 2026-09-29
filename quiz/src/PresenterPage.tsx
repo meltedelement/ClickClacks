@@ -3,6 +3,7 @@
 // which team answered or what one team chose. One button moves the quiz on.
 import { useEffect, useState } from 'react';
 import type { AdminView } from '../shared/types.ts';
+import { allMatches, standings } from '../shared/battle.ts';
 import { roundPosition, startsRound } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
 import { Brand, LETTERS, RoundProgress, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
@@ -36,6 +37,10 @@ export function PresenterPage() {
   const { view, connected, act, error } = admin;
   const [intro, setIntro] = useState<number | null>(null);
   const step = view ? nextStep(view, intro) : null;
+  // While a round-robin is being played the room is watching the arena, so the
+  // next step is held back: moving on ends the battle on screen.
+  const lastBattle = view?.state.battles[view.state.battles.length - 1];
+  const battleRunning = !!lastBattle && !lastBattle.finishedAt;
 
   // Any change from the server (from this screen or the admin page) ends the round title.
   useEffect(() => setIntro(null), [view?.state.questionIndex, view?.state.phase]);
@@ -50,7 +55,7 @@ export function PresenterPage() {
   // arrow and Page Down must still work after a click leaves the focus on a button.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!step || e.repeat) return;
+      if (!step || e.repeat || battleRunning) return;
       const target = e.target as HTMLElement;
       if (target.closest('input, select, textarea')) return;
       if ((e.key === ' ' || e.key === 'Enter') && target.closest('button')) return;
@@ -142,6 +147,7 @@ export function PresenterPage() {
                 Battle time
               </h1>
             </div>
+            <BattleBoard view={view} />
             <TeamList teams={state.teams} weaponName={weaponName} />
           </section>
         )}
@@ -204,7 +210,9 @@ export function PresenterPage() {
           <span className="hint">
             <kbd>Space</kbd> or <kbd>→</kbd>
           </span>
-          {step ? (
+          {step && battleRunning ? (
+            <span className="muted">Battles in progress…</span>
+          ) : step ? (
             <button className="primary" onClick={() => run(step)}>
               {step.label} →
             </button>
@@ -239,6 +247,72 @@ function TeamList({ teams, weaponName }: { teams: AdminView['state']['teams']; w
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// What the room watches while the arena plays: the battle on screen, who is
+// next, and the table over every battle so far. The display page decides each
+// result; the quiz only records it.
+function BattleBoard({ view }: { view: AdminView }) {
+  const { state, game } = view;
+  const battles = state.battles;
+  if (battles.length === 0) return <p className="muted">The battle has not started yet.</p>;
+
+  const current = battles[battles.length - 1];
+  const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '(deleted team)';
+  const rows = standings(state.teams, allMatches(battles));
+  const match =
+    current.matches.find((m) => m.status === 'queued' || m.status === 'playing') ??
+    current.matches.find((m) => m.status === 'pending') ??
+    null;
+
+  return (
+    <div className="stack">
+      {current.note && <p className="banner">{current.note}</p>}
+      {!game.reachable && <p className="banner">The game server is not answering at {game.url}.</p>}
+      {game.reachable && game.displays === 0 && (
+        <p className="banner">No display page is open. Show {game.url.replace(/\/api\/?$/, '/?display')} on the big screen.</p>
+      )}
+      <div>
+        <p className="eyebrow">
+          Battle {battles.length}
+          {battles.length > 1 ? ` · ${battles.reduce((n, b) => n + b.matches.filter((m) => m.status === 'done').length, 0)} matches played so far` : ''}
+        </p>
+        <h2 className="present-q" style={{ marginTop: 8 }}>
+          {match ? `${teamName(match.a)} vs ${teamName(match.b)}` : current.finishedAt ? 'Battle finished' : 'Waiting to start'}
+        </h2>
+      </div>
+      <div className="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Team</th>
+              <th>Played</th>
+              <th>W</th>
+              <th>D</th>
+              <th>L</th>
+              <th>Points</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={row.teamId} className={i === 0 ? 'correct' : ''}>
+                <td className="num">{i + 1}</td>
+                <td>{row.name}</td>
+                <td className="num">{row.played}</td>
+                <td className="num">{row.wins}</td>
+                <td className="num">{row.draws}</td>
+                <td className="num">{row.losses}</td>
+                <td className="num">
+                  <strong>{row.points}</strong>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

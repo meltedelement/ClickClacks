@@ -3,15 +3,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
-import type { AdminView, Catalog, Loadout, Phase, Question, State, Team, TeamView } from '../shared/types.ts';
+import type {
+  AdminView,
+  Battle,
+  BattleMatch,
+  BattleMatchStatus,
+  Fighter,
+  Loadout,
+  Phase,
+  Question,
+  State,
+  Team,
+  TeamView,
+} from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
 import { roundPosition } from '../shared/rounds.ts';
+import { allMatches, standings } from '../shared/battle.ts';
+import { getCatalog } from './catalog.ts';
+import { GAME_API } from './game.ts';
 
 const DATA_DIR = path.join(import.meta.dirname, '..', 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 // The quiz file lives at the repo root, next to the game.
 const QUESTIONS_FILE = path.join(import.meta.dirname, '..', '..', 'quiz-questions.json');
-const CATALOG_FILE = path.join(DATA_DIR, 'game.json');
 
 export class UserError extends Error {}
 
@@ -52,20 +66,43 @@ function freshState(questions: Question[], teams: Team[] = []): State {
     teams,
     message: '',
     weaponsLocked: false,
+    battles: [],
   };
 }
-
-export const catalog = readJson<Catalog>(CATALOG_FILE);
 
 // Questions are read from quiz-questions.json once, then kept in state.json.
 // Use the "reload questions" admin action to read the file again.
 export let state: State = fs.existsSync(STATE_FILE) ? readJson<State>(STATE_FILE) : freshState(loadQuestions());
 // The old 'upgrades' phase was removed: teams now pick as soon as they earn an upgrade.
 if (!PHASES.includes(state.phase)) state.phase = 'lobby';
+normalizeBattles();
+
+// An early version kept a single `battle`. Move it into the list so a state
+// file written by that version still loads.
+function normalizeBattles() {
+  const legacy = state as State & { battle?: Battle | null };
+  if (legacy.battle) {
+    state.battles = [legacy.battle];
+    delete legacy.battle;
+  }
+  if (!Array.isArray(state.battles)) state.battles = [];
+  state.battles.forEach((battle, i) => {
+    battle.id ||= `b${i + 1}`;
+    battle.note ||= '';
+    battle.matches ||= [];
+    battle.matches.forEach((match, j) => {
+      if (!match.id || !match.id.startsWith(`${battle.id}-`)) match.id = `${battle.id}-m${j + 1}`;
+    });
+  });
+}
 
 const listeners = new Set<() => void>();
 export function onChange(fn: () => void) {
   listeners.add(fn);
+}
+
+function notify() {
+  for (const fn of listeners) fn();
 }
 
 function save() {
@@ -77,7 +114,28 @@ function mutate(fn: () => void) {
   fn();
   reconcile();
   save();
-  for (const fn of listeners) fn();
+  notify();
+}
+
+// The catalog changed (the game answered, or a new one was read). Offers may
+// name upgrades that are no longer on offer, so drop them and roll new ones.
+export function onCatalogChanged() {
+  if (state.teams.some((team) => team.offer !== null)) mutate(() => state.teams.forEach((team) => (team.offer = null)));
+  else notify();
+}
+
+// ---- The game server --------------------------------------------------------
+
+// Cached so every view can show it without waiting for a request.
+const gameInfo = { url: GAME_API, reachable: false, displays: 0 };
+
+export function setGameStatus(patch: { reachable?: boolean; displays?: number }) {
+  const changed =
+    (patch.reachable !== undefined && patch.reachable !== gameInfo.reachable) ||
+    (patch.displays !== undefined && patch.displays !== gameInfo.displays);
+  if (patch.reachable !== undefined) gameInfo.reachable = patch.reachable;
+  if (patch.displays !== undefined) gameInfo.displays = patch.displays;
+  if (changed) notify();
 }
 
 // ---- Derived data -----------------------------------------------------------
@@ -93,21 +151,23 @@ export function picksAvailable(team: Team): number {
   for (const q of state.questions) {
     if (state.revealed.includes(q.id) && state.answers[q.id]?.[team.id] === q.answer) correct++;
   }
-  return correct * catalog.upgradesPerCorrect + team.bonusPicks - team.picksUsed;
+  return correct * getCatalog().upgradesPerCorrect + team.bonusPicks - team.picksUsed;
 }
 
 function eligibleUpgrades(team: Team) {
-  return catalog.upgrades.filter(
+  const owned = Object.keys(team.upgrades).filter((id) => (team.upgrades[id] ?? 0) > 0);
+  return getCatalog().upgrades.filter(
     (u) =>
       (!u.weapons || u.weapons.includes(team.weapon)) &&
-      (u.maxStacks === undefined || (team.upgrades[u.id] ?? 0) < u.maxStacks),
+      (u.maxStacks === undefined || (team.upgrades[u.id] ?? 0) < u.maxStacks) &&
+      (!u.requires || u.requires.every((id) => owned.includes(id))),
   );
 }
 
 function rollOffer(team: Team): string[] {
   const pool = eligibleUpgrades(team).map((u) => u.id);
   const offer: string[] = [];
-  while (offer.length < catalog.offerSize && pool.length > 0) {
+  while (offer.length < getCatalog().offerSize && pool.length > 0) {
     offer.push(pool.splice(randomInt(pool.length), 1)[0]);
   }
   return offer;
@@ -130,8 +190,8 @@ export function teamView(team: Team): TeamView {
     phase: state.phase,
     message: state.message,
     weaponsLocked: state.weaponsLocked,
-    weapons: catalog.weapons,
-    upgrades: catalog.upgrades,
+    weapons: getCatalog().weapons,
+    upgrades: getCatalog().upgrades,
     questionNumber: state.questionIndex + 1,
     questionCount: state.questions.length,
     question: showQuestion ? { id: q.id, round: q.round, text: q.text, options: q.options } : null,
@@ -147,17 +207,51 @@ export function teamView(team: Team): TeamView {
       picksUsed: team.picksUsed,
       offer: team.offer,
     },
+    battle: battleForTeam(team),
+  };
+}
+
+// What one team needs to know: who is next in the battle on screen, and where
+// they sit over every battle so far. Null until the first battle starts.
+function battleForTeam(team: Team): TeamView['battle'] {
+  const battle = lastBattle();
+  if (!battle) return null;
+  const mine = (m: BattleMatch) => m.a === team.id || m.b === team.id;
+  const active =
+    battle.matches.find((m) => (m.status === 'queued' || m.status === 'playing') && mine(m)) ??
+    battle.matches.find((m) => m.status === 'pending' && mine(m)) ??
+    null;
+  const opponentId = active ? (active.a === team.id ? active.b : active.a) : null;
+  const rows = standings(state.teams, allMatches(state.battles));
+  const rank = rows.findIndex((row) => row.teamId === team.id);
+  const row = rank >= 0 ? rows[rank] : null;
+  return {
+    number: state.battles.length,
+    opponent: opponentId ? (state.teams.find((t) => t.id === opponentId)?.name ?? null) : null,
+    status: active?.status ?? null,
+    rank: rank >= 0 ? rank + 1 : null,
+    points: row?.points ?? 0,
+    wins: row?.wins ?? 0,
+    played: row?.played ?? 0,
   };
 }
 
 export function adminView(online: string[]): AdminView {
+  const catalog = getCatalog();
   return {
     state,
     catalog,
     picks: Object.fromEntries(state.teams.map((t) => [t.id, picksAvailable(t)])),
     online,
+    game: {
+      ...gameInfo,
+      catalogSource: catalog.source ?? 'file',
+      catalogSyncedAt: catalog.syncedAt ?? null,
+    },
   };
 }
+
+export { getCatalog };
 
 export function loadouts(): Loadout[] {
   return state.teams.map((t) => ({ team: t.name, weapon: t.weapon, upgrades: { ...t.upgrades } }));
@@ -170,7 +264,7 @@ export function findTeam(token: string | undefined): Team | undefined {
 }
 
 function checkWeapon(weapon: string) {
-  if (!catalog.weapons.some((w) => w.id === weapon)) throw new UserError('Unknown weapon');
+  if (!getCatalog().weapons.some((w) => w.id === weapon)) throw new UserError('Unknown weapon');
 }
 
 export function join(name: string, weapon: string, code: string): Team {
@@ -226,6 +320,130 @@ export function pick(team: Team, upgradeId: string, picksUsed?: number) {
     team.upgrades[upgradeId] = (team.upgrades[upgradeId] ?? 0) + 1;
     team.picksUsed++;
     team.offer = null;
+  });
+}
+
+// ---- Battle -----------------------------------------------------------------
+// State changes for the round-robins, used by server/battle.ts (which talks to
+// the game) and by the views. Every trip to the battle phase adds a new battle
+// to `state.battles`; the table is the sum of all of them.
+
+// The battle being played now, or null when the last one has finished.
+export function currentBattle(): Battle | null {
+  const last = state.battles[state.battles.length - 1];
+  return last && !last.finishedAt ? last : null;
+}
+
+// The battle on the card: the one being played, or the one that just finished.
+export function lastBattle(): Battle | null {
+  return state.battles[state.battles.length - 1] ?? null;
+}
+
+function findBattleMatch(id: string): BattleMatch | undefined {
+  for (const battle of state.battles) {
+    const match = battle.matches.find((m) => m.id === id);
+    if (match) return match;
+  }
+  return undefined;
+}
+
+// Adds a battle dealt by server/battle.ts and returns it.
+export function beginBattle(battle: Battle): Battle {
+  mutate(() => {
+    state.battles.push(battle);
+  });
+  return battle;
+}
+
+export function setMatchGame(id: string, gameId: string | null, status: BattleMatchStatus) {
+  mutate(() => {
+    const match = findBattleMatch(id);
+    if (!match) return;
+    match.gameId = gameId;
+    match.status = status;
+  });
+}
+
+// A duplicate result (two displays, or a retry) is a no-op.
+export function recordResult(id: string, result: { winner: string | null; hp: [number, number]; time: number }) {
+  mutate(() => {
+    const match = findBattleMatch(id);
+    if (!match || match.status === 'done') return;
+    match.status = 'done';
+    match.winner = result.winner;
+    match.hp = result.hp;
+    match.time = result.time;
+    delete match.error;
+  });
+}
+
+export function cancelMatch(id: string, reason: string) {
+  mutate(() => {
+    const match = findBattleMatch(id);
+    if (match) {
+      match.status = 'cancelled';
+      match.error = reason;
+    }
+  });
+}
+
+export function failMatch(id: string, error: string) {
+  mutate(() => {
+    const match = findBattleMatch(id);
+    if (match) {
+      match.status = 'failed';
+      match.error = error;
+    }
+  });
+}
+
+export function setBattleNote(note: string) {
+  const battle = currentBattle();
+  if (!battle || battle.note === note) return;
+  mutate(() => {
+    battle.note = note;
+  });
+}
+
+export function finishBattle() {
+  const battle = currentBattle();
+  if (!battle) return;
+  mutate(() => {
+    battle.finishedAt = new Date().toISOString();
+  });
+}
+
+// Throw every result away and start the table again.
+export function clearBattles() {
+  mutate(() => {
+    state.battles = [];
+  });
+}
+
+// A match left over from an earlier run of this server is played again from the
+// start: the game keeps its matches in memory, so after a restart it may not
+// have the one we remember.
+export function resetUnfinishedMatches() {
+  mutate(() => {
+    for (const match of currentBattle()?.matches ?? []) {
+      if (match.status === 'queued' || match.status === 'playing') {
+        match.status = 'pending';
+        match.gameId = null;
+      }
+    }
+  });
+}
+
+// Re-copy the teams' current loadouts into the matches that have not been
+// played yet. Played matches keep the loadouts they were fought with.
+export function resyncFighters(fighters: Map<string, Fighter>) {
+  mutate(() => {
+    for (const match of currentBattle()?.matches ?? []) {
+      if (match.status !== 'pending') continue;
+      const a = fighters.get(match.a);
+      const b = fighters.get(match.b);
+      if (a && b) match.fighters = [a, b];
+    }
   });
 }
 

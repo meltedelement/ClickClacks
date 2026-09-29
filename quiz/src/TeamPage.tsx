@@ -252,6 +252,25 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
         {view.phase === 'battle' && (
           <section className="card stack">
             <h2>Battle time</h2>
+            {view.battle ? (
+              <>
+                <p className="muted">
+                  {view.battle.opponent ? (
+                    <>
+                      You are fighting <strong>{view.battle.opponent}</strong>.
+                    </>
+                  ) : (
+                    'Waiting for your next match.'
+                  )}
+                </p>
+                <p className="muted">
+                  Battle {view.battle.number} · place <strong>{view.battle.rank ?? '–'}</strong> · {view.battle.wins}W of{' '}
+                  {view.battle.played} · {view.battle.points} points
+                </p>
+              </>
+            ) : (
+              <p className="muted">The battle has not started yet.</p>
+            )}
             <p className="muted">Watch the arena on the big screen.</p>
           </section>
         )}
