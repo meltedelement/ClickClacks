@@ -5,7 +5,8 @@ import { currentRound } from '../shared/battle.ts';
 import { Bracket } from './Bracket.tsx';
 import { BATTLE_EVERY, groupRounds, roundPosition, stagesAllowed } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
-import { Brand, LETTERS, Status, ThemeToggle } from './ui.tsx';
+import { BattleViewLink, Brand, LETTERS, Status, TeamDot, ThemeToggle, battleViewUrl } from './ui.tsx';
+import { TEAM_COLORS } from '../shared/colors.ts';
 
 export function AdminPage() {
   const admin = useAdmin();
@@ -28,6 +29,7 @@ export function AdminPage() {
             <a href="/present" target="_blank">
               Open presenter view ↗
             </a>
+            <BattleViewLink gameApi={view.game.url} />
             <Status connected={connected} />
             <ThemeToggle />
           </div>
@@ -129,6 +131,7 @@ export function AdminPage() {
                     <tr>
                       <th>Team</th>
                       <th>Code</th>
+                      <th>Colour</th>
                       <th>Weapon</th>
                       <th>Picks left</th>
                       <th>Bonus picks</th>
@@ -307,7 +310,8 @@ function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string,
   const battle = state.battle;
   const round = battle && currentRound(battle);
   const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '(deleted team)';
-  const displayUrl = game.url.replace(/\/api\/?$/, '/?display');
+  const teamColor = (id: string) => state.teams.find((t) => t.id === id)?.color ?? '';
+  const displayUrl = battleViewUrl(game.url);
   const allowed = stagesAllowed(state.questions, state.questionIndex);
   const picking = state.teams.filter((t) => (view.transformPicks[t.id] ?? 0) > 0);
 
@@ -330,6 +334,11 @@ function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string,
         <span className={game.displays > 0 ? 'pill good' : 'pill'}>
           {game.displays} display{game.displays === 1 ? '' : 's'}
         </span>
+        {game.screens > 0 && (
+          <span className="pill">
+            {game.screens} match{game.screens === 1 ? '' : 'es'} at once per display
+          </span>
+        )}
         <span className="faint mono">{game.url}</span>
       </div>
 
@@ -367,6 +376,15 @@ function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string,
       )}
       {battle && round?.status === 'waiting' && picking.length > 0 && <p className="hint">Transformation to pick: {picking.map((t) => t.name).join(', ')}</p>}
       {battle?.note && <p className="notice">{battle.note}</p>}
+      {game.restart && (
+        <p className="notice bad">
+          The game server restarted at {new Date(game.restart.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} and lost its matches.{' '}
+          {game.restart.matches.join(', ')} went back on the game and {game.restart.matches.length === 1 ? 'starts' : 'start'} again from the beginning, with
+          the same fights. In dev mode (
+          <code>npm run dev:all</code>) a change to a game file restarts the game server, for example a git checkout. Do not change files while a stage
+          plays. Use <code>npm run start:all</code> for the event.
+        </p>
+      )}
       {battle?.champion && <p className="notice good">{teamName(battle.champion)} wins the battle.</p>}
 
       {battle && (
@@ -374,6 +392,8 @@ function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string,
           <Bracket
             battle={battle}
             teamName={teamName}
+            teamColor={teamColor}
+            onScreen={game.reachable && game.displays > 0 ? game.onScreen : undefined}
             actions={(match) => {
               const roundOpen = battle.rounds[match.round]?.status !== 'done';
               const isFinal = match.round === battle.rounds.length - 1;
@@ -410,7 +430,7 @@ function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string,
 }
 
 function loadouts({ state }: AdminView) {
-  return state.teams.map((t) => ({ team: t.name, weapon: t.weapon, upgrades: t.upgrades, transformations: t.transformations }));
+  return state.teams.map((t) => ({ team: t.name, color: t.color, weapon: t.weapon, upgrades: t.upgrades, transformations: t.transformations }));
 }
 
 interface TeamRowProps {
@@ -444,6 +464,22 @@ function TeamRow({ team, view, picks, transformPicks, online, act }: TeamRowProp
         </div>
       </td>
       <td className="mono">{team.code}</td>
+      <td>
+        <span className="row start" style={{ gap: 8 }}>
+          <TeamDot color={team.color} />
+          <select value={team.color} onChange={(e) => update({ color: e.target.value })}>
+            {!team.color && <option value="">None</option>}
+            {TEAM_COLORS.map((c) => {
+              const owner = view.state.teams.find((t) => t !== team && t.color === c.hex);
+              return (
+                <option key={c.hex} value={c.hex} disabled={Boolean(owner)}>
+                  {owner ? `${c.name} (${owner.name})` : c.name}
+                </option>
+              );
+            })}
+          </select>
+        </span>
+      </td>
       <td>
         <select value={team.weapon} onChange={(e) => update({ weapon: e.target.value })}>
           {catalog.weapons.map((w) => (

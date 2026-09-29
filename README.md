@@ -97,9 +97,9 @@ Another program (such as the quiz server) can queue matches over HTTP. A
 display page plays them live, and each result goes back to that program. The
 display page decides the official result, so the recorded winner is always the
 one the audience saw. The quiz server in `quiz/` is the reference caller: at the
-battle phase it runs a knockout tournament through this API. It sends all the
-matches of a round at once, and the display plays up to four of them at the
-same time (see `quiz/README.md`).
+battle phase it runs a knockout tournament through this API. It sends the
+matches of a round one bracket at a time (winners bracket first), and the
+display plays up to four of them at the same time (see `quiz/README.md`).
 
 ```sh
 npm run dev                  # API at http://localhost:5173/api, display at http://localhost:5173/?display
@@ -170,6 +170,7 @@ A fighter (`FighterInput`):
 | --- | --- | --- |
 | `weapon` | string | Required. A weapon id from `/api/catalog`. |
 | `name` | string | Optional. Shown above the ball and in the winner banner. `team` is accepted in its place. |
+| `color` | string | Optional. The ball colour as `"#rrggbb"`, e.g. a team colour. Without it, the ball takes the colour of its weapon. Another format is a 400. |
 | `upgrades` | `string[]` or `{ [id]: count }` | Optional. A list of upgrade ids (repeat an id to stack it) or a map of id to copies, 0 to 100 each. `['damage', 'damage']` and `{ damage: 2 }` are the same. Upgrades are applied in the order given. A transformation here is a 400. |
 | `transformations` | `string[]` or `{ [id]: count }` | Optional. Transformation ids from `transformations` in `/api/catalog`, in the same forms. They are applied before the upgrades. An upgrade that is not a transformation here is a 400. |
 
@@ -182,8 +183,8 @@ Success is a **201** with the new `Match`:
   "id": "5f0c3a1e-8d4b-4b8e-9a52-1c7e2f6a9d10",
   "status": "queued",
   "fighters": [
-    { "name": "Alpha", "weapon": "sword", "upgrades": ["damage", "damage", "lifesteal"], "transformations": ["captain"] },
-    { "name": "Beta", "weapon": "mace", "upgrades": ["health", "health"], "transformations": [] }
+    { "name": "Alpha", "color": "#e5484d", "weapon": "sword", "upgrades": ["damage", "damage", "lifesteal"], "transformations": ["captain"] },
+    { "name": "Beta", "color": null, "weapon": "mace", "upgrades": ["health", "health"], "transformations": [] }
   ],
   "seed": 2894113750,
   "timeLimit": 180,
@@ -197,7 +198,7 @@ Success is a **201** with the new `Match`:
 ```
 
 The stored `fighters` are normalised: `team` is folded into `name` (`null` when
-neither was given), and `upgrades` and `transformations` are always flat lists of ids.
+neither was given), `color` is `null` when not given, and `upgrades` and `transformations` are always flat lists of ids.
 
 #### The `Match` object
 
@@ -205,7 +206,7 @@ neither was given), and `upgrades` and `transformations` are always flat lists o
 | --- | --- | --- |
 | `id` | string | UUID. |
 | `status` | `'queued'` \| `'playing'` \| `'done'` \| `'cancelled'` | See the lifecycle below. |
-| `fighters` | `[Fighter, Fighter]` | `{ name: string \| null, weapon: string, upgrades: string[], transformations: string[] }`. |
+| `fighters` | `[Fighter, Fighter]` | `{ name: string \| null, color: string \| null, weapon: string, upgrades: string[], transformations: string[] }`. |
 | `seed` | integer | The seed the fight is played with, whether you passed it or not. |
 | `timeLimit` | number | Sim seconds before a draw is called. |
 | `tiebreak` | `'hp'` \| `null` | As requested. |

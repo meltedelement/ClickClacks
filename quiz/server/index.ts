@@ -96,13 +96,15 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     return sendAdmins();
   }
 
-  // Read by the game: one { team, weapon, upgrades, transformations } per team.
+  // Read by the game: one { team, color, weapon, upgrades, transformations } per team.
   if (route === 'GET /api/loadouts') return json(res, 200, store.loadouts());
   if (route === 'GET /api/weapons') return json(res, 200, store.getCatalog().weapons);
+  // The join form asks for this every few seconds, so it can grey out the colours other teams took.
+  if (route === 'GET /api/colors') return json(res, 200, { taken: store.takenColors() });
 
   if (route === 'POST /api/join') {
     const body = await readBody(req);
-    const team = store.join(body.name, body.weapon, body.code);
+    const team = store.join(body.name, body.weapon, body.color, body.code);
     return json(res, 200, { token: team.id });
   }
 
@@ -121,6 +123,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
   }
   if (route === 'POST /api/weapon') {
     store.chooseWeapon(team!, (await readBody(req)).weapon);
+    return json(res, 200, { ok: true });
+  }
+  if (route === 'POST /api/color') {
+    store.chooseColor(team!, (await readBody(req)).color);
     return json(res, 200, { ok: true });
   }
   if (route === 'POST /api/pick') {
@@ -182,15 +188,15 @@ async function refreshCatalog() {
   );
 }
 
-// Keeps the "displays connected" line honest, and reads the catalog again once
-// the game server is up.
+// Keeps the "displays connected" line and the screen shown for each match
+// honest, and reads the catalog again once the game server is up.
 async function pingGame() {
   try {
     const status = await game.status();
-    store.setGameStatus({ reachable: true, displays: status.displays });
+    store.setGameStatus(status);
     if (store.getCatalog().source !== 'game') await refreshCatalog();
   } catch {
-    store.setGameStatus({ reachable: false, displays: 0 });
+    store.setGameStatus(null);
   }
 }
 
@@ -243,5 +249,5 @@ http
 // Read the game's catalog and pick up a battle that was interrupted, then keep
 // an eye on the game from here on.
 pingGame();
-setInterval(pingGame, 5_000).unref();
+setInterval(pingGame, 2_000).unref();
 battle.resume();

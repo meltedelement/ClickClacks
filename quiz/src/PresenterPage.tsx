@@ -8,7 +8,7 @@ import { currentRound, plannedStages } from '../shared/battle.ts';
 import { Bracket } from './Bracket.tsx';
 import { breakAfter, roundPosition, stagesAllowed, startsRound } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
-import { Brand, LETTERS, RoundProgress, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
+import { BattleViewLink, Brand, LETTERS, RoundProgress, Status, TeamDot, ThemeToggle, WeaponSwatch, battleViewUrl } from './ui.tsx';
 
 // A step either sends an admin action, or shows the title of the round that
 // starts at question `intro`. The round title exists only on this screen.
@@ -114,6 +114,7 @@ export function PresenterPage() {
               )
             )}
             <span className={state.phase === 'question' ? 'pill accent' : state.phase === 'reveal' ? 'pill good' : 'pill'}>{phaseLabel}</span>
+            <BattleViewLink gameApi={view.game.url} />
             <Status connected={connected} />
             <ThemeToggle />
           </div>
@@ -248,7 +249,9 @@ function TeamList({ teams, weaponName }: { teams: AdminView['state']['teams']; w
         <div className="team-grid">
           {teams.map((t) => (
             <div key={t.id} className="team-card">
-              <strong>{t.name}</strong>
+              <strong>
+                <TeamDot color={t.color} /> {t.name}
+              </strong>
               <span className="row start" style={{ gap: 8 }}>
                 <WeaponSwatch id={t.weapon} />
                 {weaponName(t.weapon)}
@@ -270,6 +273,7 @@ function BattleBoard({ view }: { view: AdminView }) {
   if (!battle) return <p className="muted">The bracket is not drawn yet.</p>;
 
   const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '(deleted team)';
+  const teamColor = (id: string) => state.teams.find((t) => t.id === id)?.color ?? '';
   const round = currentRound(battle);
   const stages = Math.max(plannedStages(battle.rounds[0]?.groups[0]?.teams.length ?? 0).length, battle.rounds.length);
   const picking = state.teams.filter((t) => (view.transformPicks[t.id] ?? 0) > 0);
@@ -288,13 +292,14 @@ function BattleBoard({ view }: { view: AdminView }) {
         </p>
       )}
       {battle.note && <p className="banner">{battle.note}</p>}
+      {game.restart && <p className="banner">The game restarted. The matches on screen start again from the beginning, with the same fights.</p>}
       {!game.reachable && <p className="banner">The game server is not answering at {game.url}.</p>}
       {game.reachable && game.displays === 0 && (
-        <p className="banner">No display page is open. Show {game.url.replace(/\/api\/?$/, '/?display')} on the big screen.</p>
+        <p className="banner">No display page is open. Show {battleViewUrl(game.url)} on the big screen.</p>
       )}
       {battle.champion && <h2 className="present-q">{teamName(battle.champion)} wins the battle</h2>}
       <div className="scroll">
-        <Bracket battle={battle} teamName={teamName} />
+        <Bracket battle={battle} teamName={teamName} teamColor={teamColor} onScreen={game.reachable && game.displays > 0 ? game.onScreen : undefined} />
       </div>
     </div>
   );

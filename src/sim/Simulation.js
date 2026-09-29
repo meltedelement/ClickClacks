@@ -10,8 +10,9 @@ import { resolveUpgrades } from '../upgrades/index.js';
 //
 // A match is set up from one loadout per fighter. Loadouts are plain data, so
 // they can be saved with a run or sent to a worker thread:
-//   { weapon: 'sword', upgrades: ['extra-blade', 'lifesteal'], name: 'Team Alpha' }
-// `name` is optional and only for display; without it a fighter is called by its weapon.
+//   { weapon: 'sword', upgrades: ['extra-blade', 'lifesteal'], name: 'Team Alpha', color: '#e5484d' }
+// `name` and `color` are optional and only for display; without them a fighter
+// is called by its weapon and its ball takes the weapon's colour.
 // Upgrade ids must exist, fit the weapon, and not repeat (see src/upgrades/).
 //
 // Things that happen are reported through onEvent(type, data):
@@ -52,7 +53,7 @@ export class Simulation {
 
       return new Ball({
         position: add(center, fromAngle(angle, CONFIG.ball.spawnDistance)),
-        color: `hsl(${WeaponClass.hue}, 70%, ${55 - copy * 18}%)`,
+        color: loadout.color ?? `hsl(${WeaponClass.hue}, 70%, ${55 - copy * 18}%)`,
         WeaponClass,
         upgrades,
         name: loadout.name,

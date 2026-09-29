@@ -40,7 +40,9 @@ To start a new quiz, delete `state.json` or use a reset button on the admin page
 
 The host moves through these phases on the admin page:
 
-1. **lobby**: Teams join with a name and a weapon. Teams can change their weapon only in this phase.
+1. **lobby**: Teams join with a name, a colour and a weapon. Teams can change their colour and weapon only in this phase.
+
+Each team has its own colour from a fixed palette of 16 (`shared/colors.ts`). A colour that another team has cannot be picked: the server rejects it, and the join form and lobby show it crossed out. The game draws the team's ball in that colour.
 2. **question**: Teams answer. A team can change its answer until the host closes answers.
 3. **locked**: Answers are closed.
 4. **reveal**: Teams see the correct answer. Each team that got it right sees `offerSize` random upgrades and picks one immediately.
@@ -50,7 +52,7 @@ Picks are calculated again from the answers each time. Picks left = correct reve
 
 ## Live updates and poor connections
 
-The server pushes the full state to each device with server-sent events (`/api/events`). There is no polling. Each action is a normal `POST`.
+The server pushes the full state to each device with server-sent events (`/api/events`). Each action is a normal `POST`. The only polling is on the join form: it reads `GET /api/colors` every 3 seconds, because a device joins only after it picks a colour.
 
 - The server sends a ping event every 15 seconds. If a device gets nothing for 35 seconds, it opens a new connection.
 - A device also connects again when the page becomes visible or the network comes back.
@@ -73,10 +75,10 @@ The server pushes the full state to each device with server-sent events (`/api/e
 - Set any phase or question directly.
 - Change or clear any team's answer for any question.
 - Mark a question as revealed or not revealed.
-- Edit a team: name, weapon, bonus picks, upgrade counts, and transformations.
+- Edit a team: name, colour, weapon, bonus picks, upgrade counts, and transformations.
 - Reroll a team's upgrade offer. Delete a team.
-- Show a banner message to all teams. Lock the weapon choice in the lobby.
-- Change a team's weapon at any time (teams can change it only in the lobby).
+- Show a banner message to all teams. Lock the colour and weapon choice in the lobby.
+- Change a team's colour or weapon at any time (teams can change them only in the lobby). A colour that another team has is disabled in the list.
 - Reload the questions. Reset the quiz, with or without the teams.
 - See the raw state. Copy the loadouts JSON.
 
@@ -87,7 +89,7 @@ A team that loses its device can rejoin with the team code only. Tap "Rejoin wit
 `GET /api/loadouts` returns one entry for each team:
 
 ```json
-[{ "team": "Alpha", "weapon": "sword", "upgrades": { "damage": 2, "hp": 1 }, "transformations": ["captain"] }]
+[{ "team": "Alpha", "color": "#e5484d", "weapon": "sword", "upgrades": { "damage": 2, "hp": 1 }, "transformations": ["captain"] }]
 ```
 
 The quiz stores only upgrade ids and counts, and the transformation ids. The game decides what each one does.
@@ -108,12 +110,13 @@ battle break.
 
 | Teams | Stages |
 | --- | --- |
-| 8 | 6 (+1 if the grand final is reset) |
-| 6 | 6 (+1) |
-| 4 | 4 (+1) |
+| 16 | 6 (+1 if the grand final is reset) |
+| 8 | 5 (+1) |
+| 6 | 5 (+1) |
+| 4 | 3 (+1) |
 
 With 7 rounds and 8 teams, stages 1 to 3 play after rounds 2, 4 and 6, and
-stages 4 to 6 after round 7.
+stages 4 and 5 after round 7.
 
 ### Transformations
 
@@ -130,15 +133,20 @@ wait for them.
 - The first stage is a random draw into the winners bracket, from a seed. The
   same seed and the same teams give the same draw and the same fights. The admin
   page shows the seed, and you can type one before you draw the bracket.
-- A loss in the winners bracket moves the team to the losers bracket. A loss in
-  the losers bracket puts it out.
-- A stage holds one round of each bracket. They play at the same time.
+- A loss in the winners bracket moves the team to the losers bracket of the
+  same stage. A loss in the losers bracket puts it out.
+- A stage holds one round of each bracket. The winners bracket plays first.
+  When all its matches have a winner, the quiz draws the losers bracket round
+  of the stage and plays it. The display never shows the two brackets at the
+  same time.
+- So the losers bracket starts in stage 1: the teams that lose in the first
+  winners round fight each other straight away.
 - In each bracket, teams fight in pairs in order. With an odd number of teams,
   the last team gets a **bye**: no match in this stage. In the next stage, the bye
   team is listed first, so it always fights. A team never gets two byes in a row,
   except the last team of a bracket, which waits for the other bracket.
 - In the losers bracket, the teams that won there meet the teams that just
-  dropped from the winners bracket.
+  dropped from the winners bracket in the same stage.
 - The last team of each bracket meet in the **grand final**. If the losers
   bracket team wins, the winners bracket team has its first loss, and a **grand
   final reset** decides the champion.
@@ -156,8 +164,9 @@ wait for them.
 2. At the first battle break, the quiz moves to the `battle` phase. This draws
    the bracket. You can also click **Draw the bracket** on the admin page.
 3. Start each stage with the presenter's Next button (**Start stage 1**) or on
-   the admin page. The quiz sends all matches of the stage to the game at the
-   same time. The display plays up to four at once.
+   the admin page. The quiz sends all winners bracket matches of the stage to
+   the game at the same time. The display plays up to four at once. When they
+   all have a winner, the quiz sends the losers bracket matches.
 4. When all the matches of a stage have a winner, the quiz draws the next stage
    and waits. Nothing plays until you start it. The admin page can start a stage
    at any time, also outside a battle break.
@@ -174,11 +183,16 @@ pages.
   failed. The match shows "Decided by the host".
 - **Replay**: plays a match of the current stage again with a new seed. For the
   grand final, this also removes the champion.
+- **Team wins** and **Replay** on a winners bracket match take back the losers
+  bracket draw of the stage, because another team can drop. This is possible
+  only while no losers match of the stage is on the game or has a result. Stop
+  the stage first if the losers matches are on the game.
 - **Reset battle**: removes the bracket and every result.
 
 ### Loadouts, restarts and errors
 
-- The quiz copies each team's loadout when its stage starts. Thus, upgrades and
+- The quiz copies each team's loadout when its stage starts. The losers bracket
+  matches get the loadouts when they are drawn. Thus, upgrades and
   transformations picked between stages apply to the next stage.
 - A loadout that the game refuses fails only that match. Fix the loadout, then
   replay the match or pick its winner.

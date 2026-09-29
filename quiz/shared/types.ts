@@ -44,6 +44,7 @@ export interface Team {
   id: string; // secret token the team's device uses
   code: string; // short code to rejoin from another device
   name: string;
+  color: string; // hex from TEAM_COLORS (shared/colors.ts); no two teams share one. '' only when every colour was taken
   weapon: string;
   upgrades: Record<string, number>;
   transformations: string[]; // transformation ids, in the order the team picked them
@@ -67,6 +68,7 @@ export interface State {
 // What the game receives for one team.
 export interface Loadout {
   team: string;
+  color: string;
   weapon: string;
   upgrades: Record<string, number>;
   transformations: string[];
@@ -78,6 +80,7 @@ export interface Loadout {
 // so a later change on the admin page does not change a match already sent.
 export interface Fighter {
   name: string;
+  color?: string; // ball colour; missing in matches drawn before teams had colours
   weapon: string;
   upgrades: Record<string, number>;
   transformations: string[];
@@ -123,10 +126,13 @@ export interface BracketGroup {
   name: string; // "Winners semi-finals", "Losers round 2", "Grand final", ...
   teams: string[]; // in pairing order: teams[0] v teams[1], teams[2] v teams[3], ...
   bye: string | null; // the team with no match in this stage (an odd count, or the last team of its bracket)
+  // Losers bracket only: not drawn yet. It waits for the teams that drop from
+  // the winners bracket of this stage, and `teams` holds only the survivors.
+  pending?: boolean;
 }
 
-// A stage: the matches that play in one battle break. Winners and losers
-// bracket matches of a stage play at the same time.
+// A stage: the matches that play in one battle break. The winners bracket
+// plays first, then the losers bracket.
 export interface BattleRound {
   index: number;
   name: string; // "Stage 1", "Stage 2", ...
@@ -149,19 +155,36 @@ export interface GameStatus {
   url: string;
   reachable: boolean;
   displays: number; // display pages connected; matches do not play without one
+  screens: number; // matches the display page plays at the same time (0 until the game answers)
+  onScreen: Record<string, GameScreen>; // game match id -> where it is on the display page
+  restart: GameRestart | null; // the game server lost the current stage's matches
   catalogSource: 'game' | 'file';
   catalogSyncedAt: string | null;
 }
 
+// A match on one of the display page's screens.
+export interface GameScreen {
+  screen: number; // 0-based; the display page numbers them from 1
+  playing: boolean; // false for the moment before the display starts it
+}
+
+// The game server forgot matches it had (it restarted), so the quiz sent them
+// again. They play again from the start, with the same seeds.
+export interface GameRestart {
+  at: string; // ISO time the quiz noticed
+  matches: string[]; // quiz match ids sent again
+}
+
 // Where one team is in the double elimination. See teamProgress in shared/battle.ts.
 //   waiting: has a match in this stage, and the host has not started the stage
+//   next: in the losers bracket of this stage, which is drawn when the winners bracket is finished
 //   fighting: has a match on the game now
 //   bye: has no match in this stage and stays in its bracket
 //   through: won its match in this stage, waits for the next
 //   dropped: lost its first match in this stage and goes to the losers bracket
 //   out: lost two matches
 //   champion: won the grand final
-export type TeamBattleState = 'waiting' | 'fighting' | 'bye' | 'through' | 'dropped' | 'out' | 'champion';
+export type TeamBattleState = 'waiting' | 'next' | 'fighting' | 'bye' | 'through' | 'dropped' | 'out' | 'champion';
 
 // Where a question is in its round. See shared/rounds.ts.
 export interface RoundPosition {
@@ -186,9 +209,11 @@ export interface TeamView {
   myAnswer: number | null;
   correct: number | null; // only set once the question is revealed
   transformations: Upgrade[]; // every transformation in the game, for names and descriptions
+  takenColors: string[]; // colours other teams have
   team: {
     name: string;
     code: string;
+    color: string;
     weapon: string;
     upgrades: Record<string, number>;
     transformations: string[];

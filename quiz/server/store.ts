@@ -10,6 +10,8 @@ import type {
   BattleMatchStatus,
   DecidedBy,
   Fighter,
+  GameRestart,
+  GameScreen,
   Loadout,
   Phase,
   Question,
@@ -19,9 +21,10 @@ import type {
 } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
 import { roundPosition } from '../shared/rounds.ts';
-import { advance, currentRound, eligibleTransformations, stillIn, teamProgress } from '../shared/battle.ts';
+import { TEAM_COLORS } from '../shared/colors.ts';
+import { advance, currentRound, drawLosers as drawLosersIn, eligibleTransformations, stillIn, teamProgress, undrawLosers } from '../shared/battle.ts';
 import { getCatalog } from './catalog.ts';
-import { GAME_API } from './game.ts';
+import { GAME_API, type GameStatus as GameApiStatus } from './game.ts';
 
 const DATA_DIR = path.join(import.meta.dirname, '..', 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
@@ -91,6 +94,14 @@ for (const team of state.teams) {
   }
 }
 
+// A state.json from before team colours, or one where two teams share a colour:
+// give each such team the first free colour.
+state.teams.forEach((team, i) => {
+  const valid = TEAM_COLORS.some((c) => c.hex === team.color);
+  const shared = state.teams.slice(0, i).some((t) => t.color === team.color);
+  if (!valid || shared) team.color = freeColors()[0] ?? '';
+});
+
 const listeners = new Set<() => void>();
 export function onChange(fn: () => void) {
   listeners.add(fn);
@@ -122,15 +133,44 @@ export function onCatalogChanged() {
 // ---- The game server --------------------------------------------------------
 
 // Cached so every view can show it without waiting for a request.
-const gameInfo = { url: GAME_API, reachable: false, displays: 0 };
+const gameInfo = {
+  url: GAME_API,
+  reachable: false,
+  displays: 0,
+  screens: 0,
+  onScreen: {} as Record<string, GameScreen>,
+  restart: null as GameRestart | null,
+};
 
-export function setGameStatus(patch: { reachable?: boolean; displays?: number }) {
-  const changed =
-    (patch.reachable !== undefined && patch.reachable !== gameInfo.reachable) ||
-    (patch.displays !== undefined && patch.displays !== gameInfo.displays);
-  if (patch.reachable !== undefined) gameInfo.reachable = patch.reachable;
-  if (patch.displays !== undefined) gameInfo.displays = patch.displays;
-  if (changed) notify();
+// The game's GET /api/status, or null when the game server did not answer.
+export function setGameStatus(status: GameApiStatus | null) {
+  const next = {
+    reachable: status !== null,
+    displays: status?.displays ?? 0,
+    screens: status?.screens ?? 0,
+    onScreen: Object.fromEntries(
+      (status?.onScreen ?? []).filter((m) => m.screen !== null).map((m) => [m.id, { screen: m.screen as number, playing: m.status === 'playing' }]),
+    ),
+  };
+  const before = JSON.stringify([gameInfo.reachable, gameInfo.displays, gameInfo.screens, gameInfo.onScreen]);
+  Object.assign(gameInfo, next);
+  if (JSON.stringify([next.reachable, next.displays, next.screens, next.onScreen]) !== before) notify();
+}
+
+// The game server forgot a match the quiz sent (it restarted), and the quiz
+// sends it again. Kept until the next stage starts, so the host sees why the
+// matches on screen started over.
+export function noteGameRestart(matchId: string) {
+  const restart = gameInfo.restart ?? { at: new Date().toISOString(), matches: [] };
+  if (!restart.matches.includes(matchId)) restart.matches.push(matchId);
+  gameInfo.restart = restart;
+  notify();
+}
+
+export function clearGameRestart() {
+  if (!gameInfo.restart) return;
+  gameInfo.restart = null;
+  notify();
 }
 
 // ---- Derived data -----------------------------------------------------------
@@ -200,6 +240,7 @@ export function teamView(team: Team): TeamView {
     weapons: getCatalog().weapons,
     upgrades: getCatalog().upgrades,
     transformations: getCatalog().transformations,
+    takenColors: takenColors(team),
     questionNumber: state.questionIndex + 1,
     questionCount: state.questions.length,
     question: showQuestion ? { id: q.id, round: q.round, text: q.text, options: q.options } : null,
@@ -209,6 +250,7 @@ export function teamView(team: Team): TeamView {
     team: {
       name: team.name,
       code: team.code,
+      color: team.color,
       weapon: team.weapon,
       upgrades: team.upgrades,
       transformations: team.transformations,
@@ -262,7 +304,7 @@ export function adminView(online: string[]): AdminView {
 export { getCatalog };
 
 export function loadouts(): Loadout[] {
-  return state.teams.map((t) => ({ team: t.name, weapon: t.weapon, upgrades: { ...t.upgrades }, transformations: [...t.transformations] }));
+  return state.teams.map((t) => ({ team: t.name, color: t.color, weapon: t.weapon, upgrades: { ...t.upgrades }, transformations: [...t.transformations] }));
 }
 
 // ---- Team actions -----------------------------------------------------------
@@ -275,6 +317,26 @@ function checkWeapon(weapon: string) {
   if (!getCatalog().weapons.some((w) => w.id === weapon)) throw new UserError('Unknown weapon');
 }
 
+// Colours that belong to a team other than `except`.
+export function takenColors(except?: Team): string[] {
+  return state.teams.flatMap((t) => (t !== except && t.color ? [t.color] : []));
+}
+
+function freeColors(): string[] {
+  const taken = takenColors();
+  return TEAM_COLORS.map((c) => c.hex).filter((hex) => !taken.includes(hex));
+}
+
+// A team's colour must come from the palette, and no other team may have it.
+function checkColor(color: unknown, team?: Team): string {
+  const hex = String(color ?? '').toLowerCase();
+  if (!TEAM_COLORS.some((c) => c.hex === hex)) {
+    throw new UserError(freeColors().length > 0 ? 'Pick a colour' : 'Every colour is taken. Ask the host to free one.');
+  }
+  if (takenColors(team).includes(hex)) throw new UserError('Another team has that colour. Pick a different one.');
+  return hex;
+}
+
 // A code alone rejoins its team, so codes must be unique.
 function newCode(): string {
   let code: string;
@@ -283,7 +345,7 @@ function newCode(): string {
   return code;
 }
 
-export function join(name: string, weapon: string, code: string): Team {
+export function join(name: string, weapon: string, color: string, code: string): Team {
   code = String(code ?? '').trim();
   if (code) {
     const team = state.teams.find((t) => t.code === code);
@@ -302,6 +364,7 @@ export function join(name: string, weapon: string, code: string): Team {
     id: randomUUID(),
     code: newCode(),
     name,
+    color: checkColor(color),
     weapon,
     upgrades: {},
     transformations: [],
@@ -330,6 +393,13 @@ export function chooseWeapon(team: Team, weapon: string) {
     team.weapon = weapon;
     team.offer = null; // the old offer may hold upgrades for the old weapon
   });
+}
+
+// Same rule as the weapon: the team chooses in the lobby, the host at any time.
+export function chooseColor(team: Team, color: string) {
+  if (state.phase !== 'lobby' || state.weaponsLocked) throw new UserError('Colours can only be changed in the lobby');
+  const hex = checkColor(color, team);
+  mutate(() => (team.color = hex));
 }
 
 // `picksUsed` is the count the device saw when it sent the pick. If it no
@@ -381,6 +451,27 @@ export function startRound(fighters: Map<string, Fighter>) {
       if (a && b) match.fighters = [a, b];
     }
   });
+}
+
+// The winners bracket of the current stage is finished: draw its losers
+// bracket. In a stage that is playing, its matches get the teams' loadouts from
+// `fighters` (as they are now). Returns true when there was something to draw.
+export function drawLosers(fighters: Map<string, Fighter>): boolean {
+  const battle = state.battle;
+  const round = battle && currentRound(battle);
+  const waiting = round?.groups.find((g) => g.side === 'losers' && g.pending);
+  const winners = round && battle.matches.filter((m) => m.round === round.index && m.side === 'winners');
+  if (!waiting || !winners || !winners.every((m) => m.status === 'done' && m.winner !== null)) return false;
+  mutate(() => {
+    const matches = drawLosersIn(state.battle!);
+    if (round.status !== 'playing') return; // startRound copies the loadouts
+    for (const match of matches) {
+      const a = fighters.get(match.a);
+      const b = fighters.get(match.b);
+      if (a && b) match.fighters = [a, b];
+    }
+  });
+  return true;
 }
 
 // The current stage goes back to waiting. Matches sent to the game go back to
@@ -448,6 +539,8 @@ export function setWinner(id: string, winner: string) {
   if (match.status === 'queued') throw new UserError('That match is on the game now. Stop the round first.');
   if (state.battle?.rounds[match.round]?.status === 'done') throw new UserError('That stage is finished.');
   mutate(() => {
+    // Another winner drops another team: draw the losers bracket again.
+    if (match.side === 'winners') undrawLosers(state.battle!);
     match.status = 'done';
     match.winner = winner;
     match.decidedBy = 'host';
@@ -464,6 +557,8 @@ export function replayMatch(id: string, seed: number) {
   const round = state.battle?.rounds[match.round];
   if (!round || round !== currentRound(state.battle!)) throw new UserError('Only a match in the current stage can be played again.');
   mutate(() => {
+    // The losers bracket waits for this match again.
+    if (match.side === 'winners') undrawLosers(state.battle!);
     Object.assign(match, { status: 'pending', seed, gameId: null, winner: null, decidedBy: null, hp: null, time: null });
     delete match.error;
     // Only the grand final can be replayed after it is done: that undoes the champion.
@@ -554,8 +649,10 @@ export function adminAction(a: Action) {
       const team = teamById(a.teamId);
       const patch = a.patch ?? {};
       if (patch.weapon !== undefined) checkWeapon(patch.weapon);
+      const color = patch.color !== undefined ? checkColor(patch.color, team) : undefined;
       return mutate(() => {
         if (patch.name !== undefined) team.name = String(patch.name).trim().slice(0, 30) || team.name;
+        if (color !== undefined) team.color = color;
         if (patch.weapon !== undefined && patch.weapon !== team.weapon) {
           team.weapon = patch.weapon;
           team.offer = null;

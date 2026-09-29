@@ -6,6 +6,8 @@ export interface FighterInput {
   /** Shown above the ball and in the winner banner. `team` works too. */
   name?: string;
   team?: string;
+  /** Ball colour as "#rrggbb". Optional: without it the ball takes its weapon's colour. */
+  color?: string;
   /** Weapon id, e.g. "sword". See GET /api/catalog. */
   weapon: string;
   /** Upgrade ids (repeat an id to stack it), or { id: count }. No transformations here. */
@@ -31,6 +33,7 @@ export interface MatchRequest {
 
 export interface Fighter {
   name: string | null;
+  color: string | null;
   weapon: string;
   upgrades: string[];
   transformations: string[];

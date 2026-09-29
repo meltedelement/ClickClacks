@@ -32,6 +32,7 @@ const DEFAULT_TIME_LIMIT = 180; // sim seconds before a match is called a draw (
 const MAX_TIME_LIMIT = 600;
 const MAX_BODY = 64 * 1024;
 const MAX_COUNT = 100; // copies of one upgrade in the { id: count } form, whatever its maxStacks
+const HEX_COLOR = /^#[0-9a-f]{6}$/i; // a fighter's ball colour, e.g. a quiz team's colour
 const PING_INTERVAL = 20_000; // keeps display connections open through proxies
 const MAX_SCREENS = 4; // the display lays out at most a 2×2 grid
 const SCREENS = Math.min(MAX_SCREENS, Math.max(1, Math.floor(Number(process.env.SCREENS ?? MAX_SCREENS)) || 1));
@@ -183,7 +184,7 @@ function fillScreens() {
   return changed;
 }
 
-// A fighter is { name?, weapon, upgrades?, transformations? }. `team` is
+// A fighter is { name?, color?, weapon, upgrades?, transformations? }. `team` is
 // accepted in place of `name`, and upgrades and transformations may each be a
 // list of ids (repeat an id to stack it) or an { id: count } object, so the
 // quiz's loadouts can be passed straight in. Transformations go only in
@@ -194,6 +195,10 @@ function parseFighter(input, i) {
 
   const name = input.name ?? input.team ?? null;
   if (name !== null && typeof name !== 'string') throw new ApiError(400, `${where}.name must be a string`);
+  const color = input.color ?? null;
+  if (color !== null && !(typeof color === 'string' && HEX_COLOR.test(color))) {
+    throw new ApiError(400, `${where}.color must be a hex colour like "#e5484d"`);
+  }
 
   const upgrades = parseUpgradeIds(input.upgrades ?? [], `${where}.upgrades`);
   const transformations = parseUpgradeIds(input.transformations ?? [], `${where}.transformations`);
@@ -209,7 +214,7 @@ function parseFighter(input, i) {
   } catch (err) {
     throw new ApiError(400, `${where}: ${err.message}`);
   }
-  return { name, weapon: input.weapon, upgrades, transformations };
+  return { name, color, weapon: input.weapon, upgrades, transformations };
 }
 
 function parseUpgradeIds(upgrades, where) {

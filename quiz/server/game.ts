@@ -27,6 +27,7 @@ export class GameApiError extends Error {
 export interface GameFighterInput {
   name?: string;
   team?: string;
+  color?: string; // "#rrggbb"; without it the ball takes its weapon's colour
   weapon: string;
   upgrades?: string[] | Record<string, number>;
   transformations?: string[] | Record<string, number>;
@@ -43,7 +44,7 @@ export interface GameResult {
 export interface GameMatch {
   id: string;
   status: 'queued' | 'playing' | 'done' | 'cancelled';
-  fighters: { name: string | null; weapon: string; upgrades: string[]; transformations: string[] }[];
+  fighters: { name: string | null; color: string | null; weapon: string; upgrades: string[]; transformations: string[] }[];
   seed: number;
   timeLimit: number;
   tiebreak: 'hp' | null;

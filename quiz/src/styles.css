@@ -112,6 +112,20 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; padding: 0; }
 
 button { cursor: pointer; font-weight: 550; }
+/* A link that looks like a plain button. */
+a.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 550;
+  white-space: nowrap;
+  transition: border-color 120ms, background-color 120ms;
+}
 button:disabled { cursor: default; opacity: 0.45; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 button.primary:disabled { opacity: 1; background: var(--surface-3); border-color: var(--border-strong); color: var(--faint); }
@@ -239,6 +253,32 @@ legend { padding: 0; margin-bottom: 6px; }
 .tile:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .tile:has(input:disabled) { cursor: default; opacity: 0.6; }
 .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px var(--swatch-edge); }
+
+/* Team colours: round buttons, the same as the balls in the arena. */
+.colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 8px; }
+.color {
+  position: relative;
+  aspect-ratio: 1;
+  max-width: 48px;
+  border-radius: 50%;
+  background: var(--color);
+  box-shadow: inset 0 0 0 1px var(--swatch-edge);
+  cursor: pointer;
+}
+.color input { position: absolute; opacity: 0; pointer-events: none; }
+.color:has(input:checked) { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text); }
+.color:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 5px; }
+/* Taken by another team: faded and crossed out. */
+.color:has(input:disabled) { cursor: not-allowed; opacity: 0.25; }
+.color:has(input:disabled)::after {
+  content: '';
+  position: absolute;
+  inset: 45% -2px;
+  background: var(--text);
+  transform: rotate(-45deg);
+}
+fieldset:disabled .color { cursor: default; }
+.team-dot { display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; box-shadow: inset 0 0 0 1px var(--swatch-edge); }
 
 .option {
   display: flex;
@@ -409,6 +449,7 @@ pre { margin: 10px 0 0; padding: 12px; border-radius: var(--radius-sm); backgrou
 
 /* Hover only where a pointer can hover, so a tapped button on a phone does not keep a hover style. */
 @media (hover: hover) {
+  a.button:hover { border-color: var(--accent-line); background: var(--accent-soft); text-decoration: none; }
   a:hover { text-decoration: underline; }
   input:hover, select:hover { border-color: var(--hover-border); }
   button:hover:not(:disabled, .selected, .correct, .wrong) { border-color: var(--hover-border); background: var(--surface-3); }

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { TeamView, WeaponInfo } from '../shared/types.ts';
 import { post, useEvents } from './api.ts';
-import { Brand, LETTERS, RoundProgress, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
+import { TEAM_COLORS, colorName } from '../shared/colors.ts';
+import { Brand, ColorPicker, LETTERS, RoundProgress, Status, TeamDot, ThemeToggle, WeaponSwatch } from './ui.tsx';
 
 const TOKEN_KEY = 'quiz-team-token';
+// How often the join form asks which colours other teams took.
+const COLORS_POLL_MS = 3_000;
 
 export function TeamPage() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
@@ -42,11 +45,11 @@ export function TeamPage() {
   return <TeamScreen view={view} token={token} connected={connected} onLeave={logout} />;
 }
 
-function TopBar({ name, children }: { name?: string; children?: React.ReactNode }) {
+function TopBar({ name, color, children }: { name?: string; color?: string; children?: React.ReactNode }) {
   return (
     <header className="topbar narrow">
       <div className="topbar-inner">
-        <Brand name={name} />
+        <Brand name={name} color={color} />
         <div className="row" style={{ gap: 8 }}>
           {children}
           <ThemeToggle />
@@ -77,6 +80,8 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
   const [weapons, setWeapons] = useState<WeaponInfo[]>([]);
   const [name, setName] = useState('');
   const [weapon, setWeapon] = useState('');
+  const [color, setColor] = useState('');
+  const [taken, setTaken] = useState<string[]>([]);
   const [code, setCode] = useState('');
   const [rejoin, setRejoin] = useState(false);
   const [error, setError] = useState('');
@@ -91,13 +96,35 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
       .catch(() => setError('Cannot reach the server'));
   }, []);
 
+  // Other teams join while this form is open, so keep the taken colours up to date.
+  async function loadTaken() {
+    try {
+      const res = await fetch('/api/colors');
+      setTaken(((await res.json()) as { taken: string[] }).taken);
+    } catch {
+      // Tried again on the next poll. The server checks the colour on join anyway.
+    }
+  }
+  useEffect(() => {
+    if (rejoin) return;
+    loadTaken();
+    const timer = setInterval(loadTaken, COLORS_POLL_MS);
+    return () => clearInterval(timer);
+  }, [rejoin]);
+
+  // Start on the first free colour, and move off a colour another team just took.
+  useEffect(() => {
+    if (!color || taken.includes(color)) setColor(TEAM_COLORS.find((c) => !taken.includes(c.hex))?.hex ?? '');
+  }, [taken, color]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const { token } = await post('/api/join', rejoin ? { code } : { name, weapon });
+      const { token } = await post('/api/join', rejoin ? { code } : { name, weapon, color });
       onJoin(token);
     } catch (err) {
       setError((err as Error).message);
+      if (!rejoin) loadTaken();
     }
   }
 
@@ -130,9 +157,10 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
               <span>Team name</span>
               <input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} autoComplete="off" autoFocus />
             </label>
+            <ColorPicker value={color} taken={taken} onChange={setColor} />
             <WeaponPicker weapons={weapons} value={weapon} onChange={setWeapon} />
             {error && <p className="error">{error}</p>}
-            <button type="submit" className="primary large block" disabled={!name.trim()}>
+            <button type="submit" className="primary large block" disabled={!name.trim() || !color}>
               Join
             </button>
             <button type="button" className="ghost" onClick={() => { setRejoin(true); setError(''); }}>
@@ -170,7 +198,7 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
 
   return (
     <>
-      <TopBar name={team.name}>
+      <TopBar name={team.name} color={team.color}>
         <div className="row">
           <span className="pill">
             Code <strong>{team.code}</strong>
@@ -188,10 +216,15 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
             <div className="stack">
               <h2>Waiting for the host</h2>
               <p className="muted">
-                {canChangeWeapon ? 'You can change your weapon until the quiz starts.' : 'Weapons are locked. The quiz starts soon.'}
+                {canChangeWeapon ? 'You can change your colour and weapon until the quiz starts.' : 'Colours and weapons are locked. The quiz starts soon.'}
               </p>
             </div>
-            {canChangeWeapon && <WeaponPicker weapons={view.weapons} value={team.weapon} disabled={busy} onChange={(id) => act('/api/weapon', { weapon: id })} />}
+            {canChangeWeapon && (
+              <>
+                <ColorPicker value={team.color} taken={view.takenColors} disabled={busy} onChange={(hex) => act('/api/color', { color: hex })} />
+                <WeaponPicker weapons={view.weapons} value={team.weapon} disabled={busy} onChange={(id) => act('/api/weapon', { weapon: id })} />
+              </>
+            )}
           </section>
         )}
 
@@ -295,6 +328,10 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
             <h2>Your loadout</h2>
           </div>
           <dl className="loadout">
+            <dt>Colour</dt>
+            <dd className="row start">
+              <TeamDot color={team.color} /> {team.color ? colorName(team.color) : 'None'}
+            </dd>
             <dt>Weapon</dt>
             <dd className="row start">
               <WeaponSwatch id={team.weapon} /> {weaponName}
@@ -356,11 +393,17 @@ function BattleStatus({ battle }: { battle: NonNullable<TeamView['battle']> }) {
     case 'dropped':
       return (
         <p className="notice bad">
-          You lost against {vs}. {side === 'final' ? 'You get one more match: the grand final reset.' : 'You go to the losers bracket. One more loss and you are out.'}
+          You lost against {vs}. {side === 'final' ? 'You get one more match: the grand final reset.' : 'You go to the losers bracket and fight again when the winners bracket of this stage is finished. One more loss and you are out.'}
         </p>
       );
     case 'fighting':
       return <p className="notice">{where}: you are fighting {vs} now.</p>;
+    case 'next':
+      return (
+        <p className="notice">
+          {where}: your match is drawn when the winners bracket of this stage is finished.{lives}
+        </p>
+      );
     case 'waiting':
       return (
         <p className="notice">

@@ -6,6 +6,7 @@ import {
   advance,
   currentRound,
   drawBracket,
+  drawLosers,
   eligibleTransformations,
   lossCount,
   mulberry32,
@@ -13,6 +14,7 @@ import {
   roundComplete,
   roundMatches,
   teamProgress,
+  undrawLosers,
   validateLoadout,
 } from './battle.ts';
 import { breakAfter, stagesAllowed } from './rounds.ts';
@@ -43,10 +45,13 @@ const ids = (n: number) => Array.from({ length: n }, (_, i) => `t${i + 1}`);
 
 type TestBattle = Pick<Battle, 'rounds' | 'matches' | 'seed' | 'champion'>;
 
-// Plays the current stage. `pick` chooses each winner; by default the first team wins.
+// Plays the current stage: the winners bracket, then the losers bracket. `pick`
+// chooses each winner; by default the first team wins.
 function playStage(battle: TestBattle, pick: (m: BattleMatch) => string = (m) => m.a) {
   const round = currentRound(battle)!;
-  for (const m of roundMatches(battle, round.index)) Object.assign(m, { status: 'done', winner: pick(m), decidedBy: 'ko' });
+  const play = (matches: BattleMatch[]) => matches.forEach((m) => Object.assign(m, { status: 'done', winner: pick(m), decidedBy: 'ko' }));
+  play(roundMatches(battle, round.index));
+  play(drawLosers(battle));
   round.status = 'done';
   const next = advance(battle);
   if ('champion' in next) battle.champion = next.champion;
@@ -67,25 +72,24 @@ function playOut(battle: TestBattle, pick?: (m: BattleMatch) => string) {
 
 const groupSizes = (battle: TestBattle) => battle.rounds.map((r) => r.groups.map((g) => `${g.side[0]}${g.teams.length}`).join(' '));
 
-test('eight teams: the double elimination takes six stages', () => {
+test('eight teams: the double elimination takes five stages', () => {
   const battle = bracket(8);
   assert.equal(battle.matches.length, 4);
   assert.deepEqual(battle.matches.flatMap((m) => [m.a, m.b]).sort(), ids(8).sort());
   playOut(battle);
-  assert.deepEqual(groupSizes(battle), ['w8', 'w4 l4', 'w2 l4', 'w1 l3', 'w1 l2', 'f2']);
+  assert.deepEqual(groupSizes(battle), ['w8 l4', 'w4 l4', 'w2 l3', 'w1 l2', 'f2']);
   assert.deepEqual(
     battle.rounds.map((r) => r.groups.map((g) => g.name)),
     [
-      ['Winners quarter-finals'],
-      ['Winners semi-finals', 'Losers round 1'],
-      ['Winners final', 'Losers round 2'],
-      ['Winners bracket champion', 'Losers round 3'],
+      ['Winners quarter-finals', 'Losers round 1'],
+      ['Winners semi-finals', 'Losers round 2'],
+      ['Winners final', 'Losers round 3'],
       ['Winners bracket champion', 'Losers final'],
       ['Grand final'],
     ],
   );
   // The first team always wins, so the winners bracket champion takes it without a reset.
-  const final = roundMatches(battle, 5)[0];
+  const final = roundMatches(battle, 4)[0];
   assert.equal(final.side, 'final');
   assert.equal(battle.champion, final.a);
 });
@@ -105,23 +109,25 @@ test('every team except the champion loses exactly twice', () => {
   }
 });
 
-test('a loss in the winners bracket drops the team to the losers bracket', () => {
+test('a loss in the winners bracket drops the team to the losers bracket of the same stage', () => {
   const battle = bracket(4);
-  playStage(battle);
-  const stage = currentRound(battle)!;
-  const losers = stage.groups.find((g) => g.side === 'losers')!;
   const firstRound = roundMatches(battle, 0);
+  for (const m of firstRound) Object.assign(m, { status: 'done', winner: m.a });
+  assert.equal(drawLosers(battle).length, 1);
+  const losers = currentRound(battle)!.groups.find((g) => g.side === 'losers')!;
   assert.deepEqual([...losers.teams].sort(), firstRound.map((m) => m.b).sort());
 });
 
 test('the losers bracket pairs its survivors with the teams that just dropped', () => {
   const battle = bracket(8);
-  playStage(battle);
-  playStage(battle); // winners semi-finals and losers round 1
-  const survivors = roundMatches(battle, 1).filter((m) => m.side === 'losers').map((m) => m.winner);
-  const dropped = roundMatches(battle, 1).filter((m) => m.side === 'winners').map((m) => (m.winner === m.a ? m.b : m.a));
-  for (const m of roundMatches(battle, 2).filter((m) => m.side === 'losers')) {
-    assert.ok(survivors.includes(m.a) && dropped.includes(m.b), `${m.id}: a survivor against a dropped team`);
+  playStage(battle); // winners quarter-finals and losers round 1
+  const survivors = roundMatches(battle, 0).filter((m) => m.side === 'losers').map((m) => m.winner);
+  const winners = roundMatches(battle, 1);
+  for (const m of winners) Object.assign(m, { status: 'done', winner: m.a });
+  const losers = drawLosers(battle);
+  assert.equal(losers.length, 2);
+  for (const m of losers) {
+    assert.ok(survivors.includes(m.a) && winners.some((w) => w.b === m.b), `${m.id}: a survivor against a dropped team`);
   }
 });
 
@@ -200,6 +206,30 @@ test('teamProgress follows a team through both brackets', () => {
   assert.equal(teamProgress(battle, losersRound.b).state, 'out');
   playOut(battle);
   assert.equal(teamProgress(battle, battle.champion!).state, 'champion');
+});
+
+test('the losers bracket of a stage is drawn when its winners bracket is finished', () => {
+  const battle = bracket(8);
+  playStage(battle); // stage 2: winners semi-finals, and losers round 2 waits
+  const stage = currentRound(battle)!;
+  const winners = roundMatches(battle, 1);
+  const survivors = [...stage.groups[1].teams];
+  assert.ok(winners.every((m) => m.side === 'winners'));
+  assert.equal(stage.groups[1].pending, true);
+  stage.status = 'playing';
+  assert.equal(teamProgress(battle, survivors[0]).state, 'next');
+  Object.assign(winners[0], { status: 'done', winner: winners[0].a });
+  assert.deepEqual(drawLosers(battle), []); // a winners match is still to play
+  Object.assign(winners[1], { status: 'done', winner: winners[1].a });
+  assert.equal(roundComplete(battle, 1), false); // the losers bracket is not drawn yet
+  assert.equal(drawLosers(battle).length, 2);
+  assert.equal(teamProgress(battle, survivors[0]).state, 'fighting');
+  assert.equal(teamProgress(battle, winners[0].b).state, 'fighting'); // it dropped, and fights again in this stage
+  // A winners match played again takes the draw back; the survivors stay.
+  undrawLosers(battle);
+  assert.equal(roundMatches(battle, 1).filter((m) => m.side === 'losers').length, 0);
+  assert.deepEqual(currentRound(battle)!.groups[1].teams, survivors);
+  assert.equal(currentRound(battle)!.groups[1].pending, true);
 });
 
 test('mulberry32 matches the game', () => {

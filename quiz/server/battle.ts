@@ -1,7 +1,9 @@
 // Runs the double elimination: draws the bracket, and when the host starts a
-// stage, queues all of its matches (winners and losers bracket) on the game's
-// match API at once. The game plays up to four at the same time on its display
-// page. The driver waits for the display page's official result for each
+// stage, queues its winners bracket matches on the game's match API at once.
+// When every winners match has a winner, it draws the losers bracket of the
+// stage (it needs the teams that just dropped) and queues those matches. So the
+// display page never shows the two brackets together. The game plays up to
+// four at the same time on its display page. The driver waits for the display page's official result for each
 // match, records it, and when every match in the stage has a winner, draws the
 // next stage. The next stage waits for the host (the quiz plays one stage per
 // battle break; see shared/rounds.ts).
@@ -66,13 +68,15 @@ export function startRound() {
   if (battle.champion) throw new store.UserError('The battle is over.');
   if (round.status !== 'waiting') throw new store.UserError(`${round.name} already started.`);
 
-  const ids = new Set(roundMatches(battle, round.index).flatMap((m) => [m.a, m.b]));
+  // Also the teams of a losers bracket that is not drawn yet: they play later in the stage.
+  const ids = new Set(round.groups.flatMap((g) => g.teams));
   const teams = store.state.teams.filter((team) => ids.has(team.id));
   if (teams.length < ids.size) throw new store.UserError('A team in this stage was deleted. Reset the battle.');
   checkLoadouts(teams);
 
   store.startRound(new Map(teams.map((team) => [team.id, fighter(team)])));
   store.setBattleNote('');
+  store.clearGameRestart();
   run();
   settleRound(); // a stage whose matches the host already decided
 }
@@ -93,14 +97,32 @@ export function stopRound() {
 
 // Plays a match again with a new seed. In a stage that is playing, it goes on the game at once.
 export function replay(matchId: string) {
+  checkLosersNotStarted(matchId);
   store.replayMatch(matchId, randomInt(0, 2 ** 32));
   run();
 }
 
 // The host picks the winner, e.g. for a match the game could not play.
 export function setWinner(matchId: string, winner: string) {
+  checkLosersNotStarted(matchId);
   store.setWinner(matchId, winner);
-  settleRound();
+  settleRound(); // the last winners match decided draws the losers bracket
+}
+
+// A winners match decides who drops into the losers bracket of its stage. To
+// play it or decide it again, the store takes back the losers draw, so no
+// losers match of the stage may have started.
+function checkLosersNotStarted(matchId: string) {
+  const battle = store.state.battle;
+  const match = battle?.matches.find((m) => m.id === matchId);
+  if (!battle || match?.side !== 'winners' || battle.rounds[match.round] !== currentRound(battle)) return;
+  const losers = roundMatches(battle, match.round).filter((m) => m.side === 'losers');
+  if (losers.some((m) => m.status === 'done')) {
+    throw new store.UserError('A losers bracket match of this stage already has a result, and the losers bracket was drawn from this match. It cannot change now.');
+  }
+  if (losers.some((m) => m.status === 'queued' || running.has(m.id))) {
+    throw new store.UserError('The losers bracket of this stage is on the game. Stop the stage first.');
+  }
 }
 
 export function reset() {
@@ -109,12 +131,14 @@ export function reset() {
     if (match.status === 'queued' && match.gameId) cancelQuietly(match.gameId);
   }
   store.resetBattle();
+  store.clearGameRestart();
 }
 
 // Called when the quiz server starts: a stage that was playing carries on. A
 // match already sent to the game is picked up there (if the game restarted
 // too and forgot it, it is sent again with the same seed).
 export function resume() {
+  settleRound(); // the server may have stopped between the last winners result and the losers draw
   run();
 }
 
@@ -141,9 +165,11 @@ function run() {
   }
 }
 
-// After a match ends: move on when the stage is complete, or tell the host
-// what needs a decision once nothing is left running.
+// After a match ends: draw the losers bracket when the winners bracket is
+// finished, move on when the stage is complete, or tell the host what needs a
+// decision once nothing is left running.
 function settleRound() {
+  if (store.drawLosers(new Map(store.state.teams.map((team) => [team.id, fighter(team)])))) run();
   const battle = store.state.battle;
   const round = battle && currentRound(battle);
   if (!battle || !round || round.status === 'done') return;
@@ -168,6 +194,7 @@ async function runMatch(id: string, gen: number) {
     // Sent before this server restarted: wait for the result on the game.
     if (match.status === 'queued' && match.gameId) {
       if ((await awaitResult(id, match.gameId, gen)) !== 'requeue') return;
+      store.noteGameRestart(id);
       store.setMatchGame(id, null, 'pending');
       continue;
     }
@@ -202,8 +229,10 @@ async function runMatch(id: string, gen: number) {
 
     store.setMatchGame(id, queued.id, 'queued');
     store.setBattleNote('');
+    void refreshGameStatus(); // show its screen now, not at the next ping
     const outcome = await awaitResult(id, queued.id, gen);
     if (outcome !== 'requeue') return;
+    store.noteGameRestart(id);
     store.setMatchGame(id, null, 'pending');
   }
 }
@@ -214,14 +243,22 @@ async function waitForDisplay(gen: number): Promise<boolean> {
     if (gen !== generation) return false;
     try {
       const status = await game.status();
-      store.setGameStatus({ reachable: true, displays: status.displays });
+      store.setGameStatus(status);
       if (status.displays > 0) return true;
       store.setBattleNote('Open the game display page (?display). Matches do not play without one.');
     } catch (err) {
-      store.setGameStatus({ reachable: false, displays: 0 });
+      store.setGameStatus(null);
       store.setBattleNote(err instanceof game.GameApiError ? err.message : String(err));
     }
     await delay(DISPLAY_WAIT_MS);
+  }
+}
+
+async function refreshGameStatus() {
+  try {
+    store.setGameStatus(await game.status());
+  } catch {
+    // The next ping in index.ts tries again.
   }
 }
 
@@ -282,7 +319,7 @@ function parseSeed(seed: unknown): number {
 }
 
 function fighter(team: Team): Fighter {
-  return { name: team.name, weapon: team.weapon, upgrades: { ...team.upgrades }, transformations: [...team.transformations] };
+  return { name: team.name, color: team.color || undefined, weapon: team.weapon, upgrades: { ...team.upgrades }, transformations: [...team.transformations] };
 }
 
 // The game may already be gone; there is nothing to cancel then.

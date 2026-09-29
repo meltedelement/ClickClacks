@@ -3,18 +3,23 @@
 // (which queues the matches) and the React pages (which show the bracket), so
 // it must not import anything from either side.
 //
-// The bracket is a double elimination, played in stages. A stage holds the
-// matches of one winners bracket round and one losers bracket round, which play
-// at the same time. Every team starts in the winners bracket. A loss there
-// drops it to the losers bracket, and a loss in the losers bracket puts it out.
+// The bracket is a double elimination, played in stages. A stage holds one
+// winners bracket round and then one losers bracket round. Every team starts in
+// the winners bracket. A loss there drops it to the losers bracket of the same
+// stage, and a loss in the losers bracket puts it out.
 //
 //   - The first stage is a seeded random draw of all teams into the winners bracket.
+//   - The losers bracket round of a stage is drawn when the winners bracket
+//     round of that stage is finished (see drawLosers), because it needs the
+//     teams that just dropped. Until then its group is `pending` and holds only
+//     the survivors of the losers bracket. So the two brackets never play at
+//     the same time.
 //   - Teams in a bracket are paired in order (1 v 2, 3 v 4, ...). With an odd
 //     count the last team gets a bye and stays without a match. The next stage
 //     lists the bye team first, so it always fights next and never gets two
 //     byes in a row (unless it is the only team left in its bracket).
-//   - The losers bracket of the next stage pairs its survivors against the
-//     teams that just dropped from the winners bracket, then the rest in order.
+//   - The losers bracket pairs its survivors against the teams that just
+//     dropped from the winners bracket, then the rest in order.
 //   - When each bracket has one team left, they meet in the grand final. The
 //     winners bracket champion has not lost yet, so if it loses the grand
 //     final, a grand final reset decides the champion.
@@ -42,13 +47,15 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
-// Each stage has its own random sequence, so a stage drawn again after a
-// server restart gets the same match seeds.
-function roundRandom(battleSeed: number, round: number) {
-  return mulberry32((battleSeed + Math.imul(round + 1, 0x9e3779b9)) >>> 0);
-}
-
 const SIDE_LETTER: Record<BracketSide, string> = { winners: 'w', losers: 'l', final: 'f' };
+const SIDE_NUMBER: Record<BracketSide, number> = { winners: 0, losers: 1, final: 2 };
+
+// Each bracket of each stage has its own random sequence, so a bracket drawn
+// again (after a server restart, or a losers draw taken back) gets the same
+// match seeds.
+function groupRandom(battleSeed: number, round: number, side: BracketSide) {
+  return mulberry32((battleSeed + Math.imul(round + 1, 0x9e3779b9) + Math.imul(SIDE_NUMBER[side], 0x85ebca6b)) >>> 0);
+}
 
 export function winnersName(teamCount: number, round: number): string {
   if (teamCount <= 1) return 'Winners bracket champion';
@@ -69,37 +76,56 @@ interface GroupSpec {
   side: BracketSide;
   name: string;
   teams: string[];
+  pending?: boolean; // a losers bracket that waits for the winners bracket of its stage
 }
 
-// One stage: pairs the teams of each group in order; an odd team out gets the bye.
+// One bracket of a stage: pairs the teams in order; an odd team out gets the bye.
+function drawGroup(side: BracketSide, name: string, teams: string[], index: number, battleSeed: number): { group: BracketGroup; matches: BattleMatch[] } {
+  const random = groupRandom(battleSeed, index, side);
+  const matches: BattleMatch[] = [];
+  let n = 0;
+  for (let i = 0; i + 1 < teams.length; i += 2) {
+    matches.push({
+      id: `s${index + 1}${SIDE_LETTER[side]}${++n}`,
+      round: index,
+      side,
+      a: teams[i],
+      b: teams[i + 1],
+      seed: Math.floor(random() * 2 ** 32),
+      gameId: null,
+      status: 'pending',
+      fighters: null,
+      winner: null,
+      decidedBy: null,
+      hp: null,
+      time: null,
+    });
+  }
+  const bye = teams.length % 2 === 1 ? teams[teams.length - 1] : null;
+  return { group: { side, name, teams: [...teams], bye }, matches };
+}
+
+// One stage. A pending group is only kept; drawLosers draws it later.
 export function drawStage(groups: GroupSpec[], index: number, battleSeed: number): { round: BattleRound; matches: BattleMatch[] } {
-  const random = roundRandom(battleSeed, index);
   const matches: BattleMatch[] = [];
   const drawn: BracketGroup[] = [];
-  for (const { side, name, teams } of groups) {
-    if (teams.length === 0) continue;
-    let n = 0;
-    for (let i = 0; i + 1 < teams.length; i += 2) {
-      matches.push({
-        id: `s${index + 1}${SIDE_LETTER[side]}${++n}`,
-        round: index,
-        side,
-        a: teams[i],
-        b: teams[i + 1],
-        seed: Math.floor(random() * 2 ** 32),
-        gameId: null,
-        status: 'pending',
-        fighters: null,
-        winner: null,
-        decidedBy: null,
-        hp: null,
-        time: null,
-      });
+  for (const { side, name, teams, pending } of groups) {
+    if (pending) {
+      drawn.push({ side, name, teams: [...teams], bye: null, pending: true });
+      continue;
     }
-    const bye = teams.length % 2 === 1 ? teams[teams.length - 1] : null;
-    drawn.push({ side, name, teams: [...teams], bye });
+    if (teams.length === 0) continue;
+    const group = drawGroup(side, name, teams, index, battleSeed);
+    drawn.push(group.group);
+    matches.push(...group.matches);
   }
   return { round: { index, name: `Stage ${index + 1}`, groups: drawn, status: 'waiting' }, matches };
+}
+
+// A losers bracket group that waits for the winners bracket of its stage. It
+// gets its real name when it is drawn and its size is known.
+function pendingLosers(rounds: BattleRound[], index: number, survivors: string[]): GroupSpec {
+  return { side: 'losers', name: `Losers round ${sideRounds(rounds, 'losers', index) + 1}`, teams: survivors, pending: true };
 }
 
 // The first stage, with the teams in a seeded random order. Needs two teams or more.
@@ -111,7 +137,7 @@ export function drawBracket(teamIds: string[], seed: number): { rounds: BattleRo
     const j = Math.floor(random() * (i + 1));
     [order[i], order[j]] = [order[j], order[i]];
   }
-  const first = drawStage([{ side: 'winners', name: winnersName(order.length, 1), teams: order }], 0, seed);
+  const first = drawStage([{ side: 'winners', name: winnersName(order.length, 1), teams: order }, pendingLosers([], 0, [])], 0, seed);
   return { rounds: [first.round], matches: first.matches };
 }
 
@@ -123,9 +149,49 @@ export function roundMatches(battle: Pick<Battle, 'matches'>, round: number): Ba
   return battle.matches.filter((match) => match.round === round);
 }
 
-// True when every match in the stage has a winner.
-export function roundComplete(battle: Pick<Battle, 'matches'>, round: number): boolean {
-  return roundMatches(battle, round).every((match) => match.status === 'done' && match.winner !== null);
+const decided = (match: BattleMatch) => match.status === 'done' && match.winner !== null;
+
+// True when every match in the stage has a winner and its losers bracket is drawn.
+export function roundComplete(battle: Pick<Battle, 'rounds' | 'matches'>, round: number): boolean {
+  if (battle.rounds[round]?.groups.some((g) => g.pending)) return false;
+  return roundMatches(battle, round).every(decided);
+}
+
+// When the winners bracket of the current stage is finished, the teams that
+// dropped from it join the survivors of the losers bracket, and the losers
+// bracket of the stage is drawn. Changes `battle` in place and returns the new
+// matches (none when there is nothing to draw yet).
+export function drawLosers(battle: Pick<Battle, 'rounds' | 'matches' | 'seed'>): BattleMatch[] {
+  const round = currentRound(battle);
+  const at = round ? round.groups.findIndex((g) => g.side === 'losers' && g.pending) : -1;
+  if (!round || at < 0) return [];
+  const winners = roundMatches(battle, round.index).filter((m) => m.side === 'winners');
+  if (!winners.every(decided)) return [];
+  const teams = losersOrder(round.groups[at].teams, winners.map(loser));
+  // After a winners final, nobody else can drop into the losers bracket.
+  const last = (round.groups.find((g) => g.side === 'winners')?.teams.length ?? 0) <= 2;
+  const name = losersName(teams.length, sideRounds(battle.rounds, 'losers', round.index) + 1, last);
+  const { group, matches } = drawGroup('losers', name, teams, round.index, battle.seed);
+  round.groups[at] = group;
+  battle.matches.push(...matches);
+  return matches;
+}
+
+// Takes back the losers bracket draw of the current stage, because a winners
+// match of the stage is played or decided again and can drop another team.
+// The caller makes sure that no losers match of the stage has started.
+// Changes `battle` in place.
+export function undrawLosers(battle: Pick<Battle, 'rounds' | 'matches'>) {
+  const round = currentRound(battle);
+  const at = round ? round.groups.findIndex((g) => g.side === 'losers' && !g.pending) : -1;
+  const winners = round?.groups.find((g) => g.side === 'winners');
+  // A losers bracket is only drawn late when the stage has a winners match.
+  if (!round || at < 0 || !winners || winners.teams.length < 2) return;
+  const survivors = round.groups[at].teams.filter((id) => !winners.teams.includes(id));
+  round.groups[at] = { ...pendingLosers(battle.rounds, round.index, survivors), bye: null, pending: true };
+  for (let i = battle.matches.length - 1; i >= 0; i--) {
+    if (battle.matches[i].round === round.index && battle.matches[i].side === 'losers') battle.matches.splice(i, 1);
+  }
 }
 
 function loser(match: BattleMatch): string {
@@ -137,8 +203,8 @@ function sideRounds(rounds: BattleRound[], side: BracketSide, before: number): n
   return rounds.slice(0, before).filter((r) => r.groups.some((g) => g.side === side && g.teams.length > 1)).length;
 }
 
-// The losers bracket of the next stage: each survivor meets a team that just
-// dropped from the winners bracket, and the teams left over play each other.
+// The losers bracket of a stage: each survivor meets a team that just dropped
+// from the winners bracket, and the teams left over play each other.
 function losersOrder(survivors: string[], dropped: string[]): string[] {
   const order: string[] = [];
   const n = Math.min(survivors.length, dropped.length);
@@ -166,25 +232,27 @@ export function advance(battle: Pick<Battle, 'rounds' | 'matches' | 'seed'>):
 
   const group = (side: BracketSide) => round.groups.find((g) => g.side === side);
   const played = (side: BracketSide) => matches.filter((m) => m.side === side);
-  const winnersBye = group('winners')?.bye;
-  const losersBye = group('losers')?.bye;
-  const winners = [...(winnersBye ? [winnersBye] : []), ...played('winners').map((m) => m.winner as string)];
-  const dropped = played('winners').map(loser);
-  const losers = losersOrder([...(losersBye ? [losersBye] : []), ...played('losers').map((m) => m.winner as string)], dropped);
+  // The byes go first, so they fight in the next stage.
+  const through = (side: BracketSide) => {
+    const bye = group(side)?.bye;
+    return [...(bye ? [bye] : []), ...played(side).map((m) => m.winner as string)];
+  };
+  const winners = through('winners');
+  const losers = through('losers'); // the teams that dropped this stage are in it already
 
   if (winners.length === 1 && losers.length === 1) {
     return drawStage([{ side: 'final', name: 'Grand final', teams: [winners[0], losers[0]] }], next, battle.seed);
   }
   if (losers.length === 0) return { champion: winners[0] }; // cannot happen with two teams or more
-  const lastLosers = winners.length <= 1; // no winners match this stage, so nobody drops into the losers bracket
-  return drawStage(
-    [
-      { side: 'winners', name: winnersName(winners.length, sideRounds(battle.rounds, 'winners', next) + 1), teams: winners },
-      { side: 'losers', name: losersName(losers.length, sideRounds(battle.rounds, 'losers', next) + 1, lastLosers), teams: losers },
-    ],
-    next,
-    battle.seed,
-  );
+  const winnersGroup: GroupSpec = { side: 'winners', name: winnersName(winners.length, sideRounds(battle.rounds, 'winners', next) + 1), teams: winners };
+  // With a winners match, teams drop into the losers bracket, so it waits for
+  // them. Without one, the losers bracket plays at once, and it is the last
+  // round before its final (or the final).
+  const losersGroup: GroupSpec =
+    winners.length > 1
+      ? pendingLosers(battle.rounds, next, losers)
+      : { side: 'losers', name: losersName(losers.length, sideRounds(battle.rounds, 'losers', next) + 1, true), teams: losers };
+  return drawStage([winnersGroup, losersGroup], next, battle.seed);
 }
 
 export interface PlannedGroup {
@@ -203,6 +271,7 @@ export function plannedStages(teams: number): PlannedGroup[][] {
   for (;;) {
     const round = currentRound(battle)!;
     for (const m of roundMatches(battle, round.index)) Object.assign(m, { status: 'done', winner: m.a });
+    for (const m of drawLosers(battle)) Object.assign(m, { status: 'done', winner: m.a });
     const next = advance(battle);
     if ('champion' in next) break;
     battle.rounds.push(next.round);
@@ -229,10 +298,13 @@ export function teamProgress(battle: Pick<Battle, 'rounds' | 'matches' | 'champi
   const losses = lossCount(battle, teamId);
   if (battle.champion === teamId) return { state: 'champion', opponent: null, side: null, bracket: null, losses };
   const round = currentRound(battle);
-  const group = round?.groups.find((g) => g.teams.includes(teamId));
+  // A team that dropped from the winners bracket is in both groups of the
+  // stage once the losers bracket is drawn. The last group is where it is now.
+  const group = round?.groups.filter((g) => g.teams.includes(teamId)).pop();
   if (!round || !group) return { state: 'out', opponent: null, side: null, bracket: null, losses };
   const where = { side: group.side, bracket: group.name, losses };
-  const match = roundMatches(battle, round.index).find((m) => m.a === teamId || m.b === teamId);
+  if (group.pending) return { state: 'next', opponent: null, ...where };
+  const match = roundMatches(battle, round.index).find((m) => m.side === group.side && (m.a === teamId || m.b === teamId));
   if (!match) return { state: group.bye === teamId ? 'bye' : 'out', opponent: null, ...where };
   const opponent = match.a === teamId ? match.b : match.a;
   if (match.status === 'done' && match.winner !== null) {
