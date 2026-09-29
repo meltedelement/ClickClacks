@@ -3,6 +3,9 @@ import { TAU } from '../sim/math.js';
 
 const GRID_SPACING = 50;
 const LABEL_SIZE = 18;
+// 2x is plenty for this flat-shaded art, and it keeps the backing store (and so
+// the fill rate) sane on 3x screens. The quality levels scale below this.
+const MAX_PIXEL_RATIO = 2;
 const COLORS = {
   background: '#171a21',
   grid: 'rgba(255, 255, 255, 0.04)',
@@ -17,12 +20,23 @@ export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    // Multiplied into the device pixel ratio: the quality controller lowers it
+    // when frames are being dropped. Everything is drawn in arena units, so
+    // this only changes how many device pixels it lands on.
+    this.resolutionScale = 1;
     this.resize();
     new ResizeObserver(() => this.resize()).observe(canvas);
   }
 
+  // Called by the quality controller. Cheap when the scale doesn't change.
+  setResolutionScale(scale) {
+    if (scale === this.resolutionScale) return;
+    this.resolutionScale = scale;
+    this.resize();
+  }
+
   resize() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO) * this.resolutionScale;
     const rect = this.canvas.getBoundingClientRect();
     const width = Math.max(1, Math.round(rect.width * dpr));
     const height = Math.max(1, Math.round(rect.height * dpr));
