@@ -1,11 +1,14 @@
 // Big-screen view for the host: the current question, how many teams answered,
 // and after the reveal, the percentage of votes for each option. It never shows
-// which team answered or what one team chose. One button moves the quiz on.
+// which team answered or what one team chose. One button moves the quiz on,
+// including into a battle break after every second round (see shared/rounds.ts).
 import { useEffect, useState } from 'react';
 import type { AdminView } from '../shared/types.ts';
-import { roundPosition, startsRound } from '../shared/rounds.ts';
+import { currentRound, plannedStages } from '../shared/battle.ts';
+import { Bracket } from './Bracket.tsx';
+import { breakAfter, roundPosition, stagesAllowed, startsRound } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
-import { Brand, LETTERS, RoundProgress, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
+import { BattleViewLink, Brand, LETTERS, RoundProgress, Status, TeamDot, ThemeToggle, WeaponSwatch, battleViewUrl } from './ui.tsx';
 
 // A step either sends an admin action, or shows the title of the round that
 // starts at question `intro`. The round title exists only on this screen.
@@ -24,10 +27,24 @@ function nextStep({ state }: AdminView, intro: number | null): Step | null {
       return { label: 'Close answers', action: { type: 'setPhase', phase: 'locked' } };
     case 'locked':
       return { label: 'Reveal answer', action: { type: 'setPhase', phase: 'reveal' } };
-    case 'reveal':
-      return hasNext ? goTo(state.questionIndex + 1) : { label: 'Start battle', action: { type: 'setPhase', phase: 'battle' } };
-    case 'battle':
+    case 'reveal': {
+      // A battle break after every second round and after the last one, until there is a champion.
+      const battleLeft = state.teams.length >= 2 && !state.battle?.champion;
+      if (battleLeft && breakAfter(state.questions, state.questionIndex)) return { label: 'Start battle', action: { type: 'setPhase', phase: 'battle' } };
       return hasNext ? goTo(state.questionIndex + 1) : null;
+    }
+    case 'battle': {
+      // The host starts each stage from here. A break plays one stage; the
+      // break after the last round plays every stage that is left.
+      const battle = state.battle;
+      const round = battle && currentRound(battle);
+      if (!battle) return state.teams.length >= 2 ? { label: 'Draw the bracket', action: { type: 'battleCreate' } } : null;
+      if (round?.status === 'playing') return null;
+      if (round && !battle.champion && round.status === 'waiting' && round.index < stagesAllowed(state.questions, state.questionIndex)) {
+        return { label: `Start ${round.name.toLowerCase()}`, action: { type: 'battleStartRound' } };
+      }
+      return hasNext ? { ...goTo(state.questionIndex + 1), label: 'Back to the quiz' } : null;
+    }
   }
 }
 
@@ -97,6 +114,7 @@ export function PresenterPage() {
               )
             )}
             <span className={state.phase === 'question' ? 'pill accent' : state.phase === 'reveal' ? 'pill good' : 'pill'}>{phaseLabel}</span>
+            <BattleViewLink gameApi={view.game.url} />
             <Status connected={connected} />
             <ThemeToggle />
           </div>
@@ -142,7 +160,8 @@ export function PresenterPage() {
                 Battle time
               </h1>
             </div>
-            <TeamList teams={state.teams} weaponName={weaponName} />
+            <BattleBoard view={view} />
+            {!state.battle && <TeamList teams={state.teams} weaponName={weaponName} />}
           </section>
         )}
 
@@ -209,7 +228,7 @@ export function PresenterPage() {
               {step.label} →
             </button>
           ) : (
-            <span className="muted">End of the quiz</span>
+            <span className="muted">{state.phase === 'battle' && state.battle && !state.battle.champion ? 'Stage in progress' : 'End of the quiz'}</span>
           )}
         </div>
       </footer>
@@ -230,7 +249,9 @@ function TeamList({ teams, weaponName }: { teams: AdminView['state']['teams']; w
         <div className="team-grid">
           {teams.map((t) => (
             <div key={t.id} className="team-card">
-              <strong>{t.name}</strong>
+              <strong>
+                <TeamDot color={t.color} /> {t.name}
+              </strong>
               <span className="row start" style={{ gap: 8 }}>
                 <WeaponSwatch id={t.weapon} />
                 {weaponName(t.weapon)}
@@ -239,6 +260,47 @@ function TeamList({ teams, weaponName }: { teams: AdminView['state']['teams']; w
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// What the room watches while the arena plays: the bracket, who still has to
+// pick a transformation, and who won. The display page decides each result;
+// the quiz only records it.
+function BattleBoard({ view }: { view: AdminView }) {
+  const { state, game } = view;
+  const battle = state.battle;
+  if (!battle) return <p className="muted">The bracket is not drawn yet.</p>;
+
+  const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '(deleted team)';
+  const teamColor = (id: string) => state.teams.find((t) => t.id === id)?.color ?? '';
+  const round = currentRound(battle);
+  const stages = Math.max(plannedStages(battle.rounds[0]?.groups[0]?.teams.length ?? 0).length, battle.rounds.length);
+  const picking = state.teams.filter((t) => (view.transformPicks[t.id] ?? 0) > 0);
+
+  return (
+    <div className="stack loose">
+      {round && !battle.champion && (
+        <p className="muted num">
+          {round.name} of {stages}
+          {stagesAllowed(state.questions, state.questionIndex) === Infinity ? ' · the stages left play now' : ' · one stage in this break'}
+        </p>
+      )}
+      {round?.status === 'waiting' && !battle.champion && picking.length > 0 && (
+        <p className="banner">
+          Pick a transformation on your phone before the stage starts. Still picking: {picking.map((t) => t.name).join(', ')}.
+        </p>
+      )}
+      {battle.note && <p className="banner">{battle.note}</p>}
+      {game.restart && <p className="banner">The game restarted. The matches on screen start again from the beginning, with the same fights.</p>}
+      {!game.reachable && <p className="banner">The game server is not answering at {game.url}.</p>}
+      {game.reachable && game.displays === 0 && (
+        <p className="banner">No display page is open. Show {battleViewUrl(game.url)} on the big screen.</p>
+      )}
+      {battle.champion && <h2 className="present-q">{teamName(battle.champion)} wins the battle</h2>}
+      <div className="scroll">
+        <Bracket battle={battle} teamName={teamName} teamColor={teamColor} onScreen={game.reachable && game.displays > 0 ? game.onScreen : undefined} />
+      </div>
     </div>
   );
 }

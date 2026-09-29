@@ -1,22 +1,493 @@
 {
   "upgradesPerCorrect": 1,
   "offerSize": 3,
+  "exclude": [],
   "weapons": [
-    { "id": "sword", "name": "Sword" },
-    { "id": "spear", "name": "Spear" },
-    { "id": "mace", "name": "Mace" },
-    { "id": "daggers", "name": "Daggers" }
+    {
+      "id": "sword",
+      "name": "Sword"
+    },
+    {
+      "id": "spear",
+      "name": "Spear"
+    },
+    {
+      "id": "mace",
+      "name": "Mace"
+    },
+    {
+      "id": "daggers",
+      "name": "Daggers"
+    }
   ],
   "upgrades": [
-    { "id": "damage", "name": "Sharpened", "description": "+damage per hit", "maxStacks": 5 },
-    { "id": "spin", "name": "Whirl", "description": "Weapon spins faster", "maxStacks": 5 },
-    { "id": "length", "name": "Long Reach", "description": "Longer weapon", "maxStacks": 5 },
-    { "id": "thickness", "name": "Heavy Blade", "description": "Wider weapon hitbox", "maxStacks": 3 },
-    { "id": "hp", "name": "Tough", "description": "+max HP", "maxStacks": 5 },
-    { "id": "speed", "name": "Swift", "description": "Ball moves faster", "maxStacks": 3 },
-    { "id": "cooldown", "name": "Focus", "description": "Ability recharges faster", "maxStacks": 3 },
-    { "id": "knockback", "name": "Heavy Hitter", "description": "Hits knock enemies further", "maxStacks": 3 },
-    { "id": "shield", "name": "Bigger Shield", "description": "Wider shield", "maxStacks": 2, "weapons": ["sword"] },
-    { "id": "extra_blade", "name": "Third Dagger", "description": "One more dagger", "maxStacks": 1, "weapons": ["daggers"] }
+    {
+      "id": "damage",
+      "name": "Sharpened",
+      "description": "Deal 20% more damage.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "spin-speed",
+      "name": "Quick Spin",
+      "description": "Your weapon spins 20% faster.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "length",
+      "name": "Long Blade",
+      "description": "Your weapon is 20% longer.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "thickness",
+      "name": "Heavy Blade",
+      "description": "Your weapon is 50% thicker, so it hits and blocks more.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "small-ball",
+      "name": "Compact",
+      "description": "Your ball is 12% smaller: a harder target.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": 3
+    },
+    {
+      "id": "thorns",
+      "name": "Thorns",
+      "description": "Whoever hits you takes 30% of the damage back.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "health",
+      "name": "Vitality",
+      "description": "+25 max HP.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "move-speed",
+      "name": "Swift",
+      "description": "Your ball moves 15% faster.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "cooldown",
+      "name": "Focus",
+      "description": "Your ability cooldown is 25% shorter (each copy shortens what is left).",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "armor",
+      "name": "Armor",
+      "description": "Take 1 less damage from every hit (but never less than half).",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "lifesteal",
+      "name": "Lifesteal",
+      "description": "Hits heal you for 25% of the damage dealt.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "crit",
+      "name": "Critical Hits",
+      "description": "15% chance for a hit to deal double damage.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "extra-blade",
+      "name": "Extra Blade",
+      "description": "Adds another copy of your weapon.",
+      "weapons": null,
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "shield-bash",
+      "name": "Shield Bash",
+      "description": "Blocking a hit with your shield deals 1 damage back.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "wide-swipe",
+      "name": "Wide Swipe",
+      "description": "Your sword is 40% longer during Spin Swipe.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "shield-spikes",
+      "name": "Spiked Shield",
+      "description": "Your shield deals 2 damage to enemies it touches.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "long-swipe",
+      "name": "Long Swipe",
+      "description": "Spin Swipe keeps spinning for an extra half turn.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "big-shield",
+      "name": "Big Shield",
+      "description": "Your shield is 50% wider.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "long-dash",
+      "name": "Long Dash",
+      "description": "Charge Dash travels 40% further.",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "quick-charge",
+      "name": "Quick Charge",
+      "description": "Charge Dash winds up twice as fast (each copy halves what is left).",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "dash-guard",
+      "name": "Braced",
+      "description": "Take 60% less damage while charging and dashing (each copy cuts what is left).",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "rapid-growth",
+      "name": "Rapid Growth",
+      "description": "Your spear grows 50% more with every hit.",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "crit-damage",
+      "name": "Deadly Crits",
+      "description": "Critical hits deal +100% damage (triple instead of double).",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [
+        "crit"
+      ],
+      "maxStacks": null
+    },
+    {
+      "id": "quick-recovery",
+      "name": "Quick Recovery",
+      "description": "Your daggers can parry the same weapon again twice as soon (each copy halves what is left).",
+      "weapons": [
+        "daggers"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "momentum",
+      "name": "Momentum",
+      "description": "Your daggers gain 50% more spin speed per hit.",
+      "weapons": [
+        "daggers"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "close-quarters",
+      "name": "Close Quarters",
+      "description": "Your hits knock enemies back 40% less, keeping them in reach (each copy cuts what is left).",
+      "weapons": [
+        "daggers"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "dodge",
+      "name": "Evasion",
+      "description": "+12% chance to dodge a hit completely.",
+      "weapons": [
+        "daggers"
+      ],
+      "requires": [],
+      "maxStacks": 5
+    },
+    {
+      "id": "rebound",
+      "name": "Rebound",
+      "description": "Bouncing off a wall makes you 40% faster for a moment.",
+      "weapons": [
+        "daggers"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "quick-drop",
+      "name": "Quick Drop",
+      "description": "Drop Slam hangs in the air for 60% less time before falling (each copy cuts what is left).",
+      "weapons": [
+        "mace"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "heavy-impact",
+      "name": "Heavy Impact",
+      "description": "Drop Slam gains 50% more damage from the height it falls.",
+      "weapons": [
+        "mace"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "high-bounce",
+      "name": "High Bounce",
+      "description": "Drop Slam bounces you back up off the floor at +100% speed.",
+      "weapons": [
+        "mace"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "great-mace",
+      "name": "Great Mace",
+      "description": "Your mace is 40% longer during Drop Slam.",
+      "weapons": [
+        "mace"
+      ],
+      "requires": [],
+      "maxStacks": null
+    },
+    {
+      "id": "meteor",
+      "name": "Meteor",
+      "description": "Drop Slam starts falling faster and accelerates 50% harder.",
+      "weapons": [
+        "mace"
+      ],
+      "requires": [],
+      "maxStacks": null
+    }
+  ],
+  "transformations": [
+    {
+      "id": "stalwart",
+      "name": "Stalwart",
+      "description": "Gain a second, smaller shield. Both sit behind you in a Y, with your sword as its stem. The weight slows your spin by 15%.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "wildling",
+      "name": "Wildling",
+      "description": "Landing a hit with Spin Swipe wards you: the next hit you take does nothing.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "dizzy",
+      "name": "Dizzy",
+      "description": "Spin Swipe spins two extra full turns.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "captain",
+      "name": "Captain",
+      "description": "Every 4 s, throw your shield at the enemy for 2 damage (plus its own contact damage, like spikes). It flies back to you, but can't block while it's away.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "fire-eater",
+      "name": "Fire Eater",
+      "description": "Every 3 s your blade catches fire. Your next hit sets the enemy burning for 1 damage every 0.5 s for 3 s.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "piercer",
+      "name": "Piercer",
+      "description": "After every Spin Swipe, lunge at the enemy sword-first for a big stab. Spin Swipe's cooldown is 50% longer.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "dual-wielder",
+      "name": "Dual Wielder",
+      "description": "Swap your shield for a short second sword. It still blocks, deals 3 damage to enemies it touches (+0.5 each time your sword hits), and gets your shield upgrades.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "gladiator",
+      "name": "Gladiator",
+      "description": "Every 4 s, throw a net at the enemy. If it lands they're 50% slower and take 50% more damage for 2.5 s.",
+      "weapons": [
+        "sword"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "hoplite",
+      "name": "Hoplite",
+      "description": "Gain a shield like the Sword's, just to the left of your spear. It blocks enemy weapons.",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "poseidon",
+      "name": "Poseidon",
+      "description": "Your spear becomes a trident with a big head. Hitting with the head skewers the enemy: they are carried on it for 0.7 s, then take a second hit at half damage and are flung off.",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "dancer",
+      "name": "Dancer",
+      "description": "Every 5 s, when the enemy is close, whirl your spear through a fast full turn (like Spin Swipe) for 30% more damage.",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "bouncer",
+      "name": "Bouncer",
+      "description": "Landing a hit sends out a repelling pulse as far as your spear reaches, dealing 3 damage and throwing enemies straight away from you (at most once a second).",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "olympian",
+      "name": "Olympian",
+      "description": "Charge Dash becomes Spear Throw: hurl your spear for double damage and huge knockback, then dash to pick it up, ramming enemies on the way. Unarmed until you catch it.",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "tactician",
+      "name": "Tactician",
+      "description": "Your spear head is longer, and hits with it always crit. Hits with the shaft deal 40% less damage.",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "tackler",
+      "name": "Tackler",
+      "description": "When your spear clashes with a weapon or shield, the enemy's guard breaks for 2.5 s: their weapon and shields can't block, and weapons pass straight through them.",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "runner",
+      "name": "Runner",
+      "description": "Every parry takes 1 s off your Charge Dash's cooldown.",
+      "weapons": [
+        "spear"
+      ],
+      "requires": [],
+      "maxStacks": 1
+    }
   ]
 }

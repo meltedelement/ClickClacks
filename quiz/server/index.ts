@@ -6,6 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import * as store from './store.ts';
+import * as catalog from './catalog.ts';
+import * as battle from './battle.ts';
+import * as game from './game.ts';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const DIST = path.join(import.meta.dirname, '..', 'dist');
@@ -93,19 +96,21 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     return sendAdmins();
   }
 
-  // Read by the game: one { team, weapon, upgrades } per team.
+  // Read by the game: one { team, color, weapon, upgrades, transformations } per team.
   if (route === 'GET /api/loadouts') return json(res, 200, store.loadouts());
-  if (route === 'GET /api/weapons') return json(res, 200, store.catalog.weapons);
+  if (route === 'GET /api/weapons') return json(res, 200, store.getCatalog().weapons);
+  // The join form asks for this every few seconds, so it can grey out the colours other teams took.
+  if (route === 'GET /api/colors') return json(res, 200, { taken: store.takenColors() });
 
   if (route === 'POST /api/join') {
     const body = await readBody(req);
-    const team = store.join(body.name, body.weapon, body.code);
+    const team = store.join(body.name, body.weapon, body.color, body.code);
     return json(res, 200, { token: team.id });
   }
 
   if (route === 'POST /api/admin') {
     if (!isAdmin(req.headers['x-admin-key'] as string)) return json(res, 401, { error: 'Wrong admin key' });
-    store.adminAction(await readBody(req));
+    await adminAction(await readBody(req));
     return json(res, 200, { ok: true });
   }
 
@@ -120,13 +125,79 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     store.chooseWeapon(team!, (await readBody(req)).weapon);
     return json(res, 200, { ok: true });
   }
+  if (route === 'POST /api/color') {
+    store.chooseColor(team!, (await readBody(req)).color);
+    return json(res, 200, { ok: true });
+  }
   if (route === 'POST /api/pick') {
     const body = await readBody(req);
     store.pick(team!, body.upgradeId, body.picksUsed);
     return json(res, 200, { ok: true });
   }
+  if (route === 'POST /api/transform') {
+    const body = await readBody(req);
+    store.pickTransformation(team!, String(body.transformationId), body.count);
+    return json(res, 200, { ok: true });
+  }
 
   json(res, 404, { error: 'Not found' });
+}
+
+// Battle actions need the driver (which talks to the game server), so they are
+// handled here rather than in store.adminAction. Everything else goes to the
+// store.
+async function adminAction(body: any) {
+  switch (body?.type) {
+    case 'battleCreate':
+      return battle.create(body.seed === undefined || body.seed === '' || body.seed === null ? undefined : body.seed);
+    case 'battleStartRound':
+      return battle.startRound();
+    case 'battleStopRound':
+      return battle.stopRound();
+    case 'battleReplay':
+      return battle.replay(String(body.matchId));
+    case 'battleSetWinner':
+      return battle.setWinner(String(body.matchId), String(body.winner));
+    case 'battleReset':
+      return battle.reset();
+    case 'refreshCatalog':
+      return refreshCatalog();
+  }
+  // A quiz reset also drops the battle: take its matches off the game first.
+  if (body?.type === 'reset') battle.reset();
+  store.adminAction(body);
+  // Moving the quiz into the battle draws the bracket, so the presenter's Next
+  // button is all the host needs: the next press starts the first round. A
+  // loadout the game would refuse comes back as a 400 with the reason, which
+  // both the admin and the presenter pages show.
+  if (body?.type === 'setPhase' && body.phase === 'battle' && !store.state.battle && store.state.teams.length >= 2) {
+    battle.create();
+  }
+}
+
+// The catalog comes from the game, so the quiz always offers upgrades by their
+// real ids and stack limits.
+async function refreshCatalog() {
+  const live = await catalog.refresh(game.GAME_API);
+  store.onCatalogChanged();
+  const current = store.getCatalog();
+  console.log(
+    live
+      ? `Catalog: ${current.upgrades.length} upgrades and ${current.weapons.length} weapons from the game.`
+      : `Catalog: offline copy (${current.upgrades.length} upgrades). Start the game server to sync.`,
+  );
+}
+
+// Keeps the "displays connected" line and the screen shown for each match
+// honest, and reads the catalog again once the game server is up.
+async function pingGame() {
+  try {
+    const status = await game.status();
+    store.setGameStatus(status);
+    if (store.getCatalog().source !== 'game') await refreshCatalog();
+  } catch {
+    store.setGameStatus(null);
+  }
 }
 
 const MIME: Record<string, string> = {
@@ -171,5 +242,12 @@ http
     const source = process.env.ADMIN_KEY
       ? 'from ADMIN_KEY'
       : `stored in ${path.relative(process.cwd(), KEY_FILE)} — delete that file for a new one`;
-    console.log(`\n  Admin key: ${ADMIN_KEY}  (${source})\n  The host enters it on /admin.\n`);
+    console.log(`\n  Admin key: ${ADMIN_KEY}  (${source})\n  The host enters it on /admin.`);
+    console.log(`  Game API:  ${game.GAME_API}`);
   });
+
+// Read the game's catalog and pick up a battle that was interrupted, then keep
+// an eye on the game from here on.
+pingGame();
+setInterval(pingGame, 2_000).unref();
+battle.resume();

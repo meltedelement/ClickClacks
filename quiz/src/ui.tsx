@@ -1,5 +1,6 @@
 // Small pieces shared by the team, admin and presenter pages.
 import { useEffect, useState } from 'react';
+import { TEAM_COLORS, colorName } from '../shared/colors.ts';
 
 export const LETTERS = 'ABCDEFGH';
 
@@ -15,16 +16,66 @@ export function WeaponSwatch({ id }: { id: string }) {
   return <span className="swatch" style={{ background: WEAPON_COLORS[id] ?? 'var(--faint)' }} aria-hidden="true" />;
 }
 
-// A ball with one blade: the game in one mark.
-export function Brand({ name = 'Weapon Balls' }: { name?: string }) {
+// A team's ball colour, next to its name.
+export function TeamDot({ color }: { color: string }) {
+  return <span className="team-dot" style={{ background: color || 'var(--faint)' }} title={color ? colorName(color) : 'No colour'} aria-hidden="true" />;
+}
+
+// One round button per colour. A colour another team has is crossed out and cannot be picked.
+export function ColorPicker({ value, taken, onChange, disabled }: { value: string; taken: string[]; onChange: (hex: string) => void; disabled?: boolean }) {
+  return (
+    <fieldset disabled={disabled}>
+      <legend className="label">Colour{value && <span className="muted"> · {colorName(value)}</span>}</legend>
+      <div className="colors">
+        {TEAM_COLORS.map((c) => {
+          const isTaken = taken.includes(c.hex);
+          return (
+            <label key={c.hex} className="color" style={{ '--color': c.hex } as React.CSSProperties} title={isTaken ? `${c.name} (taken)` : c.name}>
+              <input
+                type="radio"
+                name="color"
+                value={c.hex}
+                checked={value === c.hex}
+                disabled={isTaken}
+                onChange={() => onChange(c.hex)}
+                aria-label={isTaken ? `${c.name}, taken by another team` : c.name}
+              />
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+// A ball with one blade: the game in one mark. On a team's page the ball has the team's colour.
+export function Brand({ name = 'Weapon Balls', color }: { name?: string; color?: string }) {
   return (
     <div className="brand">
       <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="9" cy="15" r="6" fill="var(--accent)" />
+        <circle cx="9" cy="15" r="6" fill={color || 'var(--accent)'} />
         <path d="M13 11 21 3" stroke="var(--text)" strokeWidth="2.2" strokeLinecap="round" />
       </svg>
       <span className="brand-name">{name}</span>
     </div>
+  );
+}
+
+// The game's display page (?display), where the battles play. The quiz server
+// may reach the game at 127.0.0.1, which is wrong for a browser on another
+// device, so a loopback host becomes the host this page came from.
+export function battleViewUrl(gameApi: string): string {
+  const url = new URL(gameApi.replace(/\/api\/?$/, '/'), location.href);
+  if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) url.hostname = location.hostname;
+  url.search = '?display';
+  return url.href;
+}
+
+export function BattleViewLink({ gameApi }: { gameApi: string }) {
+  return (
+    <a className="button" href={battleViewUrl(gameApi)} target="_blank" rel="noopener">
+      Open battle view ↗
+    </a>
   );
 }
 

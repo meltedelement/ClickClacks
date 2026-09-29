@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { TeamView, WeaponInfo } from '../shared/types.ts';
 import { post, useEvents } from './api.ts';
-import { Brand, LETTERS, RoundProgress, Status, ThemeToggle, WeaponSwatch } from './ui.tsx';
+import { TEAM_COLORS, colorName } from '../shared/colors.ts';
+import { Brand, ColorPicker, LETTERS, RoundProgress, Status, TeamDot, ThemeToggle, WeaponSwatch } from './ui.tsx';
 
 const TOKEN_KEY = 'quiz-team-token';
+// How often the join form asks which colours other teams took.
+const COLORS_POLL_MS = 3_000;
 
 export function TeamPage() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
@@ -42,11 +45,11 @@ export function TeamPage() {
   return <TeamScreen view={view} token={token} connected={connected} onLeave={logout} />;
 }
 
-function TopBar({ name, children }: { name?: string; children?: React.ReactNode }) {
+function TopBar({ name, color, children }: { name?: string; color?: string; children?: React.ReactNode }) {
   return (
     <header className="topbar narrow">
       <div className="topbar-inner">
-        <Brand name={name} />
+        <Brand name={name} color={color} />
         <div className="row" style={{ gap: 8 }}>
           {children}
           <ThemeToggle />
@@ -77,7 +80,10 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
   const [weapons, setWeapons] = useState<WeaponInfo[]>([]);
   const [name, setName] = useState('');
   const [weapon, setWeapon] = useState('');
+  const [color, setColor] = useState('');
+  const [taken, setTaken] = useState<string[]>([]);
   const [code, setCode] = useState('');
+  const [rejoin, setRejoin] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -90,13 +96,35 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
       .catch(() => setError('Cannot reach the server'));
   }, []);
 
+  // Other teams join while this form is open, so keep the taken colours up to date.
+  async function loadTaken() {
+    try {
+      const res = await fetch('/api/colors');
+      setTaken(((await res.json()) as { taken: string[] }).taken);
+    } catch {
+      // Tried again on the next poll. The server checks the colour on join anyway.
+    }
+  }
+  useEffect(() => {
+    if (rejoin) return;
+    loadTaken();
+    const timer = setInterval(loadTaken, COLORS_POLL_MS);
+    return () => clearInterval(timer);
+  }, [rejoin]);
+
+  // Start on the first free colour, and move off a colour another team just took.
+  useEffect(() => {
+    if (!color || taken.includes(color)) setColor(TEAM_COLORS.find((c) => !taken.includes(c.hex))?.hex ?? '');
+  }, [taken, color]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const { token } = await post('/api/join', { name, weapon, code });
+      const { token } = await post('/api/join', rejoin ? { code } : { name, weapon, color });
       onJoin(token);
     } catch (err) {
       setError((err as Error).message);
+      if (!rejoin) loadTaken();
     }
   }
 
@@ -106,24 +134,40 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
       <main className="page">
         <div className="stack">
           <h1 className="title">Join the quiz</h1>
-          <p className="lead">Every correct answer earns your team an upgrade for the battle at the end.</p>
+          <p className="lead">Every correct answer earns your team an upgrade. After every second round, your ball fights in the arena.</p>
         </div>
-        <form onSubmit={submit} className="card stack loose">
-          <label className="field">
-            <span>Team name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} autoComplete="off" autoFocus />
-          </label>
-          <WeaponPicker weapons={weapons} value={weapon} onChange={setWeapon} />
-          <label className="field">
-            <span>Team code</span>
-            <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="off" placeholder="Optional" />
-            <small>Only to rejoin a team from another phone.</small>
-          </label>
-          {error && <p className="error">{error}</p>}
-          <button type="submit" className="primary large block" disabled={!name.trim()}>
-            Join
-          </button>
-        </form>
+        {rejoin ? (
+          <form onSubmit={submit} className="card stack loose">
+            <label className="field">
+              <span>Team code</span>
+              <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="off" autoFocus />
+              <small>Shown on your team's other phone, or ask the host.</small>
+            </label>
+            {error && <p className="error">{error}</p>}
+            <button type="submit" className="primary large block" disabled={!code.trim()}>
+              Rejoin
+            </button>
+            <button type="button" className="ghost" onClick={() => { setRejoin(false); setError(''); }}>
+              Make a new team instead
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={submit} className="card stack loose">
+            <label className="field">
+              <span>Team name</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} autoComplete="off" autoFocus />
+            </label>
+            <ColorPicker value={color} taken={taken} onChange={setColor} />
+            <WeaponPicker weapons={weapons} value={weapon} onChange={setWeapon} />
+            {error && <p className="error">{error}</p>}
+            <button type="submit" className="primary large block" disabled={!name.trim() || !color}>
+              Join
+            </button>
+            <button type="button" className="ghost" onClick={() => { setRejoin(true); setError(''); }}>
+              Rejoin with a team code
+            </button>
+          </form>
+        )}
       </main>
     </>
   );
@@ -135,6 +179,7 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
   const [busy, setBusy] = useState(false);
   const { team } = view;
   const upgradeName = (id: string) => view.upgrades.find((u) => u.id === id)?.name ?? id;
+  const transformation = (id: string) => view.transformations.find((t) => t.id === id);
   const weaponName = view.weapons.find((w) => w.id === team.weapon)?.name ?? team.weapon;
   const canChangeWeapon = view.phase === 'lobby' && !view.weaponsLocked;
   const upgrades = Object.entries(team.upgrades).filter(([, n]) => n > 0);
@@ -153,7 +198,7 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
 
   return (
     <>
-      <TopBar name={team.name}>
+      <TopBar name={team.name} color={team.color}>
         <div className="row">
           <span className="pill">
             Code <strong>{team.code}</strong>
@@ -171,10 +216,15 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
             <div className="stack">
               <h2>Waiting for the host</h2>
               <p className="muted">
-                {canChangeWeapon ? 'You can change your weapon until the quiz starts.' : 'Weapons are locked. The quiz starts soon.'}
+                {canChangeWeapon ? 'You can change your colour and weapon until the quiz starts.' : 'Colours and weapons are locked. The quiz starts soon.'}
               </p>
             </div>
-            {canChangeWeapon && <WeaponPicker weapons={view.weapons} value={team.weapon} disabled={busy} onChange={(id) => act('/api/weapon', { weapon: id })} />}
+            {canChangeWeapon && (
+              <>
+                <ColorPicker value={team.color} taken={view.takenColors} disabled={busy} onChange={(hex) => act('/api/color', { color: hex })} />
+                <WeaponPicker weapons={view.weapons} value={team.weapon} disabled={busy} onChange={(id) => act('/api/weapon', { weapon: id })} />
+              </>
+            )}
           </section>
         )}
 
@@ -249,9 +299,26 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
           </section>
         )}
 
+        {team.transformPicks > 0 && team.transformOffer.length > 0 && (
+          <section className="card stack">
+            <div className="card-head" style={{ marginBottom: 0 }}>
+              <h2>Pick a transformation</h2>
+              {team.transformPicks > 1 && <span className="pill accent">{team.transformPicks} to pick</span>}
+            </div>
+            <p className="muted">A transformation reshapes your weapon for the rest of the battle. Pick one before the next stage starts.</p>
+            {team.transformOffer.map((id) => (
+              <button key={id} className="upgrade" disabled={busy} onClick={() => act('/api/transform', { transformationId: id, count: team.transformations.length })}>
+                <strong>{transformation(id)?.name ?? id}</strong>
+                <span>{transformation(id)?.description}</span>
+              </button>
+            ))}
+          </section>
+        )}
+
         {view.phase === 'battle' && (
           <section className="card stack">
             <h2>Battle time</h2>
+            {view.battle ? <BattleStatus battle={view.battle} /> : <p className="muted">The bracket is not drawn yet.</p>}
             <p className="muted">Watch the arena on the big screen.</p>
           </section>
         )}
@@ -261,10 +328,28 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
             <h2>Your loadout</h2>
           </div>
           <dl className="loadout">
+            <dt>Colour</dt>
+            <dd className="row start">
+              <TeamDot color={team.color} /> {team.color ? colorName(team.color) : 'None'}
+            </dd>
             <dt>Weapon</dt>
             <dd className="row start">
               <WeaponSwatch id={team.weapon} /> {weaponName}
             </dd>
+            {team.transformations.length > 0 && (
+              <>
+                <dt>Transformations</dt>
+                <dd>
+                  <div className="chips">
+                    {team.transformations.map((id) => (
+                      <span key={id} className="chip">
+                        {transformation(id)?.name ?? id}
+                      </span>
+                    ))}
+                  </div>
+                </dd>
+              </>
+            )}
             <dt>Upgrades</dt>
             <dd>
               {upgrades.length === 0 ? (
@@ -289,4 +374,41 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
       </main>
     </>
   );
+}
+
+function BattleStatus({ battle }: { battle: NonNullable<TeamView['battle']> }) {
+  const { round, bracket, side, losses, state, opponent, champion } = battle;
+  const vs = opponent && <strong>{opponent}</strong>;
+  const where = bracket ? `${round}, ${bracket}` : round;
+  const lives = side === 'final' ? '' : losses === 0 ? ' You have not lost yet.' : ' One more loss and you are out.';
+  switch (state) {
+    case 'champion':
+      return <p className="notice good">You won the battle!</p>;
+    case 'out':
+      return <p className="notice bad">You are out.{champion && <> {champion} won the battle.</>}</p>;
+    case 'bye':
+      return <p className="notice good">{where}: you have no match this stage.{lives}</p>;
+    case 'through':
+      return <p className="notice good">You won against {vs}. Wait for the next stage.</p>;
+    case 'dropped':
+      return (
+        <p className="notice bad">
+          You lost against {vs}. {side === 'final' ? 'You get one more match: the grand final reset.' : 'You go to the losers bracket and fight again when the winners bracket of this stage is finished. One more loss and you are out.'}
+        </p>
+      );
+    case 'fighting':
+      return <p className="notice">{where}: you are fighting {vs} now.</p>;
+    case 'next':
+      return (
+        <p className="notice">
+          {where}: your match is drawn when the winners bracket of this stage is finished.{lives}
+        </p>
+      );
+    case 'waiting':
+      return (
+        <p className="notice">
+          {where}: you fight {vs} next.{lives} The host starts the stage.
+        </p>
+      );
+  }
 }

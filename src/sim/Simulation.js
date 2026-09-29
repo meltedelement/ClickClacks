@@ -10,8 +10,9 @@ import { resolveUpgrades } from '../upgrades/index.js';
 //
 // A match is set up from one loadout per fighter. Loadouts are plain data, so
 // they can be saved with a run or sent to a worker thread:
-//   { weapon: 'sword', upgrades: ['extra-blade', 'lifesteal'], name: 'Team Alpha' }
-// `name` is optional and only for display; without it a fighter is called by its weapon.
+//   { weapon: 'sword', upgrades: ['extra-blade', 'lifesteal'], name: 'Team Alpha', color: '#e5484d' }
+// `name` and `color` are optional and only for display; without them a fighter
+// is called by its weapon and its ball takes the weapon's colour.
 // Upgrade ids must exist, fit the weapon, and not repeat (see src/upgrades/).
 //
 // Things that happen are reported through onEvent(type, data):
@@ -21,16 +22,19 @@ import { resolveUpgrades } from '../upgrades/index.js';
 //   'parry' { a, b, point }
 //   'block' { attacker, defender, point }  (a weapon hit a shield)
 //   'death' { ball }
-//   'end'   { winner }  (winner is null on a draw)
+//   'end'   { winner, decidedBy }  (winner is null on a draw; decidedBy is 'ko', 'hp' or null)
 //   'ability' { ball, ability, phase, shake?, burst? }  (see Ability.emit)
 //   'upgrade' { ball, upgrade, phase, shake?, burst?, text?, color?, pos? }  (see Upgrade.emit)
 export class Simulation {
-  constructor(loadouts, { onEvent } = {}) {
+  // `tiebreak: 'hp'` means a match never ends in a draw: see endOnTime and checkForWinner.
+  constructor(loadouts, { onEvent, tiebreak = null } = {}) {
     this.arena = { ...CONFIG.arena };
     this.onEvent = onEvent ?? (() => {});
+    this.tiebreak = tiebreak;
     this.time = 0;
     this.over = false;
     this.winner = null;
+    this.decidedBy = null; // 'ko' or 'hp' once there is a winner
     this.balls = this.spawnBalls(loadouts);
   }
 
@@ -49,7 +53,7 @@ export class Simulation {
 
       return new Ball({
         position: add(center, fromAngle(angle, CONFIG.ball.spawnDistance)),
-        color: `hsl(${WeaponClass.hue}, 70%, ${55 - copy * 18}%)`,
+        color: loadout.color ?? `hsl(${WeaponClass.hue}, 70%, ${55 - copy * 18}%)`,
         WeaponClass,
         upgrades,
         name: loadout.name,
@@ -213,17 +217,39 @@ export class Simulation {
   // Ends the match with no winner, e.g. when it runs past a time limit.
   endInDraw() {
     if (this.over) return;
-    this.over = true;
-    this.winner = null;
-    this.onEvent('end', { winner: null });
+    this.end(null);
+  }
+
+  // The time limit ran out. With the 'hp' tiebreak the fighter with the most
+  // HP left (as a share of max HP) wins; otherwise it's a draw.
+  endOnTime() {
+    if (this.over) return;
+    if (this.tiebreak === 'hp') this.end(this.leaderOnHp(), 'hp');
+    else this.end(null);
   }
 
   checkForWinner() {
     const alive = this.aliveBalls;
     if (alive.length > 1) return;
+    // Everyone went down in the same step. With a tiebreak there is still a winner.
+    if (alive.length === 0 && this.tiebreak === 'hp') this.end(this.leaderOnHp(), 'hp');
+    else this.end(alive[0] ?? null);
+  }
+
+  // The ball with the largest share of its max HP. An exact tie (e.g. a double
+  // KO) is a coin flip, through Math.random so a seeded match stays reproducible.
+  leaderOnHp() {
+    const share = (ball) => ball.hp / ball.maxHp;
+    const best = Math.max(...this.balls.map(share));
+    const leaders = this.balls.filter((ball) => share(ball) === best);
+    return leaders.length === 1 ? leaders[0] : leaders[Math.floor(Math.random() * leaders.length)];
+  }
+
+  end(winner, decidedBy = 'ko') {
     this.over = true;
-    this.winner = alive[0] ?? null;
-    this.onEvent('end', { winner: this.winner });
+    this.winner = winner;
+    this.decidedBy = winner ? decidedBy : null;
+    this.onEvent('end', { winner, decidedBy: this.decidedBy });
   }
 }
 

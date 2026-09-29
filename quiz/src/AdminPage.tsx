@@ -1,9 +1,12 @@
 import { Fragment } from 'react';
 import type { AdminView, Team } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
-import { groupRounds, roundPosition } from '../shared/rounds.ts';
+import { currentRound } from '../shared/battle.ts';
+import { Bracket } from './Bracket.tsx';
+import { BATTLE_EVERY, groupRounds, roundPosition, stagesAllowed } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
-import { Brand, LETTERS, Status, ThemeToggle } from './ui.tsx';
+import { BattleViewLink, Brand, LETTERS, Status, TeamDot, ThemeToggle, battleViewUrl } from './ui.tsx';
+import { TEAM_COLORS } from '../shared/colors.ts';
 
 export function AdminPage() {
   const admin = useAdmin();
@@ -26,6 +29,7 @@ export function AdminPage() {
             <a href="/present" target="_blank">
               Open presenter view ↗
             </a>
+            <BattleViewLink gameApi={view.game.url} />
             <Status connected={connected} />
             <ThemeToggle />
           </div>
@@ -77,10 +81,12 @@ export function AdminPage() {
                 </button>
               </div>
               <p className="hint">
-                Order: question (teams answer) → locked (answers closed) → reveal (teams that got it right pick an upgrade at once) →
-                battle. Selecting a question opens it for answers.
+                Order: question (teams answer) → locked (answers closed) → reveal (teams that got it right pick an upgrade at once). After every {BATTLE_EVERY} rounds and after the last round: battle (teams pick a transformation, then one stage
+                plays). Selecting a question opens it for answers.
               </p>
             </section>
+
+            <BattleCard view={view} act={act} />
 
             {q && (
               <section className="card stack">
@@ -125,17 +131,27 @@ export function AdminPage() {
                     <tr>
                       <th>Team</th>
                       <th>Code</th>
+                      <th>Colour</th>
                       <th>Weapon</th>
                       <th>Picks left</th>
                       <th>Bonus picks</th>
                       <th>Upgrades</th>
+                      <th>Transformations</th>
                       <th>Offer</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     {state.teams.map((team) => (
-                      <TeamRow key={team.id} team={team} view={view} picks={picks[team.id]} online={online.includes(team.id)} act={act} />
+                      <TeamRow
+                        key={team.id}
+                        team={team}
+                        view={view}
+                        picks={picks[team.id]}
+                        transformPicks={view.transformPicks[team.id] ?? 0}
+                        online={online.includes(team.id)}
+                        act={act}
+                      />
                     ))}
                   </tbody>
                 </table>
@@ -261,7 +277,19 @@ export function AdminPage() {
               <button className="danger" onClick={() => confirm('Reset everything, including teams?') && act({ type: 'reset', keepTeams: false })}>
                 Reset everything
               </button>
-              <p className="hint">Upgrades available: {catalog.upgrades.map((u) => u.id).join(', ')}</p>
+              <p className="hint">
+                Catalog: {catalog.source === 'game' ? 'live from the game' : 'offline copy'} — {catalog.upgrades.length} upgrades
+                {catalog.syncedAt ? ` (read ${new Date(catalog.syncedAt).toLocaleTimeString()})` : ''}
+              </p>
+              <button onClick={() => act({ type: 'refreshCatalog' })}>Refresh catalog from the game</button>
+              <details>
+                <summary>Upgrade ids ({catalog.upgrades.length})</summary>
+                <pre>{catalog.upgrades.map((u) => u.id).join('\n')}</pre>
+              </details>
+              <details>
+                <summary>Transformation ids ({catalog.transformations.length})</summary>
+                <pre>{catalog.transformations.map((u) => u.id).join('\n')}</pre>
+              </details>
               <details>
                 <summary>Raw state</summary>
                 <pre>{JSON.stringify(state, null, 2)}</pre>
@@ -274,23 +302,153 @@ export function AdminPage() {
   );
 }
 
+// The double elimination: draw the bracket, start each stage, and fix a match
+// the game could not finish. The quiz server queues matches on the game's match API and
+// records the result the display page reports.
+function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string, unknown>) => void }) {
+  const { state, game } = view;
+  const battle = state.battle;
+  const round = battle && currentRound(battle);
+  const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '(deleted team)';
+  const teamColor = (id: string) => state.teams.find((t) => t.id === id)?.color ?? '';
+  const displayUrl = battleViewUrl(game.url);
+  const allowed = stagesAllowed(state.questions, state.questionIndex);
+  const picking = state.teams.filter((t) => (view.transformPicks[t.id] ?? 0) > 0);
+
+  return (
+    <section className="card stack">
+      <div className="card-head" style={{ marginBottom: 0 }}>
+        <h2>Battle</h2>
+        <span className="muted num">
+          {battle ? `${battle.matches.filter((m) => m.status === 'done').length} / ${battle.matches.length} played · seed ${battle.seed}` : `${state.teams.length} teams`}
+        </span>
+      </div>
+      <p className="hint">
+        Double elimination: a seeded random draw into the winners bracket. A first loss drops a team to the losers bracket, and a second loss puts it
+        out. An odd team out gets a bye. The last team of each bracket meet in the grand final, with a reset if the losers bracket team wins. At the time
+        limit the team with more HP left wins. Each battle break plays one stage, and the break after the last round plays the rest. The game plays up
+        to four matches at once on the display page. Open <code>{displayUrl}</code> and leave it visible.
+      </p>
+      <div className="row start">
+        <span className={game.reachable ? 'pill good' : 'pill'}>{game.reachable ? 'Game API up' : 'Game API down'}</span>
+        <span className={game.displays > 0 ? 'pill good' : 'pill'}>
+          {game.displays} display{game.displays === 1 ? '' : 's'}
+        </span>
+        {game.screens > 0 && (
+          <span className="pill">
+            {game.screens} match{game.screens === 1 ? '' : 'es'} at once per display
+          </span>
+        )}
+        <span className="faint mono">{game.url}</span>
+      </div>
+
+      {!battle && (
+        <form
+          className="row start"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const seed = String(new FormData(e.currentTarget).get('seed') ?? '').trim();
+            act({ type: 'battleCreate', ...(seed ? { seed: Number(seed) } : {}) });
+          }}
+        >
+          <input name="seed" inputMode="numeric" placeholder="Seed (optional)" size={16} />
+          <button className="primary" disabled={state.teams.length < 2}>
+            Draw the bracket
+          </button>
+        </form>
+      )}
+
+      {battle && (
+        <div className="row start">
+          {round && !battle.champion && round.status === 'waiting' && (
+            <button className={round.index < allowed ? 'primary' : ''} onClick={() => act({ type: 'battleStartRound' })}>
+              Start {round.name.toLowerCase()}
+            </button>
+          )}
+          {round?.status === 'playing' && <button onClick={() => act({ type: 'battleStopRound' })}>Stop {round.name.toLowerCase()}</button>}
+          <button className="danger" onClick={() => confirm('Reset the battle? The bracket and every result are lost.') && act({ type: 'battleReset' })}>
+            Reset battle
+          </button>
+        </div>
+      )}
+      {battle && round && !battle.champion && round.status === 'waiting' && round.index >= allowed && (
+        <p className="hint">The quiz is not at the battle break for {round.name.toLowerCase()} yet. You can still start it here.</p>
+      )}
+      {battle && round?.status === 'waiting' && picking.length > 0 && <p className="hint">Transformation to pick: {picking.map((t) => t.name).join(', ')}</p>}
+      {battle?.note && <p className="notice">{battle.note}</p>}
+      {game.restart && (
+        <p className="notice bad">
+          The game server restarted at {new Date(game.restart.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} and lost its matches.{' '}
+          {game.restart.matches.join(', ')} went back on the game and {game.restart.matches.length === 1 ? 'starts' : 'start'} again from the beginning, with
+          the same fights. In dev mode (
+          <code>npm run dev:all</code>) a change to a game file restarts the game server, for example a git checkout. Do not change files while a stage
+          plays. Use <code>npm run start:all</code> for the event.
+        </p>
+      )}
+      {battle?.champion && <p className="notice good">{teamName(battle.champion)} wins the battle.</p>}
+
+      {battle && (
+        <div className="scroll">
+          <Bracket
+            battle={battle}
+            teamName={teamName}
+            teamColor={teamColor}
+            onScreen={game.reachable && game.displays > 0 ? game.onScreen : undefined}
+            actions={(match) => {
+              const roundOpen = battle.rounds[match.round]?.status !== 'done';
+              const isFinal = match.round === battle.rounds.length - 1;
+              if (match.status === 'queued') return null;
+              if (match.status === 'done' && !(isFinal && battle.champion) && !roundOpen) return null;
+              return (
+                <>
+                  {match.status !== 'done' && roundOpen && (
+                    <>
+                      <button className="small ghost" onClick={() => act({ type: 'battleSetWinner', matchId: match.id, winner: match.a })}>
+                        {teamName(match.a)} wins
+                      </button>
+                      <button className="small ghost" onClick={() => act({ type: 'battleSetWinner', matchId: match.id, winner: match.b })}>
+                        {teamName(match.b)} wins
+                      </button>
+                    </>
+                  )}
+                  {(match.status === 'cancelled' || match.status === 'failed' || match.status === 'done') && (
+                    <button
+                      className="small ghost"
+                      onClick={() => (match.status !== 'done' || confirm('Play this match again? Its result is removed.')) && act({ type: 'battleReplay', matchId: match.id })}
+                    >
+                      Replay
+                    </button>
+                  )}
+                </>
+              );
+            }}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
 function loadouts({ state }: AdminView) {
-  return state.teams.map((t) => ({ team: t.name, weapon: t.weapon, upgrades: t.upgrades }));
+  return state.teams.map((t) => ({ team: t.name, color: t.color, weapon: t.weapon, upgrades: t.upgrades, transformations: t.transformations }));
 }
 
 interface TeamRowProps {
   team: Team;
   view: AdminView;
   picks: number;
+  transformPicks: number;
   online: boolean;
   act: (body: Record<string, unknown>) => void;
 }
 
-function TeamRow({ team, view, picks, online, act }: TeamRowProps) {
+function TeamRow({ team, view, picks, transformPicks, online, act }: TeamRowProps) {
   const { catalog } = view;
   const update = (patch: Partial<Team>) => act({ type: 'updateTeam', teamId: team.id, patch });
   const setUpgrade = (id: string, n: number) => update({ upgrades: { ...team.upgrades, [id]: n } });
   const upgradeName = (id: string) => catalog.upgrades.find((u) => u.id === id)?.name ?? id;
+  const transformationName = (id: string) => catalog.transformations.find((u) => u.id === id)?.name ?? id;
+  const fits = catalog.transformations.filter((t) => (!t.weapons || t.weapons.includes(team.weapon)) && !team.transformations.includes(t.id));
 
   return (
     <tr>
@@ -306,6 +464,22 @@ function TeamRow({ team, view, picks, online, act }: TeamRowProps) {
         </div>
       </td>
       <td className="mono">{team.code}</td>
+      <td>
+        <span className="row start" style={{ gap: 8 }}>
+          <TeamDot color={team.color} />
+          <select value={team.color} onChange={(e) => update({ color: e.target.value })}>
+            {!team.color && <option value="">None</option>}
+            {TEAM_COLORS.map((c) => {
+              const owner = view.state.teams.find((t) => t !== team && t.color === c.hex);
+              return (
+                <option key={c.hex} value={c.hex} disabled={Boolean(owner)}>
+                  {owner ? `${c.name} (${owner.name})` : c.name}
+                </option>
+              );
+            })}
+          </select>
+        </span>
+      </td>
       <td>
         <select value={team.weapon} onChange={(e) => update({ weapon: e.target.value })}>
           {catalog.weapons.map((w) => (
@@ -349,6 +523,27 @@ function TeamRow({ team, view, picks, online, act }: TeamRowProps) {
             </option>
           ))}
         </select>
+      </td>
+      <td>
+        {team.transformations.map((id, i) => (
+          <div key={`${id}${i}`} className="upgrade-line">
+            <span className="grow">{transformationName(id)}</span>
+            <button className="small" onClick={() => update({ transformations: team.transformations.filter((_, j) => j !== i) })} aria-label="Remove transformation">
+              −
+            </button>
+          </div>
+        ))}
+        {fits.length > 0 && (
+          <select value="" onChange={(e) => e.target.value && update({ transformations: [...team.transformations, e.target.value] })}>
+            <option value="">+ add…</option>
+            {fits.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {transformPicks > 0 && <div className="hint">{transformPicks} to pick</div>}
       </td>
       <td className="offer">
         <span className={team.offer ? '' : 'faint'}>{team.offer?.map(upgradeName).join(', ') ?? '–'}</span>{' '}

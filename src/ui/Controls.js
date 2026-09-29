@@ -1,14 +1,17 @@
 import { WEAPONS, getWeaponById } from '../weapons/index.js';
 import { getUpgradeById, upgradesFor } from '../upgrades/index.js';
+import { Sound } from '../game/Sound.js';
 
 const RANDOM = 'random';
 
-// Wires the menu (fighter pickers, sim settings) and keyboard shortcuts to the Game.
+// Wires the menu (fighter pickers, sim settings) and keyboard shortcuts to the
+// games: one normally, one per screen in display mode. Settings apply to all.
 export class Controls {
   // In display mode the match API picks the matchups, so the matchup section
   // and auto rematch are hidden.
-  constructor(game, { fighters, displayMode = false }) {
-    this.game = game;
+  constructor(games, { fighters, displayMode = false }) {
+    this.games = games;
+    this.paused = false;
 
     this.buildFighterSelects(fighters);
     this.bindSettings();
@@ -34,7 +37,12 @@ export class Controls {
   }
 
   startMatch() {
-    this.game.newMatch();
+    for (const game of this.games) game.newMatch();
+  }
+
+  // Sets a property on every game.
+  setAll(key, value) {
+    for (const game of this.games) game[key] = value;
   }
 
   buildFighterSelects(fighters) {
@@ -151,7 +159,6 @@ export class Controls {
   }
 
   bindSettings() {
-    const { game } = this;
     const speed = byId('speed');
     const speedValue = byId('speed-value');
     this.pauseButton = byId('pause');
@@ -160,19 +167,20 @@ export class Controls {
     onClick('pause', () => this.togglePause());
 
     const applySpeed = () => {
-      game.timeScale = Number(speed.value);
+      this.setAll('timeScale', Number(speed.value));
       speedValue.textContent = `${speed.value}×`;
     };
     speed.addEventListener('input', applySpeed);
     speed.addEventListener('change', () => speed.blur());
     applySpeed();
 
-    this.hitboxToggle = bindCheckbox('hitboxes', (on) => (game.showHitboxes = on));
-    bindCheckbox('auto-rematch', (on) => (game.autoRematch = on));
+    this.hitboxToggle = bindCheckbox('hitboxes', (on) => this.setAll('showHitboxes', on));
+    bindCheckbox('auto-rematch', (on) => this.setAll('autoRematch', on));
 
+    // The page-wide mute. In display mode each screen also has its own.
     this.soundToggle = byId('sound');
-    this.soundToggle.checked = !game.sound.muted;
-    bindCheckbox('sound', (on) => (game.sound.muted = !on));
+    this.soundToggle.checked = !Sound.muted;
+    bindCheckbox('sound', (on) => (Sound.muted = !on));
   }
 
   bindMenu() {
@@ -223,11 +231,11 @@ export class Controls {
           break;
         case 'KeyH':
           this.hitboxToggle.checked = !this.hitboxToggle.checked;
-          this.game.showHitboxes = this.hitboxToggle.checked;
+          this.setAll('showHitboxes', this.hitboxToggle.checked);
           break;
         case 'KeyM':
           this.soundToggle.checked = !this.soundToggle.checked;
-          this.game.sound.muted = !this.soundToggle.checked;
+          Sound.muted = !this.soundToggle.checked;
           break;
         case 'KeyF':
           if (document.fullscreenEnabled) this.toggleFullscreen();
@@ -240,8 +248,9 @@ export class Controls {
   }
 
   togglePause() {
-    this.game.paused = !this.game.paused;
-    this.pauseButton.textContent = this.game.paused ? 'Resume' : 'Pause';
+    this.paused = !this.paused;
+    this.setAll('paused', this.paused);
+    this.pauseButton.textContent = this.paused ? 'Resume' : 'Pause';
   }
 }
 
