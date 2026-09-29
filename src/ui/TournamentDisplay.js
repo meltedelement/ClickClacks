@@ -48,7 +48,13 @@ export class TournamentDisplay {
 
   layout() {
     this.grid.dataset.count = String(this.visible);
-    this.screens.forEach((screen, i) => (screen.cell.hidden = i >= this.visible));
+    this.screens.forEach((screen, i) => {
+      screen.cell.hidden = i >= this.visible;
+      // Off-grid screens have no match (the server only fills the first
+      // `visible` slots), so don't simulate and draw them: with four screens
+      // built and one in use that is three wasted animation frames a frame.
+      screen.setRunning(i < this.visible);
+    });
   }
 }
 
@@ -61,6 +67,7 @@ class Screen {
     this.result = null;
     this.finishedAt = 0; // performance.now() when the last match ended
     this.timer = null;
+    this.running = false;
 
     this.cell = el('div', 'screen');
     const canvas = el('canvas');
@@ -80,8 +87,21 @@ class Screen {
     });
     this.game.endHint = '';
     this.game.newMatch();
-    this.game.start();
     this.renderMute();
+  }
+
+  // Only on-grid screens run (see TournamentDisplay.layout).
+  setRunning(running) {
+    if (running === this.running) return;
+    this.running = running;
+    if (running) {
+      // The cell was hidden, so the canvas is still at its hidden size (1x1).
+      // Re-measure now rather than after a frame, so the arena comes back sharp.
+      this.game.renderer.resize();
+      this.game.start();
+    } else {
+      this.game.stop();
+    }
   }
 
   // True while a match plays here and its result has not been sent.

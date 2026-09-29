@@ -13,6 +13,13 @@ const BLUNT = new Set(['mace']);
 let audio = null; // { ctx, master, noiseBuffer } once unlocked
 let masterMuted = loadMuted(STORAGE_KEY);
 
+// Every sound is rate-limited per Sound instance above, but the display page has
+// one Sound per screen: four arenas each starting their own oscillators and
+// noise sources is four times the audio-node churn. This Map (key -> time of the
+// last play) spreads the same limit across the whole page, so a busy screen can't
+// multiply the voices.
+const lastPlayedOnPage = new Map();
+
 function unlockAudio() {
   if (!audio) {
     const AudioContext = window.AudioContext ?? window.webkitAudioContext;
@@ -259,12 +266,15 @@ export class Sound {
 
   // ---- Building blocks -------------------------------------------------------
 
-  // True if the sound should play now. Also rate-limits each sound by key.
+  // True if the sound should play now. Also rate-limits each sound by key,
+  // both for this Sound and across every Sound on the page (see above).
   ready(key) {
     if (masterMuted || this.muted || !this.ctx || this.ctx.state !== 'running') return false;
     const now = this.ctx.currentTime;
     if (now - (this.lastPlayed.get(key) ?? -1) < MIN_GAP) return false;
+    if (now - (lastPlayedOnPage.get(key) ?? -1) < MIN_GAP) return false;
     this.lastPlayed.set(key, now);
+    lastPlayedOnPage.set(key, now);
     return true;
   }
 

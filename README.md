@@ -36,6 +36,29 @@ and has restart, pause, speed, hitboxes, auto rematch, sound, and fullscreen.
 
 Shortcuts: **Space** pause, **R** restart, **H** hitboxes, **M** mute, **F** fullscreen, **Esc** close menu.
 
+### Effects load and quality
+
+The display page can run four arenas at once, each with its own canvas, so effects
+scale themselves to the frame rate. `src/game/Quality.js` watches the animation-frame
+interval; when frames start arriving late it steps the particle budget and the canvas
+backing-store resolution down (and steps them back up once frames are comfortable
+again). Effects are cosmetic, so this never changes how a match plays out — the
+simulation and its results are untouched.
+
+To pin a level instead of adapting, add `?quality=` to the page URL — `high`,
+`medium`, `low` or `minimal`, e.g. `?display&quality=medium`. Useful on a venue
+machine whose frame rate you already know.
+
+`tools/bench-render.js` drives the real `Game`/`Effects`/`Renderer` loop headlessly
+and reports canvas calls, particle counts and frame timings, which is how to check a
+change to effects before trying it on the big screen:
+
+```sh
+node tools/bench-render.js --screens=4 --seconds=20
+node tools/bench-render.js --mode=display --visible=4 --seconds=20   # the real display page
+node tools/bench-render.js --screens=4 --storm=40 --quality=2        # sustained effects load
+```
+
 ## Project layout
 
 ```
@@ -83,6 +106,7 @@ src/
     Game.js            Fixed-timestep loop, pause/speed/hitstop, sim events -> effects
     Renderer.js        Draws the arena, balls, weapons, banners
     Effects.js         Particles, floating damage numbers, screen shake
+    Quality.js         Steps arena resolution and particle budget down when frames slip
     Sound.js           Sound effects, synthesised with Web Audio (no audio files)
   ui/
     Controls.js        Menu + keyboard shortcuts
@@ -94,6 +118,7 @@ server/
   api.d.ts             TypeScript types for programs calling the match API
 tools/
   balance.js           Headless batch balance tester (win rates + combat stats)
+  bench-render.js      Headless frame benchmark for the browser loop (effects load)
 ```
 
 ## Match API (tournaments)

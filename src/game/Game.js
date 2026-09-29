@@ -3,6 +3,7 @@ import { Simulation } from '../sim/Simulation.js';
 import { mulberry32 } from '../sim/random.js';
 import { formatNumber } from '../utils/format.js';
 import { Effects } from './Effects.js';
+import { Quality } from './Quality.js';
 import { Renderer } from './Renderer.js';
 import { Sound } from './Sound.js';
 
@@ -42,6 +43,9 @@ export class Game {
     this.hitstop = 0;
     this.timeSinceEnd = 0;
     this.lastTime = null;
+    this.frameRequest = null;
+    this.running = false;
+    this.qualityLevel = -1; // applied lazily on the first frame
   }
 
   newMatch() {
@@ -56,20 +60,58 @@ export class Game {
     this.timeSinceEnd = 0;
   }
 
+  // Starts (or resumes) this game's own animation-frame loop. Display screens
+  // that aren't on the grid call stop() so they don't simulate and draw unseen.
   start() {
-    requestAnimationFrame(this.frame);
+    if (this.running) return;
+    this.running = true;
+    this.lastTime = null; // don't count the time spent stopped as one frame
+    this.frameRequest = requestAnimationFrame(this.frame);
+  }
+
+  stop() {
+    if (!this.running) return;
+    this.running = false;
+    if (this.frameRequest !== null) {
+      cancelAnimationFrame(this.frameRequest);
+      this.frameRequest = null;
+    }
   }
 
   frame = (now) => {
-    // Clamp so switching tabs doesn't cause a huge catch-up jump.
-    const realDt = this.lastTime === null ? 0 : Math.min((now - this.lastTime) / 1000, 0.1);
-    this.lastTime = now;
+    this.frameRequest = null;
+    try {
+      // Every Game reports its frame stamps; the quality controller keeps one
+      // page-wide picture and scales effects and resolution down when frames slip.
+      Quality.observeFrame(now);
+      this.applyQuality();
 
-    if (!this.paused) this.advance(realDt * this.timeScale);
+      // Clamp so switching tabs doesn't cause a huge catch-up jump.
+      const realDt = this.lastTime === null ? 0 : Math.min((now - this.lastTime) / 1000, 0.1);
+      this.lastTime = now;
 
-    this.renderer.draw(this.sim, this.effects, { showHitboxes: this.showHitboxes, paused: this.paused, endHint: this.endHint });
-    requestAnimationFrame(this.frame);
+      if (!this.paused) this.advance(realDt * this.timeScale);
+
+      this.renderer.draw(this.sim, this.effects, { showHitboxes: this.showHitboxes, paused: this.paused, endHint: this.endHint });
+    } finally {
+      // Reschedule even if this frame threw, so one bad frame can't freeze the
+      // arena (and leave start() early-returning on a stale `running`). The
+      // pending check keeps stop()/start() during a frame from leaving an
+      // orphaned second loop behind.
+      if (this.running && this.frameRequest === null) this.frameRequest = requestAnimationFrame(this.frame);
+    }
   };
+
+  // Applies the page-wide quality profile after a level change: fewer sparks
+  // and, at the lower levels, a smaller backing store for this arena. Both are
+  // presentation-only, and both are restored when frames are comfortable again.
+  applyQuality() {
+    if (Quality.level === this.qualityLevel) return;
+    this.qualityLevel = Quality.level;
+    const { particleBudget, effectScale, resolutionScale } = Quality.profile;
+    this.effects.setProfile({ budget: particleBudget, scale: effectScale });
+    this.renderer.setResolutionScale(resolutionScale);
+  }
 
   advance(dt) {
     this.effects.update(dt);
