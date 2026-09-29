@@ -1,7 +1,6 @@
 import { Fragment } from 'react';
 import type { AdminView, Team } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
-import { allMatches, standings } from '../shared/battle.ts';
 import { groupRounds, roundPosition } from '../shared/rounds.ts';
 import { AdminLogin, useAdmin } from './admin.tsx';
 import { Brand, LETTERS, Status, ThemeToggle } from './ui.tsx';
@@ -82,8 +81,6 @@ export function AdminPage() {
                 battle. Selecting a question opens it for answers.
               </p>
             </section>
-
-            <BattleCard view={view} act={act} />
 
             {q && (
               <section className="card stack">
@@ -264,21 +261,7 @@ export function AdminPage() {
               <button className="danger" onClick={() => confirm('Reset everything, including teams?') && act({ type: 'reset', keepTeams: false })}>
                 Reset everything
               </button>
-              <button
-                className="danger"
-                onClick={() => confirm('Clear every battle result? The table starts again from zero.') && act({ type: 'battleClear' })}
-              >
-                Clear battle results
-              </button>
-              <p className="hint">
-                Catalog: {catalog.source === 'game' ? 'live from the game' : 'offline copy'} — {catalog.upgrades.length} upgrades
-                {catalog.syncedAt ? ` (read ${new Date(catalog.syncedAt).toLocaleTimeString()})` : ''}
-              </p>
-              <button onClick={() => act({ type: 'refreshCatalog' })}>Refresh catalog from the game</button>
-              <details>
-                <summary>Upgrade ids ({catalog.upgrades.length})</summary>
-                <pre>{catalog.upgrades.map((u) => u.id).join('\n')}</pre>
-              </details>
+              <p className="hint">Upgrades available: {catalog.upgrades.map((u) => u.id).join(', ')}</p>
               <details>
                 <summary>Raw state</summary>
                 <pre>{JSON.stringify(state, null, 2)}</pre>
@@ -288,142 +271,6 @@ export function AdminPage() {
         </div>
       </main>
     </>
-  );
-}
-
-// The battles. Every trip to the battle phase deals a fresh round-robin and
-// starts it, so there is nothing to press. Every battle is kept; the table adds
-// them all up.
-function BattleCard({ view, act }: { view: AdminView; act: (body: Record<string, unknown>) => void }) {
-  const { state, game } = view;
-  const battles = state.battles;
-  const current = battles[battles.length - 1] ?? null;
-  const running = !!current && !current.finishedAt;
-  const rows = standings(state.teams, allMatches(battles));
-  const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '(deleted team)';
-  const planned = state.teams.length >= 2 ? (state.teams.length * (state.teams.length - 1)) / 2 : 0;
-  const displayUrl = game.url.replace(/\/api\/?$/, '/?display');
-  const played = battles.reduce((n, battle) => n + battle.matches.filter((m) => m.status === 'done').length, 0);
-  const total = battles.reduce((n, battle) => n + battle.matches.length, 0);
-
-  return (
-    <section className="card stack">
-      <div className="card-head" style={{ marginBottom: 0 }}>
-        <h2>Battle</h2>
-        <span className="muted num">
-          {battles.length === 0 ? `${planned} matches each` : `battle ${battles.length} · ${played} / ${total} played`}
-        </span>
-      </div>
-      <p className="hint">
-        Every time the quiz reaches the battle phase, every team fights every other team once and the matches start on
-        their own, one at a time on the display page. Points add up across battles. Open <code>{displayUrl}</code> and
-        leave it visible.
-      </p>
-      <div className="row start">
-        <span className={game.reachable ? 'pill good' : 'pill'}>{game.reachable ? 'Game API up' : 'Game API down'}</span>
-        <span className={game.displays > 0 ? 'pill good' : 'pill'}>
-          {game.displays} display{game.displays === 1 ? '' : 's'}
-        </span>
-        <span className="faint mono">{game.url}</span>
-      </div>
-      <div className="row start">
-        {running ? (
-          <button onClick={() => act({ type: 'battleStop' })}>Stop</button>
-        ) : (
-          <button className="primary" disabled={state.teams.length < 2} onClick={() => act({ type: 'battleStart' })}>
-            {battles.length === 0 ? 'Start battle' : 'Start another battle'}
-          </button>
-        )}
-        {running && <button onClick={() => act({ type: 'battleResync' })}>Resync loadouts</button>}
-      </div>
-      {current?.note && <p className="hint">{current.note}</p>}
-      {!running && battles.length > 0 && rows[0] && <p className="hint">{rows[0].name} leads the table.</p>}
-
-      {battles.length > 0 && (
-        <div className="scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Team</th>
-                <th>Played</th>
-                <th>W</th>
-                <th>D</th>
-                <th>L</th>
-                <th>HP +/−</th>
-                <th>Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => (
-                <tr key={row.teamId}>
-                  <td className="num">{i + 1}</td>
-                  <td>{row.name}</td>
-                  <td className="num">{row.played}</td>
-                  <td className="num">{row.wins}</td>
-                  <td className="num">{row.draws}</td>
-                  <td className="num">{row.losses}</td>
-                  <td className="num">{row.hpFor - row.hpAgainst > 0 ? `+${row.hpFor - row.hpAgainst}` : row.hpFor - row.hpAgainst}</td>
-                  <td className="num">
-                    <strong>{row.points}</strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {battles.map((battle, i) => (
-        <div className="stack" key={battle.id}>
-          <div className="row">
-            <span className="eyebrow">Battle {i + 1}</span>
-            <span className="muted num">
-              {battle.matches.filter((m) => m.status === 'done').length} / {battle.matches.length} played ·{' '}
-              {battle.finishedAt ? 'finished' : 'playing'}
-            </span>
-          </div>
-          <div className="scroll" style={{ maxHeight: 260 }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Match</th>
-                  <th>Status</th>
-                  <th>Winner</th>
-                  <th>Time</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {battle.matches.map((match) => {
-                  const open = match.status === 'pending' || match.status === 'queued' || match.status === 'playing';
-                  return (
-                    <tr key={match.id}>
-                      <td>
-                        <span className="faint num">{match.id}</span> {teamName(match.a)} vs {teamName(match.b)}
-                      </td>
-                      <td className={match.status === 'failed' ? 'error' : ''}>
-                        {match.status}
-                        {match.error ? ` — ${match.error}` : ''}
-                      </td>
-                      <td>{match.status === 'done' ? (match.winner ? teamName(match.winner) : 'draw') : '–'}</td>
-                      <td className="num">{match.time === null ? '–' : `${Math.round(match.time)}s`}</td>
-                      <td>
-                        {open && (
-                          <button className="small ghost" onClick={() => act({ type: 'battleSkip', matchId: match.id })}>
-                            Skip
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ))}
-    </section>
   );
 }
 
