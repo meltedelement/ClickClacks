@@ -1,4 +1,4 @@
-// Small pieces shared by the team, admin and presenter pages.
+// Small pieces shared by the team, admin and big-screen pages.
 import { useEffect, useState } from 'react';
 import { TEAM_COLORS, colorName } from '../shared/colors.ts';
 
@@ -63,20 +63,30 @@ export function Brand({ name = 'Weapon Balls', color }: { name?: string; color?:
 
 // The game's display page (?display), where the battles play. The quiz server
 // may reach the game at 127.0.0.1, which is wrong for a browser on another
-// device, so a loopback host becomes the host this page came from.
-export function battleViewUrl(gameApi: string): string {
+// device, so a loopback host becomes the host this page came from. `embed`
+// hides the game's menu, for the arena inside the big screen.
+export function battleViewUrl(gameApi: string, { embed = false } = {}): string {
   const url = new URL(gameApi.replace(/\/api\/?$/, '/'), location.href);
   if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) url.hostname = location.hostname;
-  url.search = '?display';
+  url.search = embed ? '?display&embed' : '?display';
   return url.href;
 }
 
-export function BattleViewLink({ gameApi }: { gameApi: string }) {
-  return (
-    <a className="button" href={battleViewUrl(gameApi)} target="_blank" rel="noopener">
-      Open battle view ↗
-    </a>
-  );
+// The address teams type in to join. A page opened on localhost would show
+// "localhost", which no phone can reach, so it asks the server for its
+// address on the local network and keeps this page's port.
+export function useJoinAddress(): string {
+  const [address, setAddress] = useState(location.host);
+  useEffect(() => {
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) return;
+    fetch('/api/lan')
+      .then((res) => res.json())
+      .then(({ addresses }: { addresses: string[] }) => {
+        if (addresses[0]) setAddress(location.port ? `${addresses[0]}:${location.port}` : addresses[0]);
+      })
+      .catch(() => {}); // keep showing location.host
+  }, []);
+  return address;
 }
 
 export function Status({ connected }: { connected: boolean }) {
@@ -146,6 +156,24 @@ export function ThemeToggle() {
       )}
     </button>
   );
+}
+
+// For a page with no theme button (the big screen): follow the choice made on
+// another page of this site, such as the admin page's button.
+export function useSyncedTheme() {
+  useEffect(() => {
+    function apply() {
+      document.documentElement.dataset.theme = savedTheme() ?? systemTheme();
+    }
+    const query = matchMedia('(prefers-color-scheme: light)');
+    const onStorage = (e: StorageEvent) => e.key === THEME_KEY && apply();
+    window.addEventListener('storage', onStorage);
+    query.addEventListener('change', apply);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      query.removeEventListener('change', apply);
+    };
+  }, []);
 }
 
 // One segment per round, so the gaps show where each round starts and ends.

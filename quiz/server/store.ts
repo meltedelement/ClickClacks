@@ -78,6 +78,7 @@ function freshState(questions: Question[], teams: Team[] = []): State {
     message: '',
     weaponsLocked: false,
     battle: null,
+    intro: null,
   };
 }
 
@@ -90,6 +91,8 @@ if (!PHASES.includes(state.phase)) state.phase = 'lobby';
 if (!state.battle || !Array.isArray(state.battle.rounds) || !Array.isArray(state.battle.matches) || !state.battle.rounds.every((r) => Array.isArray(r.groups))) {
   state.battle = null;
 }
+// A state.json from before the round title moved to the server.
+state.intro ??= null;
 // A state.json from before transformations were kept apart from upgrades: move them over.
 for (const team of state.teams) {
   team.transformations ??= [];
@@ -197,12 +200,13 @@ export function picksAvailable(team: Team): number {
 }
 
 function eligibleUpgrades(team: Team) {
-  const owned = Object.keys(team.upgrades).filter((id) => (team.upgrades[id] ?? 0) > 0);
+  const owned = [...Object.keys(team.upgrades).filter((id) => (team.upgrades[id] ?? 0) > 0), ...team.transformations];
   return getCatalog().upgrades.filter(
     (u) =>
       fitsWeapon(u, team.weapon) &&
       (u.maxStacks === undefined || (team.upgrades[u.id] ?? 0) < u.maxStacks) &&
-      (!u.requires || u.requires.every((id) => owned.includes(id))),
+      (!u.requires || u.requires.every((id) => owned.includes(id))) &&
+      !u.excludedBy?.some((id) => owned.includes(id)),
   );
 }
 
@@ -235,12 +239,14 @@ export function transformPicks(team: Team): number {
 }
 
 // Give every team with picks left an offer, and remove offers from teams without picks.
-// A transformation offer is rolled again when it names one the team can no
-// longer take (a new weapon, a host edit, a new catalog).
+// An offer is rolled again when it names one the team can no longer take (a
+// new weapon, a stack limit reached by a host edit, a transformation that makes
+// it useless, a new catalog).
 function reconcile() {
   for (const team of state.teams) {
+    const eligibleUpgradeIds = eligibleUpgrades(team).map((u) => u.id);
     if (picksAvailable(team) <= 0) team.offer = null;
-    else if (!team.offer || team.offer.length === 0) team.offer = rollOffer(team);
+    else if (!team.offer?.length || !team.offer.every((id) => eligibleUpgradeIds.includes(id))) team.offer = rollOffer(team);
 
     const eligible = eligibleTransformations(team, getCatalog());
     if (transformPicks(team) <= 0) team.transformOffer = null;
@@ -676,6 +682,7 @@ export function adminAction(a: Action) {
       const q = currentQuestion();
       return mutate(() => {
         state.phase = a.phase as Phase;
+        state.intro = null;
         if (a.phase === 'reveal' && q && !state.revealed.includes(q.id)) state.revealed.push(q.id);
       });
     }
@@ -684,9 +691,15 @@ export function adminAction(a: Action) {
       if (!(index >= 0 && index < state.questions.length)) throw new UserError('No such question');
       return mutate(() => {
         state.questionIndex = index;
+        state.intro = null;
         // A revealed question stays revealed, so teams cannot change to the shown answer.
         state.phase = state.revealed.includes(state.questions[index].id) ? 'reveal' : 'question';
       });
+    }
+    case 'setIntro': {
+      const index = a.index === null ? null : Number(a.index);
+      if (index !== null && !(index >= 0 && index < state.questions.length)) throw new UserError('No such question');
+      return mutate(() => (state.intro = index));
     }
     case 'setAnswer':
       return mutate(() => {
@@ -742,6 +755,7 @@ export function adminAction(a: Action) {
       return mutate(() => {
         state.questions = questions;
         state.questionIndex = Math.min(state.questionIndex, Math.max(0, questions.length - 1));
+        state.intro = null;
       });
     }
     case 'reset': {

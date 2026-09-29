@@ -26,6 +26,7 @@ export interface Upgrade {
   maxStacks?: number; // omit for no limit
   weapons?: string[]; // only offered to these weapons; omit for all
   requires?: string[]; // upgrade ids the team must own first; omit for none
+  excludedBy?: string[]; // not offered to a team that owns one of these (it would do nothing); omit for none
 }
 
 export interface Catalog {
@@ -64,6 +65,9 @@ export interface State {
   message: string;
   weaponsLocked: boolean;
   battle: Battle | null; // the knockout, once the host draws the bracket
+  // The big screen shows the title of the round that starts at this question
+  // index. The phones do not change. Any phase or question change clears it.
+  intro: number | null;
 }
 
 // What the game receives for one team.

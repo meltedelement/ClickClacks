@@ -17,8 +17,8 @@ alone from here. Then set `GAME_API` so that the battle finds the game
 (`GAME_API=http://localhost:5173/api npm run dev`, or the built `:3002`).
 
 - Teams open `http://<your-ip>:5174/` (dev) or `http://<your-ip>:3001/` (start).
-- The host opens `/admin` and enters the admin key.
-- The host shows `/present` on the big screen. It uses the same admin key.
+- The host opens `/admin` and enters the admin key. The host runs the quiz from this page.
+- The host shows `/screen` on the big screen (`/present` also works). It uses the same admin key; in the same browser as the admin page it is already signed in. Click it once: it goes fullscreen, and the arena can play sound.
 - The server prints the admin key when it starts. It is random the first time and kept in
   `data/admin-token.txt` (not in git), so restarts keep the same key. Delete that file for a new key,
   or set `ADMIN_KEY=something` to choose one yourself.
@@ -34,11 +34,11 @@ alone from here. Then set `GAME_API` so that the battle finds the game
 
 The server reads the questions one time into `state.json`. After you edit `quiz-questions.json`, click **Reload quiz-questions.json** on the admin page.
 
-To start a new quiz, delete `state.json` or use a reset button on the admin page.
+To start a new quiz, use **Full reset** on the admin page's Settings tab, or stop the server and delete `state.json`.
 
 ## Quiz flow
 
-The host moves through these phases on the admin page:
+The host moves through these phases with the Next button on the admin page:
 
 1. **lobby**: Teams join with a name, a colour and a weapon. Teams can change their colour and weapon only in this phase.
 
@@ -59,20 +59,31 @@ The server pushes the full state to each device with server-sent events (`/api/e
 - A `POST` stops after 10 seconds with an error. The buttons stay disabled until the server replies.
 - A pick includes the `picksUsed` value that the device saw. Thus, a repeated pick is rejected and does not use a second pick.
 
-## Presenter view
+## The three screens
 
-`/present` shows the current question and the teams. Show it on a projector or a shared screen.
+- **Phones** (`/`): join, answer, pick upgrades and transformations.
+- **Big screen** (`/screen`): what the room sees. It has no controls. It shows the join address and the teams in the lobby, a title card before each round, the question, and after the reveal the correct option and the percentage of votes for each option. It never shows which team answered or what a team chose, only how many teams answered. In a battle break it shows the matches of the current stage, and while a stage plays it switches to the arena by itself (see [Battle](#battle)). Beside the arena a panel follows the stage: each match, its result as soon as it is decided, and for a match that is playing, a small map of the arena grid that marks which arena it is on. It follows the theme chosen on the admin page.
+- **Admin** (`/admin`): the host's page, made for a laptop. See below.
 
-- It never shows which team answered or what a team chose. It shows only the number of teams that answered.
-- On the reveal, it shows the correct option and the percentage of votes for each option.
-- The next button moves the quiz one step: question → locked → reveal → next question. After the last question of every second round, and of the last round, it starts the battle. In the battle it starts the stage, and when the stage is done, **Back to the quiz** opens the next round.
-- Before the first question of a round, the next button shows the round title: the round number, the round name, and the number of questions. The next press opens the first question. Only the presenter view shows the round title. The phase does not change, and the teams see no change.
-- A round is a group of consecutive questions with the same round in `quiz-questions.json`. The phones, the presenter view, and the admin page show the round and the question number in the round.
-- Space, Enter, the right arrow, and Page Down also do the next step. A presentation clicker sends one of these keys.
+## Admin page
 
-## Dev controls (admin page)
+The control bar at the top shows where the quiz is and what the big screen shows now. **Next** moves the quiz one step: round title → question → locked → reveal → next question. After the last question of every second round, and of the last round, it starts the battle break. In the break it starts the stage, and when the stage is done, **Back to the quiz** shows the next round title. **Back** hides the round title, or goes to the previous question.
 
-- Set any phase or question directly.
+- Before the first question of a round, Next shows the round title on the big screen: the round number, the round name, and the number of questions. The next press opens the first question. The phones do not change.
+- A round is a group of consecutive questions with the same round in `quiz-questions.json`. The phones, the big screen, and the admin page show the round and the question number in the round.
+- Space, Enter, the right arrow, and Page Down also do Next, unless you are typing in a field. A presentation clicker sends one of these keys. Keep the admin page focused.
+
+Below the control bar are tabs:
+
+- **Live**: the lobby, the current question with each team's answer, or in a battle break the bracket. On the side: which teams are online and which still have picks to use.
+- **Teams**: every team's loadout. **Edit** opens a team's name, colour, weapon, bonus picks, upgrades, transformations and offer.
+- **Answers**: every team's answer to every question.
+- **Battle**: the bracket and its controls.
+- **Settings**: the message banner, the lobby lock, jumping to a phase or question, reloading the questions and the catalog, data, and resets.
+
+### Host controls
+
+- Set any phase or question directly (Settings).
 - Change or clear any team's answer for any question.
 - Mark a question as revealed or not revealed.
 - Edit a team: name, colour, weapon, bonus picks, upgrade counts, and transformations.
@@ -80,7 +91,8 @@ The server pushes the full state to each device with server-sent events (`/api/e
 - Show a banner message to all teams. Lock the colour and weapon choice in the lobby.
 - Change a team's colour or weapon at any time (teams can change them only in the lobby). A colour that another team has is disabled in the list.
 - Add only the upgrades and transformations that fit the team's weapon. A new weapon removes the upgrades and transformations that do not fit it, and the ones that require them. The team gets those upgrade picks back.
-- Reload the questions. Reset the quiz, with or without the teams.
+- Reload the questions.
+- **Full reset** (Settings): deletes all the data, as if `state.json` were deleted: teams (the phones go back to the join page), answers, upgrades, transformations, the bracket (its unfinished matches are taken off the game) and the message. The questions are read again. The admin key stays. **Start over, keep the teams** does the same but keeps each team's name, colour and weapon.
 - See the raw state. Copy the loadouts JSON.
 
 A team that loses its device can rejoin with the team code only. Tap "Rejoin with a team code" on the join page. The team page and the admin page show the code.
@@ -107,7 +119,7 @@ battle break.
   `shared/rounds.ts`) and after the last round.
 - Each break plays one stage. The break after the last round plays the stages
   that are left, until there is a champion.
-- If the battle ends before the quiz, the presenter skips the breaks that are left.
+- If the battle ends before the quiz, Next skips the breaks that are left.
 
 | Teams | Stages |
 | --- | --- |
@@ -128,7 +140,7 @@ still in the battle picks one transformation on its phone. The phone shows 3
 random transformations from the ones that fit the team's weapon. The offer stays
 the same until the team picks. The team keeps every
 transformation it picks. A pick that the team does not use carries over. A
-weapon with no transformations gets no pick. The presenter and
+weapon with no transformations gets no pick. The big screen and
 the admin page show the teams that still have to pick. The host does not have to
 wait for them.
 
@@ -161,25 +173,29 @@ wait for them.
 
 ### Running it
 
-1. Start the game server and open its display page on the big screen:
-   `http://localhost:3002/?display` after `npm run build && npm start` in the repo
-   root, or `http://localhost:5173/?display` under `npm run dev`. Keep the page
-   visible. A match plays only while a display page is connected.
+1. Start the game server (`npm run start:all` or `npm run dev:all` in the repo
+   root does it for you) and open `/screen` on the big screen. The big screen
+   loads the game's display page (`?display&embed`) as soon as the game
+   answers and keeps it loaded, hidden, so it counts as a connected display.
+   A match plays only while a display page is connected, so keep the big
+   screen visible. The Battle tab shows how many are connected.
 2. At the first battle break, the quiz moves to the `battle` phase. This draws
-   the bracket. You can also click **Draw the bracket** on the admin page.
-3. Start each stage with the presenter's Next button (**Start stage 1**) or on
-   the admin page. The quiz sends all winners bracket matches of the stage to
-   the game at the same time. The display plays up to four at once. When they
-   all have a winner, the quiz sends the losers bracket matches.
+   the bracket. You can also click **Draw the bracket** on the Battle tab.
+3. Start each stage with Next (**Start stage 1**) or on the Battle tab. The quiz
+   sends all winners bracket matches of the stage to the game at the same time.
+   The big screen switches to the arena, which plays up to four at once. When
+   they all have a winner, the quiz sends the losers bracket matches. A few
+   seconds after the stage ends, the big screen goes back to the stage's
+   results.
 4. When all the matches of a stage have a winner, the quiz draws the next stage
    and waits. Nothing plays until you start it. The admin page can start a stage
    at any time, also outside a battle break.
 
 Point the quiz at the game with `GAME_API` (default `http://localhost:3002/api`).
-The admin page shows the address, whether it answers, and the number of display
-pages.
+The Battle tab shows whether the game answers and the number of display pages.
+**Arena alone** there opens the display page on its own, for a second screen.
 
-### Host controls (admin page)
+### Battle controls (Battle tab)
 
 - **Stop the stage**: takes the stage's unfinished matches off the game. They
   wait until you start the stage again, with the same seeds.

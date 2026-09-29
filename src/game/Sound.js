@@ -36,6 +36,9 @@ function unlockAudio() {
 }
 window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
+// A page that embeds the display (the quiz's big screen, with allow="autoplay")
+// sends this after its own first click, which the browser lets count for this frame.
+window.addEventListener('message', (e) => e.data === 'weapon-balls:unlock-audio' && unlockAudio());
 
 export class Sound {
   // Mutes every Sound on the page. Saved across visits.

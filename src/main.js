@@ -19,6 +19,9 @@ if (requestedQuality !== null && Object.hasOwn(QUALITY_LEVELS, requestedQuality)
 // `?display` turns the page into a tournament screen that plays matches queued
 // through the match API (server/matches.js) instead of the menu's matchup.
 const displayMode = params.has('display');
+// `?display&embed` is the display inside the quiz's big-screen page: no menu,
+// since nobody reaches it there.
+if (params.has('embed')) document.documentElement.classList.add('embedded');
 
 if (displayMode) {
   const display = new TournamentDisplay(document.querySelector('.stage'));

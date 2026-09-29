@@ -30,6 +30,10 @@ export class Upgrade {
   static weapons = null;
   // Upgrade ids that must also be in the loadout for this one to be taken.
   static requires = [];
+  // Upgrade ids that stop this one being offered, because with them it would
+  // do nothing (e.g. Long Dash once Olympian has replaced the dash). A loadout
+  // may still hold both; the upgrade just has no effect.
+  static excludedBy = [];
   // Most copies of this upgrade one fighter can have.
   static maxStacks = Infinity;
   // True for a transformation: a big upgrade that reshapes the weapon. Applied

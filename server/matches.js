@@ -127,6 +127,7 @@ function catalog() {
     description: U.description,
     weapons: U.weapons,
     requires: U.requires,
+    excludedBy: U.excludedBy,
     maxStacks: Number.isFinite(U.maxStacks) ? U.maxStacks : null,
   });
   return {

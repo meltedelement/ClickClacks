@@ -36,6 +36,7 @@ function describe(U) {
     description: U.description,
     weapons: U.weapons, // null = any weapon
     requires: U.requires ?? [],
+    excludedBy: U.excludedBy ?? [], // not offered to a fighter that has one of these
     maxStacks: Number.isFinite(U.maxStacks) ? U.maxStacks : null, // null = no limit
   };
 }

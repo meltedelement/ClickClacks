@@ -19,11 +19,15 @@ npm run dev:all    # hot reload: game 5173 (display), quiz client 5174, quiz API
 npm run start:all  # builds both, then serves: game 3002, quiz 3001
 ```
 
-Either server stopping stops the other, and Ctrl-C stops everything. Then open
-the game's display page and the quiz admin page:
+Either server stopping stops the other, and Ctrl-C stops everything. The
+terminal shows only the two host pages, the admin key and the address teams
+join at; the servers' own output appears only for errors, or if a server fails
+(`npm run dev:all -- --verbose` shows all of it). Then open
+the quiz's two host pages (`:3001` instead of `:5174` when built):
 
-- Display page (big screen): `http://localhost:5173/?display` (`:3002` when built)
-- Quiz admin and presenter: `http://localhost:5174/admin`, `/present` (`:3001` when built)
+- Big screen: `http://localhost:5174/screen`. It embeds the game's display page
+  and switches to it by itself while a battle stage plays.
+- Admin: `http://localhost:5174/admin`. The host drives the quiz from here.
 
 You can also start the two by hand. Then set `GAME_API` on the quiz server so
 that it finds the game (`GAME_API=http://localhost:5173/api npm run dev` in
@@ -143,7 +147,10 @@ The grid shows only the screens in use: one match fills the page, two go side
 by side, and three or four make a 2×2 grid. Each screen has a mute button in
 its corner, and keys **1** to **4** do the same. **M** or the menu's Sound box
 mutes all screens. The menu's pause, speed and hitbox settings apply to all
-screens.
+screens. `?display&embed` hides the menu, for a page that embeds the display
+(the quiz's big screen). Such a page can post the message
+`'weapon-balls:unlock-audio'` to the frame after its own first click, so the
+arena plays sound without a click inside it.
 Matches only play while at least one display page is connected. Browsers slow
 down or pause background tabs, so keep the display tab visible. Then, from the
 calling program:
@@ -308,6 +315,7 @@ playing stops on the display, and the next one in the queue goes on. Waiters on
       "description": "…",
       "weapons": null,
       "requires": [],
+      "excludedBy": [],
       "maxStacks": null
     }
   ],
@@ -318,6 +326,7 @@ playing stops on the display, and the next one in the queue goes on. Waiters on
       "description": "…",
       "weapons": ["sword"],
       "requires": [],
+      "excludedBy": [],
       "maxStacks": 1
     }
   ]
@@ -327,8 +336,9 @@ playing stops on the display, and the next one in the queue goes on. Waiters on
 `upgrades` holds the small upgrades and `transformations` the big upgrades that
 reshape the weapon. Both lists use the same shape. `weapons` is the list of
 weapon ids it fits (`null` for any weapon), `requires` the upgrade ids the
-fighter must also have and `maxStacks` the most copies allowed (`null` for no
-limit). `description` is per copy. Both lists are in menu order.
+fighter must also have, `excludedBy` the upgrade ids that make it useless (don't
+offer it to a fighter that has one; a loadout with both is still accepted) and
+`maxStacks` the most copies allowed (`null` for no limit). `description` is per copy. Both lists are in menu order.
 
 #### Errors
 
@@ -506,7 +516,9 @@ new Simulation([
 Upgrades stack: listing an id twice gives one upgrade with `stacks = 2`. An
 unknown id, one that doesn't fit the weapon, one over its `maxStacks`, or one
 missing an upgrade it `requires` throws. `upgradesFor(weaponId, owned)` in
-`src/upgrades/index.js` lists what could be added next.
+`src/upgrades/index.js` lists what could be added next; it also leaves out an
+upgrade while the fighter has one of its `excludedBy` (Long Dash once Olympian
+or Runner has replaced the dash), though a loadout with both is still valid.
 
 To add one, write the class in `src/upgrades/common.js` (any weapon) or the
 weapon's own file, and add it to `UPGRADES` in `src/upgrades/index.js`:
@@ -518,6 +530,7 @@ export class Longsword extends Upgrade {
   static description = 'Your sword is 25% longer.'; // per copy
   static weapons = ['sword']; // or leave out for any weapon
   static requires = []; // other upgrade ids that must be taken first
+  static excludedBy = []; // upgrade ids that make this one do nothing: not offered with them
   static maxStacks = Infinity;
 
   // Runs once per copy, so it stacks by itself. Adding a share of the starting

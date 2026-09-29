@@ -1,4 +1,4 @@
-// Admin connection shared by the admin page and the presenter page.
+// Admin connection shared by the admin page and the big screen.
 import { useState } from 'react';
 import type { AdminView } from '../shared/types.ts';
 import { post, useEvents } from './api.ts';

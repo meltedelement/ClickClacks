@@ -24,6 +24,7 @@ interface UpgradeData {
   description?: string;
   weapons?: string[] | null;
   requires?: string[] | null;
+  excludedBy?: string[] | null;
   maxStacks?: number | null;
   transformation?: boolean; // an older game listed transformations with the upgrades
 }
@@ -91,6 +92,7 @@ function toCatalog(data: CatalogData, source: 'game' | 'file', syncedAt: string 
         description: u.description ?? '',
         weapons: u.weapons && u.weapons.length > 0 ? u.weapons : undefined,
         requires: u.requires && u.requires.length > 0 ? u.requires : undefined,
+        excludedBy: u.excludedBy && u.excludedBy.length > 0 ? u.excludedBy : undefined,
         maxStacks: u.maxStacks ?? undefined,
       }));
   const all = [...data.upgrades, ...(data.transformations ?? [])];

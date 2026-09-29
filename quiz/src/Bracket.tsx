@@ -1,7 +1,7 @@
 // The double elimination bracket: one column per stage, the winners bracket in
 // the top row and the losers bracket under it. The grand final spans both rows.
 // Stages (and losers brackets) that are not drawn yet show as empty slots. Used by the admin page
-// (with buttons per match) and the presenter view.
+// (with buttons per match).
 import type { ReactNode } from 'react';
 import type { Battle, BattleMatch, BracketSide, GameScreen } from '../shared/types.ts';
 import { plannedStages, roundMatches } from '../shared/battle.ts';
@@ -23,7 +23,7 @@ export function Bracket({ battle, teamName, teamColor, actions, onScreen }: Brac
   const current = battle.rounds.length - 1;
 
   return (
-    <div className="bracket" style={{ gridTemplateColumns: `repeat(${stages}, minmax(210px, 1fr))` }}>
+    <div className="bracket" style={{ gridTemplateColumns: `repeat(${stages}, minmax(13.125rem, 1fr))` }}>
       {Array.from({ length: stages }, (_, index) => {
         const round = battle.rounds[index];
         const live = index === current && !battle.champion;
@@ -96,7 +96,7 @@ function EmptySlots({ size }: { size: number }) {
 
 function TeamLabel({ name, color }: { name: string; color: string }) {
   return (
-    <span className="row start" style={{ gap: 8 }}>
+    <span className="row start" style={{ gap: '0.5rem' }}>
       <TeamDot color={color} />
       {name}
     </span>

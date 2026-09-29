@@ -9,6 +9,11 @@
 // The quiz server is pointed at the game's match API for you, which is the part
 // that is easy to get wrong when the two are started by hand. Either server
 // stopping stops the other, and Ctrl-C stops everything.
+//
+// The terminal shows only what the host needs: the admin page, the big screen,
+// the admin key and the address teams join at. The servers' own output is
+// hidden, except errors. It is printed in full if a server fails to start or
+// stops. `-- --verbose` shows all of it as it comes.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -17,6 +22,9 @@ import path from 'node:path';
 const ROOT = path.join(import.meta.dirname, '..');
 const QUIZ = path.join(ROOT, 'quiz');
 const built = process.argv.includes('--built');
+const verbose = process.argv.includes('--verbose');
+const KEY_FILE = path.join(QUIZ, 'data', 'admin-token.txt');
+const LOG_LINES = 300; // kept per server, to print if it goes wrong
 
 const GAME_PORT = built ? 3002 : 5173;
 const QUIZ_PORT = 3001;
@@ -28,6 +36,9 @@ const GAME_API = `http://127.0.0.1:${GAME_PORT}/api`;
 const children = [];
 let shuttingDown = false;
 
+// Lines Node prints about itself on stderr, not errors from the servers.
+const NOISE = /ExperimentalWarning|node --trace-warnings/;
+
 function run(name, command, args, options = {}) {
   const child = spawn(command, args, {
     cwd: options.cwd ?? ROOT,
@@ -36,26 +47,43 @@ function run(name, command, args, options = {}) {
     // Its own process group, so stopping it also stops anything it starts.
     detached: process.platform !== 'win32',
   });
+  child.log = [];
   for (const stream of [child.stdout, child.stderr]) {
+    const isError = stream === child.stderr;
     stream.setEncoding('utf8');
     let buffered = '';
     stream.on('data', (chunk) => {
       const lines = (buffered + chunk).split('\n');
       buffered = lines.pop() ?? '';
-      for (const line of lines) if (line.trim()) console.log(`[${name}] ${line}`);
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        child.log.push(line);
+        if (child.log.length > LOG_LINES) child.log.shift();
+        if (verbose || (isError && !NOISE.test(line))) console.log(`[${name}] ${line}`);
+      }
     });
   }
+  child.name = name;
   child.on('error', (err) => {
     console.error(`[${name}] ${err.message}`);
     shutdown(1);
   });
   child.on('exit', (code, signal) => {
     if (shuttingDown) return;
+    printLog(child);
     console.log(`[${name}] stopped (${signal ?? `exit ${code}`})`);
     shutdown(code === 0 ? 1 : code ?? 1);
   });
   children.push(child);
   return child;
+}
+
+// What a server printed, for when it failed. Not again with --verbose, which showed it already.
+function printLog(child) {
+  if (verbose || child.log.length === 0) return;
+  console.log(`\n---- ${child.name} output ----`);
+  for (const line of child.log) console.log(`[${child.name}] ${line}`);
+  console.log('----');
 }
 
 function stop(child, signal) {
@@ -91,9 +119,15 @@ function need(file, hint) {
 }
 
 function build(where, label) {
-  console.log(`Building ${label}...`);
-  const result = spawnSync(npmCommand(), ['run', 'build'], { cwd: where, stdio: 'inherit', shell: process.platform === 'win32' });
+  console.log(`Building the ${label}...`);
+  const result = spawnSync(npmCommand(), ['run', 'build'], {
+    cwd: where,
+    stdio: verbose ? 'inherit' : 'pipe',
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
   if (result.status !== 0) {
+    if (!verbose) process.stdout.write(`${result.stdout ?? ''}${result.stderr ?? ''}`);
     console.error(`The ${label} build failed.`);
     process.exit(result.status ?? 1);
   }
@@ -146,7 +180,7 @@ if (busy.length > 0) {
   process.exit(1);
 }
 
-console.log(built ? 'Starting the built game and quiz...\n' : 'Starting the game and quiz in dev mode...\n');
+console.log(built ? 'Starting the built game and quiz...' : 'Starting the game and quiz in dev mode...');
 
 if (built) {
   build(ROOT, 'game');
@@ -173,18 +207,30 @@ const gameUp = await ready(`http://127.0.0.1:${GAME_PORT}/api/status`, 90);
 const quizUp = await ready(`http://127.0.0.1:${QUIZ_PORT}/api/weapons`, 90);
 
 if (!gameUp || !quizUp) {
+  for (const child of children) printLog(child);
   console.error(`\n${!gameUp ? 'The game' : 'The quiz'} did not come up. See the output above.`);
   shutdown(1);
 } else {
-  const quizClient = built ? `http://localhost:${QUIZ_PORT}` : `http://localhost:${QUIZ_CLIENT_PORT}`;
+  const port = built ? QUIZ_PORT : QUIZ_CLIENT_PORT;
+  const lan = await lanAddress();
+  const key = process.env.ADMIN_KEY || (fs.existsSync(KEY_FILE) ? fs.readFileSync(KEY_FILE, 'utf8').trim() : '');
   console.log(`
-Both are up. The quiz server above printed the admin key.
+  Admin:          http://localhost:${port}/admin
+  Big screen:     http://localhost:${port}/screen
+  Admin key:      ${key || '(see the quiz output with --verbose)'}
 
-  Display page (big screen):  http://localhost:${GAME_PORT}/?display
-  Teams join at:              ${quizClient}
-  Admin and presenter:        ${quizClient}/admin  ${quizClient}/present
-  Quiz API:                   http://localhost:${QUIZ_PORT}/api
-  Match API:                  ${GAME_API}
+  Teams join at:  http://${lan ?? 'localhost'}:${port}${lan ? '' : '  (no network address found)'}
 
 Ctrl-C stops both.`);
+}
+
+// The address phones on the local network reach this machine at, from the quiz
+// server, which puts private ranges first (a VPN address is not the one to show).
+async function lanAddress() {
+  try {
+    const { addresses } = await (await fetch(`http://127.0.0.1:${QUIZ_PORT}/api/lan`)).json();
+    return addresses[0] ?? null;
+  } catch {
+    return null;
+  }
 }

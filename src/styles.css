@@ -6,8 +6,8 @@
   --text: #e6e9ef;
   --muted: #8b93a3;
   --accent: #5b8cff;
-  --radius: 10px;
-  --gutter: 12px;
+  --radius: 0.625rem;
+  --gutter: 0.75rem;
   color-scheme: dark;
 }
 
@@ -18,6 +18,12 @@
 html,
 body {
   height: 100%;
+}
+
+/* Sizes are in rem, so the menu and buttons scale with the arena on a screen
+   bigger than 1920x1080 (the display page on a TV) instead of staying small. */
+html {
+  font-size: max(100%, min(0.833vw, 1.481vh));
 }
 
 body {
@@ -87,16 +93,22 @@ body {
 
 .screen-mute {
   position: absolute;
-  left: 10px;
-  bottom: 10px;
+  left: 0.625rem;
+  bottom: 0.625rem;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 2.25rem;
+  height: 2.25rem;
   padding: 0;
   color: var(--muted);
   background: var(--panel);
   opacity: 0.7;
+}
+
+/* The icons carry fixed width/height attributes; size them with the button. */
+.screen-mute svg {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .screen-mute:hover {
@@ -110,6 +122,10 @@ body {
 
 /* ---- Menu ---- */
 
+.embedded .menu {
+  display: none;
+}
+
 .menu {
   position: fixed;
   top: var(--gutter);
@@ -117,31 +133,36 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .menu-toggle {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
   background: var(--panel);
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(0.375rem);
+}
+
+.menu-toggle svg {
+  width: 1.375rem;
+  height: 1.375rem;
 }
 
 .menu-panel {
-  width: min(300px, calc(100vw - var(--gutter) * 2));
-  max-height: calc(100vh - var(--gutter) * 2 - 52px);
+  width: min(18.75rem, calc(100vw - var(--gutter) * 2));
+  max-height: calc(100vh - var(--gutter) * 2 - 3.25rem);
   overflow-y: auto;
-  padding: 14px;
+  padding: 0.875rem;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius);
   background: var(--panel);
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(0.375rem);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 1rem;
 }
 
 .menu-panel[hidden],
@@ -153,13 +174,13 @@ body {
 .menu-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 h2 {
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -168,13 +189,13 @@ h2 {
 .fighter-selects {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0.875rem;
 }
 
 .fighter {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0.375rem;
 }
 
 .upgrade-list {
@@ -183,15 +204,15 @@ h2 {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0.25rem;
 }
 
 .upgrade {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding-left: 10px;
-  font-size: 14px;
+  gap: 0.375rem;
+  padding-left: 0.625rem;
+  font-size: 0.875rem;
 }
 
 .upgrade-name {
@@ -208,7 +229,7 @@ h2 {
 }
 
 .upgrade-button {
-  width: 28px;
+  width: 1.75rem;
   padding: 2px 0;
   line-height: 1.2;
 }
@@ -225,19 +246,19 @@ h2 {
 .upgrade-add {
   flex: none;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .field {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .field-label {
-  flex: 0 0 72px;
+  flex: 0 0 4.5rem;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 select,
@@ -246,8 +267,8 @@ button {
   color: var(--text);
   background: var(--control);
   border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  padding: 6px 10px;
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.625rem;
   cursor: pointer;
 }
 
@@ -262,7 +283,7 @@ button:hover {
 
 .buttons {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .buttons button {
@@ -275,7 +296,7 @@ input[type='range'] {
 }
 
 output {
-  width: 40px;
+  width: 2.5rem;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -283,11 +304,13 @@ output {
 .check {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 0.5rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
 .check input {
+  width: 1rem;
+  height: 1rem;
   accent-color: var(--accent);
 }

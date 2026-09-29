@@ -9,6 +9,8 @@ export class LongDash extends Upgrade {
   static displayName = 'Long Dash';
   static description = 'Charge Dash travels 40% further.';
   static weapons = ['spear'];
+  // Spear Throw and Flame Lap go wall to wall, so the dash length never matters.
+  static excludedBy = ['olympian', 'runner'];
 
   apply() {
     if (!(this.ability instanceof ChargeDash)) return;

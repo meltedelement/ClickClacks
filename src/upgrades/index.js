@@ -111,14 +111,15 @@ export function getUpgradeById(id) {
 
 // Upgrades that could be added to a fighter with this weapon that already has
 // the `owned` upgrade ids (repeats allowed): ones that fit the weapon, aren't
-// at their stack limit, and whose requirements are met. E.g. for offering
-// choices in a run.
+// at their stack limit, whose requirements are met, and that nothing owned
+// makes useless. E.g. for offering choices in a run.
 export function upgradesFor(weaponId, owned = []) {
   return UPGRADES.filter(
     (U) =>
       U.canApplyTo(weaponId) &&
       countOf(owned, U.id) < U.maxStacks &&
-      U.requires.every((id) => owned.includes(id)),
+      U.requires.every((id) => owned.includes(id)) &&
+      !U.excludedBy.some((id) => owned.includes(id)),
   );
 }
 

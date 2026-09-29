@@ -93,6 +93,8 @@ export interface CatalogUpgrade {
   weapons: string[] | null;
   /** Upgrade ids a fighter must also have. */
   requires: string[];
+  /** Not offered to a fighter that has one of these (it would do nothing). Allowed in a loadout. */
+  excludedBy: string[];
   /** null means no limit. */
   maxStacks: number | null;
 }

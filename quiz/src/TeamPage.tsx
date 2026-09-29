@@ -50,7 +50,7 @@ function TopBar({ name, color, children }: { name?: string; color?: string; chil
     <header className="topbar narrow">
       <div className="topbar-inner">
         <Brand name={name} color={color} />
-        <div className="row" style={{ gap: 8 }}>
+        <div className="row" style={{ gap: '0.5rem' }}>
           {children}
           <ThemeToggle />
         </div>
