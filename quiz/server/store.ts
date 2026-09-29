@@ -19,7 +19,7 @@ import type {
 } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
 import { roundPosition } from '../shared/rounds.ts';
-import { advance, currentRound, teamProgress } from '../shared/battle.ts';
+import { advance, currentRound, eligibleTransformations, stillIn, teamProgress } from '../shared/battle.ts';
 import { getCatalog } from './catalog.ts';
 import { GAME_API } from './game.ts';
 
@@ -76,8 +76,20 @@ function freshState(questions: Question[], teams: Team[] = []): State {
 export let state: State = fs.existsSync(STATE_FILE) ? readJson<State>(STATE_FILE) : freshState(loadQuestions());
 // The old 'upgrades' phase was removed: teams now pick as soon as they earn an upgrade.
 if (!PHASES.includes(state.phase)) state.phase = 'lobby';
-// A state.json from before the knockout existed (or from the old round-robin), or a damaged one.
-if (!state.battle || !Array.isArray(state.battle.rounds) || !Array.isArray(state.battle.matches)) state.battle = null;
+// A state.json from before the double elimination (the single knockout or the old round-robin), or a damaged one.
+if (!state.battle || !Array.isArray(state.battle.rounds) || !Array.isArray(state.battle.matches) || !state.battle.rounds.every((r) => Array.isArray(r.groups))) {
+  state.battle = null;
+}
+// A state.json from before transformations were kept apart from upgrades: move them over.
+for (const team of state.teams) {
+  team.transformations ??= [];
+  for (const t of getCatalog().transformations) {
+    const count = team.upgrades[t.id] ?? 0;
+    if (count <= 0) continue;
+    delete team.upgrades[t.id];
+    for (let i = 0; i < count; i++) team.transformations.push(t.id);
+  }
+}
 
 const listeners = new Set<() => void>();
 export function onChange(fn: () => void) {
@@ -156,6 +168,18 @@ function rollOffer(team: Team): string[] {
   return offer;
 }
 
+// A team still in the battle gets one transformation pick for each stage: the
+// stages already on the game, plus the next one while the quiz is in a battle
+// break. Picks it did not use carry over. Zero when nothing fits its weapon.
+export function transformPicks(team: Team): number {
+  const battle = state.battle;
+  const round = battle && currentRound(battle);
+  if (!battle || !round || !stillIn(battle, team.id)) return 0;
+  if (eligibleTransformations(team, getCatalog()).length === 0) return 0;
+  const earned = battle.rounds.filter((r) => r.status !== 'waiting').length + (state.phase === 'battle' && round.status === 'waiting' ? 1 : 0);
+  return Math.max(0, earned - team.transformations.length);
+}
+
 // Give every team with picks left an offer, and remove offers from teams without picks.
 function reconcile() {
   for (const team of state.teams) {
@@ -175,6 +199,7 @@ export function teamView(team: Team): TeamView {
     weaponsLocked: state.weaponsLocked,
     weapons: getCatalog().weapons,
     upgrades: getCatalog().upgrades,
+    transformations: getCatalog().transformations,
     questionNumber: state.questionIndex + 1,
     questionCount: state.questions.length,
     question: showQuestion ? { id: q.id, round: q.round, text: q.text, options: q.options } : null,
@@ -186,22 +211,28 @@ export function teamView(team: Team): TeamView {
       code: team.code,
       weapon: team.weapon,
       upgrades: team.upgrades,
+      transformations: team.transformations,
       picks: picksAvailable(team),
       picksUsed: team.picksUsed,
       offer: team.offer,
+      transformPicks: transformPicks(team),
+      transformOffer: transformPicks(team) > 0 ? eligibleTransformations(team, getCatalog()) : [],
     },
     battle: battleForTeam(team),
   };
 }
 
-// Where one team is in the knockout. Null until the host draws the bracket.
+// Where one team is in the double elimination. Null until the host draws the bracket.
 function battleForTeam(team: Team): TeamView['battle'] {
   const battle = state.battle;
   const round = battle && currentRound(battle);
   if (!battle || !round) return null;
-  const { state: where, opponent } = teamProgress(battle, team.id);
+  const { state: where, opponent, side, bracket, losses } = teamProgress(battle, team.id);
   return {
     round: round.name,
+    bracket,
+    side,
+    losses,
     state: where,
     opponent: opponent ? teamName(opponent) : null,
     champion: battle.champion ? teamName(battle.champion) : null,
@@ -218,6 +249,7 @@ export function adminView(online: string[]): AdminView {
     state,
     catalog,
     picks: Object.fromEntries(state.teams.map((t) => [t.id, picksAvailable(t)])),
+    transformPicks: Object.fromEntries(state.teams.map((t) => [t.id, transformPicks(t)])),
     online,
     game: {
       ...gameInfo,
@@ -230,7 +262,7 @@ export function adminView(online: string[]): AdminView {
 export { getCatalog };
 
 export function loadouts(): Loadout[] {
-  return state.teams.map((t) => ({ team: t.name, weapon: t.weapon, upgrades: { ...t.upgrades } }));
+  return state.teams.map((t) => ({ team: t.name, weapon: t.weapon, upgrades: { ...t.upgrades }, transformations: [...t.transformations] }));
 }
 
 // ---- Team actions -----------------------------------------------------------
@@ -260,6 +292,7 @@ export function join(name: string, weapon: string, code: string): Team {
     name,
     weapon,
     upgrades: {},
+    transformations: [],
     picksUsed: 0,
     bonusPicks: 0,
     offer: null,
@@ -299,8 +332,17 @@ export function pick(team: Team, upgradeId: string, picksUsed?: number) {
   });
 }
 
+// `count` is the number of transformations the device saw when it sent the
+// pick, so a repeated pick (double tap, or a retry) is rejected.
+export function pickTransformation(team: Team, id: string, count?: number) {
+  if (count !== undefined && count !== team.transformations.length) throw new UserError('That pick is already saved');
+  if (transformPicks(team) <= 0) throw new UserError('You have no transformation to pick now');
+  if (!eligibleTransformations(team, getCatalog()).includes(id)) throw new UserError('That transformation is not on offer');
+  mutate(() => team.transformations.push(id));
+}
+
 // ---- Battle -----------------------------------------------------------------
-// State changes for the knockout, used by server/battle.ts (which talks to the
+// State changes for the double elimination, used by server/battle.ts (which talks to the
 // game) and by the views. They only touch `state.battle`.
 
 function findBattleMatch(id: string): BattleMatch | undefined {
@@ -313,7 +355,7 @@ export function beginBattle(battle: Battle) {
   });
 }
 
-// The current round goes on the game. Each of its unplayed matches gets the
+// The current stage goes on the game. Each of its unplayed matches gets the
 // two teams' loadouts as they are now.
 export function startRound(fighters: Map<string, Fighter>) {
   mutate(() => {
@@ -329,7 +371,7 @@ export function startRound(fighters: Map<string, Fighter>) {
   });
 }
 
-// The current round goes back to waiting. Matches sent to the game go back to
+// The current stage goes back to waiting. Matches sent to the game go back to
 // pending (the driver cancels them there); played matches keep their result.
 export function stopRound() {
   mutate(() => {
@@ -345,7 +387,7 @@ export function stopRound() {
   });
 }
 
-// Every match in the current round has a winner: draw the next round, or crown the champion.
+// Every match in the current stage has a winner: draw the next stage, or crown the champion.
 export function finishRound() {
   mutate(() => {
     const battle = state.battle;
@@ -392,7 +434,7 @@ export function setWinner(id: string, winner: string) {
   if (!match) throw new UserError('Unknown match.');
   if (winner !== match.a && winner !== match.b) throw new UserError('The winner must be one of the two teams.');
   if (match.status === 'queued') throw new UserError('That match is on the game now. Stop the round first.');
-  if (state.battle?.rounds[match.round]?.status === 'done') throw new UserError('That round is finished.');
+  if (state.battle?.rounds[match.round]?.status === 'done') throw new UserError('That stage is finished.');
   mutate(() => {
     match.status = 'done';
     match.winner = winner;
@@ -408,11 +450,11 @@ export function replayMatch(id: string, seed: number) {
   if (!match) throw new UserError('Unknown match.');
   if (match.status === 'queued') throw new UserError('That match is on the game now.');
   const round = state.battle?.rounds[match.round];
-  if (!round || round !== currentRound(state.battle!)) throw new UserError('Only a match in the current round can be played again.');
+  if (!round || round !== currentRound(state.battle!)) throw new UserError('Only a match in the current stage can be played again.');
   mutate(() => {
     Object.assign(match, { status: 'pending', seed, gameId: null, winner: null, decidedBy: null, hp: null, time: null });
     delete match.error;
-    // Only the final can be replayed after it is done: that undoes the champion.
+    // Only the grand final can be replayed after it is done: that undoes the champion.
     if (round.status === 'done') {
       round.status = 'waiting';
       state.battle!.champion = null;
@@ -512,6 +554,7 @@ export function adminAction(a: Action) {
             Object.entries(patch.upgrades as Record<string, number>).filter(([, n]) => n > 0),
           );
         }
+        if (Array.isArray(patch.transformations)) team.transformations = patch.transformations.map(String);
       });
     }
     case 'rerollOffer': {
@@ -537,7 +580,7 @@ export function adminAction(a: Action) {
     case 'reset': {
       const questions = loadQuestions();
       const teams = a.keepTeams
-        ? state.teams.map((t) => ({ ...t, upgrades: {}, picksUsed: 0, bonusPicks: 0, offer: null }))
+        ? state.teams.map((t) => ({ ...t, upgrades: {}, transformations: [], picksUsed: 0, bonusPicks: 0, offer: null }))
         : [];
       return mutate(() => (state = freshState(questions, teams)));
     }

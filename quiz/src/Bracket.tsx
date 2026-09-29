@@ -1,9 +1,10 @@
-// The knockout bracket: one column per round, with the rounds that are not
-// drawn yet as empty slots. Used by the admin page (with buttons per match)
-// and the presenter view.
+// The double elimination bracket: one column per stage, the winners bracket in
+// the top row and the losers bracket under it. The grand final spans both rows.
+// Stages that are not drawn yet show as empty slots. Used by the admin page
+// (with buttons per match) and the presenter view.
 import type { ReactNode } from 'react';
-import type { Battle, BattleMatch } from '../shared/types.ts';
-import { roundMatches, roundName } from '../shared/battle.ts';
+import type { Battle, BattleMatch, BracketSide } from '../shared/types.ts';
+import { plannedStages, roundMatches } from '../shared/battle.ts';
 
 interface BracketProps {
   battle: Battle;
@@ -11,47 +12,59 @@ interface BracketProps {
   actions?: (match: BattleMatch) => ReactNode; // admin buttons under a match
 }
 
+const ROW: Record<BracketSide, string> = { winners: '2', losers: '3', final: '2 / span 2' };
+
 export function Bracket({ battle, teamName, actions }: BracketProps) {
-  const planned = plannedRounds(battle.rounds[0]?.teams.length ?? 0);
+  const planned = plannedStages(battle.rounds[0]?.groups[0]?.teams.length ?? 0);
+  const stages = Math.max(planned.length, battle.rounds.length);
   const current = battle.rounds.length - 1;
 
   return (
-    <div className="bracket">
-      {planned.map((size, index) => {
+    <div className="bracket" style={{ gridTemplateColumns: `repeat(${stages}, minmax(210px, 1fr))` }}>
+      {Array.from({ length: stages }, (_, index) => {
         const round = battle.rounds[index];
-        const name = round?.name ?? roundName(size, index);
-        return (
-          <section key={index} className={index === current && !battle.champion ? 'bracket-round current' : 'bracket-round'}>
-            <h3 className="eyebrow">
-              {name}
-              {round && index === current && !battle.champion && <span className="bracket-state"> · {round.status === 'playing' ? 'playing' : round.status === 'waiting' ? 'waiting for the host' : 'done'}</span>}
-            </h3>
-            <div className="bracket-slots">
-              {round ? (
-                <>
-                  {roundMatches(battle, index).map((match) => (
-                    <MatchCard key={match.id} match={match} teamName={teamName} waiting={round.status === 'waiting'} actions={actions?.(match)} />
-                  ))}
-                  {round.bye && (
-                    <div className="bracket-match bye">
-                      <div className="bracket-team won">
-                        <span>{teamName(round.bye)}</span>
+        const live = index === current && !battle.champion;
+        const column = String(index + 1);
+        return [
+          <h3 key={`h${index}`} className={live ? 'eyebrow bracket-head current' : 'eyebrow bracket-head'} style={{ gridColumn: column, gridRow: '1' }}>
+            Stage {index + 1}
+            {round && live && <span className="bracket-state"> · {round.status === 'playing' ? 'playing' : round.status === 'waiting' ? 'waiting for the host' : 'done'}</span>}
+          </h3>,
+          ...(round
+            ? round.groups.map((group) => (
+                <section key={`${index}${group.side}`} className={`bracket-group ${group.side}`} style={{ gridColumn: column, gridRow: ROW[group.side] }}>
+                  <h4 className="bracket-group-name">{group.name}</h4>
+                  <div className="bracket-slots">
+                    {roundMatches(battle, index)
+                      .filter((match) => match.side === group.side)
+                      .map((match) => (
+                        <MatchCard key={match.id} match={match} teamName={teamName} waiting={round.status === 'waiting'} actions={actions?.(match)} />
+                      ))}
+                    {group.bye && (
+                      <div className="bracket-match bye">
+                        <div className="bracket-team">
+                          <span>{teamName(group.bye)}</span>
+                        </div>
+                        <div className="bracket-meta">{group.teams.length === 1 ? 'Waits for the other bracket' : 'Bye: no match this stage'}</div>
                       </div>
-                      <div className="bracket-meta">Bye: through to the next round</div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                Array.from({ length: Math.floor(size / 2) + (size % 2) }, (_, i) => (
-                  <div key={i} className="bracket-match empty">
-                    <div className="bracket-team faint">–</div>
-                    {i < Math.floor(size / 2) && <div className="bracket-team faint">–</div>}
+                    )}
                   </div>
-                ))
-              )}
-            </div>
-          </section>
-        );
+                </section>
+              ))
+            : (planned[index] ?? []).map((group) => (
+                <section key={`${index}${group.side}`} className={`bracket-group ${group.side}`} style={{ gridColumn: column, gridRow: ROW[group.side] }}>
+                  <h4 className="bracket-group-name">{group.name}</h4>
+                  <div className="bracket-slots">
+                    {Array.from({ length: Math.ceil(group.size / 2) }, (_, i) => (
+                      <div key={i} className="bracket-match empty">
+                        <div className="bracket-team faint">–</div>
+                        {i < Math.floor(group.size / 2) && <div className="bracket-team faint">–</div>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))),
+        ];
       })}
     </div>
   );
@@ -89,12 +102,4 @@ function MatchCard({ match, teamName, waiting, actions }: { match: BattleMatch; 
       {actions && <div className="bracket-actions">{actions}</div>}
     </div>
   );
-}
-
-// Team count of each round, from the first round to the final: each round
-// halves the field, and a bye carries the odd team out.
-function plannedRounds(teams: number): number[] {
-  const sizes: number[] = [];
-  for (let size = teams; size > 1; size = Math.ceil(size / 2)) sizes.push(size);
-  return sizes;
 }

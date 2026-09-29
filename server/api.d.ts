@@ -8,8 +8,10 @@ export interface FighterInput {
   team?: string;
   /** Weapon id, e.g. "sword". See GET /api/catalog. */
   weapon: string;
-  /** Upgrade ids (repeat an id to stack it), or { id: count }. */
+  /** Upgrade ids (repeat an id to stack it), or { id: count }. No transformations here. */
   upgrades?: string[] | Record<string, number>;
+  /** Transformation ids from `GET /api/catalog`, in the same forms. Applied before the upgrades. */
+  transformations?: string[] | Record<string, number>;
 }
 
 /** Body of POST /api/matches. */
@@ -31,6 +33,7 @@ export interface Fighter {
   name: string | null;
   weapon: string;
   upgrades: string[];
+  transformations: string[];
 }
 
 export type MatchStatus = 'queued' | 'playing' | 'done' | 'cancelled';
@@ -78,22 +81,26 @@ export interface Status {
   queued: number;
 }
 
+/** One entry in `Catalog.upgrades` or `Catalog.transformations`. */
+export interface CatalogUpgrade {
+  id: string;
+  name: string;
+  description: string;
+  /** Weapon ids it fits, or null for any weapon. */
+  weapons: string[] | null;
+  /** Upgrade ids a fighter must also have. */
+  requires: string[];
+  /** null means no limit. */
+  maxStacks: number | null;
+}
+
 /** GET /api/catalog */
 export interface Catalog {
   weapons: { id: string; name: string }[];
-  upgrades: {
-    id: string;
-    name: string;
-    description: string;
-    /** Weapon ids it fits, or null for any weapon. */
-    weapons: string[] | null;
-    /** Upgrade ids a fighter must also have. */
-    requires: string[];
-    /** null means no limit. */
-    maxStacks: number | null;
-    /** A big upgrade that reshapes the weapon. */
-    transformation: boolean;
-  }[];
+  /** Small upgrades. They go in `FighterInput.upgrades`. */
+  upgrades: CatalogUpgrade[];
+  /** Big upgrades that reshape the weapon. They go in `FighterInput.transformations`. */
+  transformations: CatalogUpgrade[];
 }
 
 /** Every error response. */

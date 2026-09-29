@@ -1,9 +1,10 @@
-// Runs the knockout: draws the bracket, and when the host starts a round,
-// queues all of its matches on the game's match API at once. The game plays up
-// to four at the same time on its display page. The driver waits for the
-// display page's official result for each match, records it, and when every
-// match in the round has a winner, draws the next round. The next round waits
-// for the host.
+// Runs the double elimination: draws the bracket, and when the host starts a
+// stage, queues all of its matches (winners and losers bracket) on the game's
+// match API at once. The game plays up to four at the same time on its display
+// page. The driver waits for the display page's official result for each
+// match, records it, and when every match in the stage has a winner, draws the
+// next stage. The next stage waits for the host (the quiz plays one stage per
+// battle break; see shared/rounds.ts).
 //
 // The game plays a queued match only while a display page (?display) is
 // connected, so the driver waits for one instead of queueing into the void. The
@@ -18,12 +19,12 @@ import * as store from './store.ts';
 const DISPLAY_WAIT_MS = 2_000; // how often to look for a display page
 const RETRY_MS = 3_000; // between attempts at a call that could not get through
 
-// Goes up each time the host stops a round or resets the battle. A runner
+// Goes up each time the host stops a stage or resets the battle. A runner
 // started before that sees the change and quits without touching the state.
 let generation = 0;
 const running = new Set<string>(); // ids of matches with a runner
 // Runners send their matches to the game one after another, in match order, so
-// match 1 of a round goes on screen 1, match 2 on screen 2, and so on.
+// match 1 of a stage goes on screen 1, match 2 on screen 2, and so on.
 let sendChain: Promise<unknown> = Promise.resolve();
 
 function inOrder<T>(fn: () => Promise<T>): Promise<T> {
@@ -34,7 +35,7 @@ function inOrder<T>(fn: () => Promise<T>): Promise<T> {
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-// Draws the bracket. Nothing is sent to the game until the host starts the first round.
+// Draws the bracket. Nothing is sent to the game until the host starts the first stage.
 export function create(seed?: number) {
   if (store.state.battle) throw new store.UserError('There is already a bracket. Reset the battle first.');
   const teams = store.state.teams;
@@ -56,31 +57,32 @@ export function create(seed?: number) {
   });
 }
 
-// Sends every unplayed match of the current round to the game, with the
+// Sends every unplayed match of the current stage to the game, with the
 // teams' loadouts as they are now.
 export function startRound() {
   const battle = store.state.battle;
   const round = battle && currentRound(battle);
   if (!battle || !round) throw new store.UserError('Draw the bracket first.');
   if (battle.champion) throw new store.UserError('The battle is over.');
-  if (round.status !== 'waiting') throw new store.UserError(`The ${round.name} already started.`);
+  if (round.status !== 'waiting') throw new store.UserError(`${round.name} already started.`);
 
-  const teams = store.state.teams.filter((team) => round.teams.includes(team.id));
-  if (teams.length < round.teams.length) throw new store.UserError('A team in this round was deleted. Reset the battle.');
+  const ids = new Set(roundMatches(battle, round.index).flatMap((m) => [m.a, m.b]));
+  const teams = store.state.teams.filter((team) => ids.has(team.id));
+  if (teams.length < ids.size) throw new store.UserError('A team in this stage was deleted. Reset the battle.');
   checkLoadouts(teams);
 
   store.startRound(new Map(teams.map((team) => [team.id, fighter(team)])));
   store.setBattleNote('');
   run();
-  settleRound(); // a round whose matches the host already decided
+  settleRound(); // a stage whose matches the host already decided
 }
 
-// Takes the current round off the game. Its unplayed matches wait for the host
-// to start the round again (same seeds, same fights).
+// Takes the current stage off the game. Its unplayed matches wait for the host
+// to start the stage again (same seeds, same fights).
 export function stopRound() {
   const battle = store.state.battle;
   const round = battle && currentRound(battle);
-  if (!battle || !round || round.status !== 'playing') throw new store.UserError('No round is playing.');
+  if (!battle || !round || round.status !== 'playing') throw new store.UserError('No stage is playing.');
   generation++;
   for (const match of roundMatches(battle, round.index)) {
     if (match.status === 'queued' && match.gameId) cancelQuietly(match.gameId);
@@ -89,7 +91,7 @@ export function stopRound() {
   store.setBattleNote(`${round.name} stopped. Start it again to replay the unfinished matches.`);
 }
 
-// Plays a match again with a new seed. In a round that is playing, it goes on the game at once.
+// Plays a match again with a new seed. In a stage that is playing, it goes on the game at once.
 export function replay(matchId: string) {
   store.replayMatch(matchId, randomInt(0, 2 ** 32));
   run();
@@ -109,14 +111,14 @@ export function reset() {
   store.resetBattle();
 }
 
-// Called when the quiz server starts: a round that was playing carries on. A
+// Called when the quiz server starts: a stage that was playing carries on. A
 // match already sent to the game is picked up there (if the game restarted
 // too and forgot it, it is sent again with the same seed).
 export function resume() {
   run();
 }
 
-// Starts a runner for every unfinished match of the current round, if it is playing.
+// Starts a runner for every unfinished match of the current stage, if it is playing.
 function run() {
   const battle = store.state.battle;
   const round = battle && currentRound(battle);
@@ -139,7 +141,7 @@ function run() {
   }
 }
 
-// After a match ends: move on when the round is complete, or tell the host
+// After a match ends: move on when the stage is complete, or tell the host
 // what needs a decision once nothing is left running.
 function settleRound() {
   const battle = store.state.battle;
@@ -148,7 +150,7 @@ function settleRound() {
   if (roundComplete(battle, round.index)) {
     store.finishRound();
     const next = store.state.battle && currentRound(store.state.battle);
-    store.setBattleNote(store.state.battle?.champion ? '' : `${round.name} finished. Start the ${next?.name.toLowerCase()} when you are ready.`);
+    store.setBattleNote(store.state.battle?.champion ? '' : `${round.name} finished. ${next?.name} is drawn and waits for the host.`);
     return;
   }
   if (round.status !== 'playing') return;
@@ -280,7 +282,7 @@ function parseSeed(seed: unknown): number {
 }
 
 function fighter(team: Team): Fighter {
-  return { name: team.name, weapon: team.weapon, upgrades: { ...team.upgrades } };
+  return { name: team.name, weapon: team.weapon, upgrades: { ...team.upgrades }, transformations: [...team.transformations] };
 }
 
 // The game may already be gone; there is nothing to cancel then.

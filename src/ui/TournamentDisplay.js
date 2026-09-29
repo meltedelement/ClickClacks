@@ -89,10 +89,14 @@ class Screen {
     return Boolean(this.match) && !this.reported;
   }
 
-  // What Game plays: the match on this screen, or null for an empty arena.
+  // What Game plays: the match on this screen, or null for an empty arena. The
+  // API keeps transformations apart from upgrades; the sim takes them in one
+  // list and applies transformations first.
   get currentMatch() {
     const { match } = this;
-    return match && { fighters: match.fighters, seed: match.seed, timeLimit: match.timeLimit, tiebreak: match.tiebreak };
+    if (!match) return null;
+    const fighters = match.fighters.map(({ transformations = [], upgrades = [], ...fighter }) => ({ ...fighter, upgrades: [...transformations, ...upgrades] }));
+    return { fighters, seed: match.seed, timeLimit: match.timeLimit, tiebreak: match.tiebreak };
   }
 
   toggleMute() {

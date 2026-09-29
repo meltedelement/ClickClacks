@@ -96,7 +96,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     return sendAdmins();
   }
 
-  // Read by the game: one { team, weapon, upgrades } per team.
+  // Read by the game: one { team, weapon, upgrades, transformations } per team.
   if (route === 'GET /api/loadouts') return json(res, 200, store.loadouts());
   if (route === 'GET /api/weapons') return json(res, 200, store.getCatalog().weapons);
 
@@ -126,6 +126,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
   if (route === 'POST /api/pick') {
     const body = await readBody(req);
     store.pick(team!, body.upgradeId, body.picksUsed);
+    return json(res, 200, { ok: true });
+  }
+  if (route === 'POST /api/transform') {
+    const body = await readBody(req);
+    store.pickTransformation(team!, String(body.transformationId), body.count);
     return json(res, 200, { ok: true });
   }
 

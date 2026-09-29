@@ -29,6 +29,7 @@ export interface GameFighterInput {
   team?: string;
   weapon: string;
   upgrades?: string[] | Record<string, number>;
+  transformations?: string[] | Record<string, number>;
 }
 
 export interface GameResult {
@@ -42,7 +43,7 @@ export interface GameResult {
 export interface GameMatch {
   id: string;
   status: 'queued' | 'playing' | 'done' | 'cancelled';
-  fighters: { name: string | null; weapon: string; upgrades: string[] }[];
+  fighters: { name: string | null; weapon: string; upgrades: string[]; transformations: string[] }[];
   seed: number;
   timeLimit: number;
   tiebreak: 'hp' | null;

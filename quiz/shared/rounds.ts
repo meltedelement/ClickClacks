@@ -36,3 +36,28 @@ export function roundPosition(questions: Labelled[], index: number): RoundPositi
     sizes: rounds.map((r) => r.items.length),
   };
 }
+
+// The quiz stops for a battle break after every BATTLE_EVERY question rounds,
+// and after the last round. Each break plays one stage of the bracket. The
+// break after the last round plays the stages that are left, until there is a
+// champion.
+export const BATTLE_EVERY = 2;
+
+// True when the question at `index` ends a round that a battle break follows.
+export function breakAfter(questions: Labelled[], index: number): boolean {
+  const position = roundPosition(questions, index);
+  if (!position || position.position !== position.size) return false;
+  const done = position.index + 1;
+  return done % BATTLE_EVERY === 0 || done === position.count;
+}
+
+// How many bracket stages may be played once the quiz has reached question
+// `index` (the battle phase keeps the index of the last question before the
+// break). Infinity after the last round: the rest of the bracket plays then.
+export function stagesAllowed(questions: Labelled[], index: number): number {
+  const position = roundPosition(questions, index);
+  if (!position) return Infinity; // no questions: the battle is all there is
+  const done = position.position === position.size ? position.index + 1 : position.index;
+  if (done >= position.count) return Infinity;
+  return Math.floor(done / BATTLE_EVERY);
+}

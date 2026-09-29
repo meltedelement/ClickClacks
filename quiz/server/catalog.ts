@@ -18,20 +18,24 @@ export interface CatalogSettings {
   exclude: string[]; // upgrade ids the quiz never offers, even when the game has them
 }
 
+interface UpgradeData {
+  id: string;
+  name: string;
+  description?: string;
+  weapons?: string[] | null;
+  requires?: string[] | null;
+  maxStacks?: number | null;
+  transformation?: boolean; // an older game listed transformations with the upgrades
+}
+
 // The shape of data/game.json (and of GET /api/catalog, with nulls for "none").
 interface CatalogData {
   upgradesPerCorrect?: number;
   offerSize?: number;
   exclude?: string[];
   weapons: { id: string; name: string }[];
-  upgrades: {
-    id: string;
-    name: string;
-    description?: string;
-    weapons?: string[] | null;
-    requires?: string[] | null;
-    maxStacks?: number | null;
-  }[];
+  upgrades: UpgradeData[];
+  transformations?: UpgradeData[];
 }
 
 function readFile(): CatalogData {
@@ -68,6 +72,7 @@ export async function refresh(apiUrl: string): Promise<boolean> {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as CatalogData;
     if (!Array.isArray(data?.weapons) || !Array.isArray(data?.upgrades)) throw new Error('not a catalog');
+    if (data.transformations !== undefined && !Array.isArray(data.transformations)) throw new Error('not a catalog');
     current = toCatalog(data, 'game', new Date().toISOString());
   } catch {
     // Keep what we have.
@@ -77,9 +82,8 @@ export async function refresh(apiUrl: string): Promise<boolean> {
 
 function toCatalog(data: CatalogData, source: 'game' | 'file', syncedAt: string | null): Catalog {
   const exclude = new Set(file.exclude ?? []);
-  return {
-    weapons: data.weapons.map((w) => ({ id: w.id, name: w.name })),
-    upgrades: data.upgrades
+  const convert = (list: UpgradeData[]) =>
+    list
       .filter((u) => !exclude.has(u.id))
       .map((u) => ({
         id: u.id,
@@ -88,7 +92,13 @@ function toCatalog(data: CatalogData, source: 'game' | 'file', syncedAt: string 
         weapons: u.weapons && u.weapons.length > 0 ? u.weapons : undefined,
         requires: u.requires && u.requires.length > 0 ? u.requires : undefined,
         maxStacks: u.maxStacks ?? undefined,
-      })),
+      }));
+  const all = [...data.upgrades, ...(data.transformations ?? [])];
+  const isTransformation = (u: UpgradeData) => u.transformation === true || (data.transformations ?? []).includes(u);
+  return {
+    weapons: data.weapons.map((w) => ({ id: w.id, name: w.name })),
+    upgrades: convert(all.filter((u) => !isTransformation(u))),
+    transformations: convert(all.filter(isTransformation)),
     upgradesPerCorrect: file.upgradesPerCorrect ?? 1,
     offerSize: file.offerSize ?? 3,
     source,

@@ -4,7 +4,7 @@
 // is always what gets recorded. Types for callers are in api.d.ts.
 //
 // For the tournament program:
-//   GET    /api/catalog               weapons and upgrades the game knows
+//   GET    /api/catalog               weapons, upgrades and transformations the game knows
 //   GET    /api/status                displays connected, matches on screen, queue length
 //   POST   /api/matches               queue a match -> the match (201)
 //   GET    /api/matches               every match this server has seen
@@ -26,7 +26,7 @@
 // State lives in memory only: restarting the server forgets every match.
 import { randomUUID } from 'node:crypto';
 import { WEAPONS, getWeaponById } from '../src/weapons/index.js';
-import { UPGRADES, resolveUpgrades } from '../src/upgrades/index.js';
+import { UPGRADES, getUpgradeById, resolveUpgrades } from '../src/upgrades/index.js';
 
 const DEFAULT_TIME_LIMIT = 180; // sim seconds before a match is called a draw (same as the balance tool)
 const MAX_TIME_LIMIT = 600;
@@ -120,17 +120,18 @@ async function route(req, res, url) {
 // ---- Tournament side -----------------------------------------------------------
 
 function catalog() {
+  const describe = (U) => ({
+    id: U.id,
+    name: U.displayName,
+    description: U.description,
+    weapons: U.weapons,
+    requires: U.requires,
+    maxStacks: Number.isFinite(U.maxStacks) ? U.maxStacks : null,
+  });
   return {
     weapons: WEAPONS.map((W) => ({ id: W.id, name: W.displayName })),
-    upgrades: UPGRADES.map((U) => ({
-      id: U.id,
-      name: U.displayName,
-      description: U.description,
-      weapons: U.weapons,
-      requires: U.requires,
-      maxStacks: Number.isFinite(U.maxStacks) ? U.maxStacks : null,
-      transformation: Boolean(U.transformation),
-    })),
+    upgrades: UPGRADES.filter((U) => !U.transformation).map(describe),
+    transformations: UPGRADES.filter((U) => U.transformation).map(describe),
   };
 }
 
@@ -182,9 +183,11 @@ function fillScreens() {
   return changed;
 }
 
-// A fighter is { name?, weapon, upgrades? }. `team` is accepted in place of
-// `name`, and upgrades may be a list of ids (repeat an id to stack it) or an
-// { id: count } object, so the quiz's loadouts can be passed straight in.
+// A fighter is { name?, weapon, upgrades?, transformations? }. `team` is
+// accepted in place of `name`, and upgrades and transformations may each be a
+// list of ids (repeat an id to stack it) or an { id: count } object, so the
+// quiz's loadouts can be passed straight in. Transformations go only in
+// `transformations`, and every other upgrade only in `upgrades`.
 function parseFighter(input, i) {
   const where = `fighters[${i}]`;
   if (!input || typeof input !== 'object') throw new ApiError(400, `${where} must be an object`);
@@ -192,25 +195,32 @@ function parseFighter(input, i) {
   const name = input.name ?? input.team ?? null;
   if (name !== null && typeof name !== 'string') throw new ApiError(400, `${where}.name must be a string`);
 
-  const upgrades = parseUpgradeIds(input.upgrades ?? [], where);
+  const upgrades = parseUpgradeIds(input.upgrades ?? [], `${where}.upgrades`);
+  const transformations = parseUpgradeIds(input.transformations ?? [], `${where}.transformations`);
   try {
     const WeaponClass = getWeaponById(input.weapon);
-    resolveUpgrades(upgrades, WeaponClass.id);
+    for (const id of upgrades) {
+      if (getUpgradeById(id).transformation) throw new Error(`"${id}" is a transformation: put it in "transformations"`);
+    }
+    for (const id of transformations) {
+      if (!getUpgradeById(id).transformation) throw new Error(`"${id}" is not a transformation: put it in "upgrades"`);
+    }
+    resolveUpgrades([...transformations, ...upgrades], WeaponClass.id);
   } catch (err) {
     throw new ApiError(400, `${where}: ${err.message}`);
   }
-  return { name, weapon: input.weapon, upgrades };
+  return { name, weapon: input.weapon, upgrades, transformations };
 }
 
 function parseUpgradeIds(upgrades, where) {
   if (Array.isArray(upgrades)) {
-    if (!upgrades.every((id) => typeof id === 'string')) throw new ApiError(400, `${where}.upgrades must be upgrade ids`);
+    if (!upgrades.every((id) => typeof id === 'string')) throw new ApiError(400, `${where} must be upgrade ids`);
     return upgrades;
   }
-  if (typeof upgrades !== 'object') throw new ApiError(400, `${where}.upgrades must be a list or an { id: count } object`);
+  if (!upgrades || typeof upgrades !== 'object') throw new ApiError(400, `${where} must be a list or an { id: count } object`);
   return Object.entries(upgrades).flatMap(([id, count]) => {
     if (!Number.isInteger(count) || count < 0 || count > MAX_COUNT) {
-      throw new ApiError(400, `${where}.upgrades.${id} must be a whole number from 0 to ${MAX_COUNT}`);
+      throw new ApiError(400, `${where}.${id} must be a whole number from 0 to ${MAX_COUNT}`);
     }
     return Array(count).fill(id);
   });

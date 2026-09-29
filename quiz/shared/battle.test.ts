@@ -2,8 +2,21 @@
 // (or `npm test` in quiz/). No server or game needed.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { advance, currentRound, drawBracket, mulberry32, roundComplete, roundMatches, teamProgress, validateLoadout } from './battle.ts';
-import type { Battle, Catalog } from './types.ts';
+import {
+  advance,
+  currentRound,
+  drawBracket,
+  eligibleTransformations,
+  lossCount,
+  mulberry32,
+  plannedStages,
+  roundComplete,
+  roundMatches,
+  teamProgress,
+  validateLoadout,
+} from './battle.ts';
+import { breakAfter, stagesAllowed } from './rounds.ts';
+import type { Battle, BattleMatch, Catalog } from './types.ts';
 
 const catalog: Catalog = {
   upgradesPerCorrect: 1,
@@ -11,6 +24,7 @@ const catalog: Catalog = {
   weapons: [
     { id: 'sword', name: 'Sword' },
     { id: 'spear', name: 'Spear' },
+    { id: 'mace', name: 'Mace' },
   ],
   upgrades: [
     { id: 'damage', name: 'Sharpened', description: '+' },
@@ -18,14 +32,21 @@ const catalog: Catalog = {
     { id: 'crit-damage', name: 'Deadly Crits', description: '+', weapons: ['spear'], requires: ['crit'] },
     { id: 'big-shield', name: 'Big Shield', description: '+', weapons: ['sword'], maxStacks: 2 },
   ],
+  transformations: [
+    { id: 'captain', name: 'Captain', description: '+', weapons: ['sword'], maxStacks: 1 },
+    { id: 'stalwart', name: 'Stalwart', description: '+', weapons: ['sword'], maxStacks: 1 },
+    { id: 'hoplite', name: 'Hoplite', description: '+', weapons: ['spear'], maxStacks: 1 },
+  ],
 };
 
 const ids = (n: number) => Array.from({ length: n }, (_, i) => `t${i + 1}`);
 
-// Plays the current round: the first team in each match wins.
-function playRound(battle: Pick<Battle, 'rounds' | 'matches' | 'seed' | 'champion'>) {
+type TestBattle = Pick<Battle, 'rounds' | 'matches' | 'seed' | 'champion'>;
+
+// Plays the current stage. `pick` chooses each winner; by default the first team wins.
+function playStage(battle: TestBattle, pick: (m: BattleMatch) => string = (m) => m.a) {
   const round = currentRound(battle)!;
-  for (const m of roundMatches(battle, round.index)) Object.assign(m, { status: 'done', winner: m.a, decidedBy: 'ko' });
+  for (const m of roundMatches(battle, round.index)) Object.assign(m, { status: 'done', winner: pick(m), decidedBy: 'ko' });
   round.status = 'done';
   const next = advance(battle);
   if ('champion' in next) battle.champion = next.champion;
@@ -35,58 +56,110 @@ function playRound(battle: Pick<Battle, 'rounds' | 'matches' | 'seed' | 'champio
   }
 }
 
-function bracket(n: number, seed = 42) {
-  return { seed, champion: null as string | null, ...drawBracket(ids(n), seed) };
+function bracket(n: number, seed = 42): TestBattle {
+  return { seed, champion: null, ...drawBracket(ids(n), seed) };
 }
 
-test('eight teams: quarter-finals, semi-finals, final', () => {
-  const battle = bracket(8);
-  assert.deepEqual(battle.rounds.map((r) => r.name), ['Quarter-finals']);
-  assert.equal(battle.matches.length, 4);
-  assert.equal(battle.rounds[0].bye, null);
-  // Every team is drawn exactly once.
-  assert.deepEqual(battle.matches.flatMap((m) => [m.a, m.b]).sort(), ids(8).sort());
+function playOut(battle: TestBattle, pick?: (m: BattleMatch) => string) {
+  for (let i = 0; i < 100 && !battle.champion; i++) playStage(battle, pick);
+  assert.ok(battle.champion, 'the battle ends');
+}
 
-  playRound(battle);
-  playRound(battle);
-  assert.deepEqual(battle.rounds.map((r) => [r.name, roundMatches(battle, r.index).length]), [
-    ['Quarter-finals', 4],
-    ['Semi-finals', 2],
-    ['Final', 1],
-  ]);
-  playRound(battle);
-  const final = roundMatches(battle, 2)[0];
+const groupSizes = (battle: TestBattle) => battle.rounds.map((r) => r.groups.map((g) => `${g.side[0]}${g.teams.length}`).join(' '));
+
+test('eight teams: the double elimination takes six stages', () => {
+  const battle = bracket(8);
+  assert.equal(battle.matches.length, 4);
+  assert.deepEqual(battle.matches.flatMap((m) => [m.a, m.b]).sort(), ids(8).sort());
+  playOut(battle);
+  assert.deepEqual(groupSizes(battle), ['w8', 'w4 l4', 'w2 l4', 'w1 l3', 'w1 l2', 'f2']);
+  assert.deepEqual(
+    battle.rounds.map((r) => r.groups.map((g) => g.name)),
+    [
+      ['Winners quarter-finals'],
+      ['Winners semi-finals', 'Losers round 1'],
+      ['Winners final', 'Losers round 2'],
+      ['Winners bracket champion', 'Losers round 3'],
+      ['Winners bracket champion', 'Losers final'],
+      ['Grand final'],
+    ],
+  );
+  // The first team always wins, so the winners bracket champion takes it without a reset.
+  const final = roundMatches(battle, 5)[0];
+  assert.equal(final.side, 'final');
   assert.equal(battle.champion, final.a);
 });
 
-test('six teams: the odd team out in a round goes through on a bye', () => {
-  const battle = bracket(6);
-  assert.equal(battle.matches.length, 3);
-  assert.equal(battle.rounds[0].bye, null);
-
-  playRound(battle); // 3 winners
-  const semi = battle.rounds[1];
-  assert.equal(roundMatches(battle, 1).length, 1);
-  assert.ok(semi.bye);
-
-  playRound(battle); // the bye team and the semi-final winner
-  const final = roundMatches(battle, 2);
-  assert.equal(final.length, 1);
-  assert.equal(battle.rounds[2].name, 'Final');
-  // The team with the bye plays in the final.
-  assert.ok(final[0].a === semi.bye || final[0].b === semi.bye);
+test('every team except the champion loses exactly twice', () => {
+  for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 12, 16]) {
+    for (const seed of [1, 2, 3]) {
+      const battle = bracket(n, seed);
+      const random = mulberry32(seed * 1000 + n);
+      playOut(battle, (m) => (random() < 0.5 ? m.a : m.b));
+      for (const id of ids(n)) {
+        const losses = lossCount(battle, id);
+        if (id === battle.champion) assert.ok(losses <= 1, `${n} teams, champion lost ${losses}`);
+        else assert.equal(losses, 2, `${n} teams, seed ${seed}, ${id}`);
+      }
+    }
+  }
 });
 
-test('a team never gets two byes in a row', () => {
-  for (const n of [3, 5, 7, 9, 11]) {
+test('a loss in the winners bracket drops the team to the losers bracket', () => {
+  const battle = bracket(4);
+  playStage(battle);
+  const stage = currentRound(battle)!;
+  const losers = stage.groups.find((g) => g.side === 'losers')!;
+  const firstRound = roundMatches(battle, 0);
+  assert.deepEqual([...losers.teams].sort(), firstRound.map((m) => m.b).sort());
+});
+
+test('the losers bracket pairs its survivors with the teams that just dropped', () => {
+  const battle = bracket(8);
+  playStage(battle);
+  playStage(battle); // winners semi-finals and losers round 1
+  const survivors = roundMatches(battle, 1).filter((m) => m.side === 'losers').map((m) => m.winner);
+  const dropped = roundMatches(battle, 1).filter((m) => m.side === 'winners').map((m) => (m.winner === m.a ? m.b : m.a));
+  for (const m of roundMatches(battle, 2).filter((m) => m.side === 'losers')) {
+    assert.ok(survivors.includes(m.a) && dropped.includes(m.b), `${m.id}: a survivor against a dropped team`);
+  }
+});
+
+test('the losers bracket champion must beat the winners bracket champion twice', () => {
+  const battle = bracket(4);
+  // The first team wins everywhere except the grand final.
+  playOut(battle, (m) => (m.side === 'final' ? m.b : m.a));
+  const finals = battle.matches.filter((m) => m.side === 'final');
+  assert.equal(finals.length, 2);
+  assert.equal(battle.rounds[battle.rounds.length - 1].groups[0].name, 'Grand final reset');
+  assert.equal(battle.champion, finals[0].b);
+});
+
+test('a team never gets two byes in a row while its bracket has other teams', () => {
+  for (const n of [3, 5, 6, 7, 9, 11, 13]) {
     const battle = bracket(n, n * 7);
-    let previousBye: string | null = null;
+    const random = mulberry32(n);
+    const previous = new Map<string, string | null>();
     while (!battle.champion) {
-      const round = currentRound(battle)!;
-      if (previousBye) assert.notEqual(round.bye, previousBye, `${n} teams, ${round.name}`);
-      previousBye = round.bye;
-      playRound(battle);
+      for (const group of currentRound(battle)!.groups) {
+        if (group.bye && group.teams.length > 1) assert.notEqual(previous.get(group.side), group.bye, `${n} teams, ${group.name}`);
+        previous.set(group.side, group.teams.length > 1 ? group.bye : null);
+      }
+      playStage(battle, (m) => (random() < 0.5 ? m.a : m.b));
     }
+  }
+});
+
+test('plannedStages gives the same shape as a played bracket', () => {
+  for (const n of [2, 3, 5, 8, 11]) {
+    const battle = bracket(n, 5);
+    const random = mulberry32(n);
+    playOut(battle, (m) => (m.side === 'final' ? m.a : random() < 0.5 ? m.a : m.b));
+    assert.deepEqual(
+      plannedStages(n).map((stage) => stage.map((g) => `${g.side[0]}${g.size}`).join(' ')),
+      groupSizes(battle),
+      `${n} teams`,
+    );
   }
 });
 
@@ -102,30 +175,31 @@ test('the same seed gives the same draw and match seeds', () => {
 test('drawBracket needs two teams', () => {
   assert.throws(() => drawBracket(['a'], 1));
   const two = drawBracket(['a', 'b'], 1);
-  assert.equal(two.rounds[0].name, 'Final');
+  assert.equal(two.rounds[0].groups[0].name, 'Winners final');
 });
 
-test('advance refuses a round with a match still to play', () => {
+test('advance refuses a stage with a match still to play', () => {
   const battle = bracket(4);
   assert.equal(roundComplete(battle, 0), false);
   assert.throws(() => advance(battle));
 });
 
-test('teamProgress follows a team through the bracket', () => {
+test('teamProgress follows a team through both brackets', () => {
   const battle = bracket(4);
   const [m1] = battle.matches;
-  assert.deepEqual(teamProgress(battle, m1.a), { state: 'waiting', opponent: m1.b });
+  assert.deepEqual(teamProgress(battle, m1.a), { state: 'waiting', opponent: m1.b, side: 'winners', bracket: 'Winners semi-finals', losses: 0 });
   battle.rounds[0].status = 'playing';
   assert.equal(teamProgress(battle, m1.a).state, 'fighting');
   Object.assign(m1, { status: 'done', winner: m1.a });
   assert.equal(teamProgress(battle, m1.a).state, 'through');
-  assert.equal(teamProgress(battle, m1.b).state, 'out');
-  playRound(battle); // the rest of the semi-finals
-  const final = roundMatches(battle, 1)[0];
-  assert.deepEqual(teamProgress(battle, final.b), { state: 'waiting', opponent: final.a });
-  playRound(battle); // the final; the first team wins
-  assert.equal(teamProgress(battle, final.a).state, 'champion');
-  assert.equal(teamProgress(battle, final.b).state, 'out');
+  assert.equal(teamProgress(battle, m1.b).state, 'dropped');
+  playStage(battle);
+  assert.equal(teamProgress(battle, m1.b).side, 'losers');
+  playStage(battle); // winners final and losers round 1; the first team wins
+  const losersRound = roundMatches(battle, 1).find((m) => m.side === 'losers')!;
+  assert.equal(teamProgress(battle, losersRound.b).state, 'out');
+  playOut(battle);
+  assert.equal(teamProgress(battle, battle.champion!).state, 'champion');
 });
 
 test('mulberry32 matches the game', () => {
@@ -135,8 +209,8 @@ test('mulberry32 matches the game', () => {
 });
 
 test('validateLoadout accepts a loadout the game would take', () => {
-  assert.deepEqual(validateLoadout({ name: 'A', weapon: 'spear', upgrades: { crit: 1, 'crit-damage': 1 } }, catalog), []);
-  assert.deepEqual(validateLoadout({ name: 'A', weapon: 'sword', upgrades: { 'big-shield': 2 } }, catalog), []);
+  assert.deepEqual(validateLoadout({ name: 'A', weapon: 'spear', upgrades: { crit: 1, 'crit-damage': 1 }, transformations: ['hoplite'] }, catalog), []);
+  assert.deepEqual(validateLoadout({ name: 'A', weapon: 'sword', upgrades: { 'big-shield': 2 }, transformations: ['captain', 'stalwart'] }, catalog), []);
 });
 
 test('validateLoadout reports unknown ids, wrong weapons, stack limits and missing requires', () => {
@@ -149,4 +223,34 @@ test('validateLoadout reports unknown ids, wrong weapons, stack limits and missi
   assert.deepEqual(validateLoadout({ name: 'A', weapon: 'sword', upgrades: { 'big-shield': 3 } }, catalog), [
     '"big-shield" ×3 is over its limit of 2',
   ]);
+});
+
+test('validateLoadout keeps transformations and upgrades apart', () => {
+  assert.deepEqual(validateLoadout({ name: 'A', weapon: 'sword', upgrades: { captain: 1 } }, catalog), ['"captain" is a transformation']);
+  assert.deepEqual(validateLoadout({ name: 'A', weapon: 'sword', upgrades: {}, transformations: ['damage'] }, catalog), ['"damage" is not a transformation']);
+  assert.deepEqual(validateLoadout({ name: 'A', weapon: 'sword', upgrades: {}, transformations: ['hoplite', 'captain', 'captain'] }, catalog), [
+    '"hoplite" does not fit sword',
+    '"captain" ×2 is over its limit of 1',
+  ]);
+});
+
+test('eligibleTransformations offers the ones that fit and are not taken', () => {
+  assert.deepEqual(eligibleTransformations({ name: 'A', weapon: 'sword', upgrades: {}, transformations: ['captain'] }, catalog), ['stalwart']);
+  assert.deepEqual(eligibleTransformations({ name: 'A', weapon: 'spear', upgrades: {} }, catalog), ['hoplite']);
+  assert.deepEqual(eligibleTransformations({ name: 'A', weapon: 'mace', upgrades: {} }, catalog), []);
+});
+
+test('a battle break follows every second round and the last round', () => {
+  // Five rounds of two questions each.
+  const questions = Array.from({ length: 10 }, (_, i) => ({ round: `Round ${Math.floor(i / 2) + 1}` }));
+  assert.deepEqual(
+    questions.map((_, i) => breakAfter(questions, i)),
+    [false, false, false, true, false, false, false, true, false, true],
+  );
+  // Stages allowed at the end of each round: rounds 1-2 give one, 3-4 give two, and the last round all.
+  assert.deepEqual(
+    [1, 3, 5, 7, 9].map((i) => stagesAllowed(questions, i)),
+    [0, 1, 1, 2, Infinity],
+  );
+  assert.equal(stagesAllowed([], 0), Infinity);
 });

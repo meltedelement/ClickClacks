@@ -24,21 +24,26 @@ const catalog = {
   offerSize: previous.offerSize ?? 3,
   exclude: previous.exclude ?? [], // upgrade ids the quiz never offers
   weapons: WEAPONS.map((W) => ({ id: W.id, name: W.displayName })),
-  upgrades: UPGRADES.map((U) => ({
+  // The same split as GET /api/catalog: small upgrades, then transformations.
+  upgrades: UPGRADES.filter((U) => !U.transformation).map(describe),
+  transformations: UPGRADES.filter((U) => U.transformation).map(describe),
+};
+
+function describe(U) {
+  return {
     id: U.id,
     name: U.displayName,
     description: U.description,
     weapons: U.weapons, // null = any weapon
     requires: U.requires ?? [],
     maxStacks: Number.isFinite(U.maxStacks) ? U.maxStacks : null, // null = no limit
-    transformation: Boolean(U.transformation),
-  })),
-};
+  };
+}
 
 const json = `${JSON.stringify(catalog, null, 2)}\n`;
 const changed = fs.readFileSync(FILE, 'utf8') !== json;
 fs.writeFileSync(FILE, json);
 console.log(
   `${changed ? 'Wrote' : 'Unchanged'}: ${path.relative(process.cwd(), FILE)} — ` +
-    `${catalog.weapons.length} weapons, ${catalog.upgrades.length} upgrades`,
+    `${catalog.weapons.length} weapons, ${catalog.upgrades.length} upgrades, ${catalog.transformations.length} transformations`,
 );

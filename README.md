@@ -132,7 +132,7 @@ below are in [`server/api.d.ts`](server/api.d.ts); copy that file into the calle
 | `GET /api/matches` | Every match since the server started, in the order queued. |
 | `DELETE /api/matches/:id` | Cancel a match that is queued or playing. If it's on screen, it stops. |
 | `GET /api/status` | Displays connected, the matches on screen and the queue length. |
-| `GET /api/catalog` | Weapon and upgrade ids, for building menus or offers. |
+| `GET /api/catalog` | Weapon, upgrade and transformation ids, for building menus or offers. |
 
 #### `POST /api/matches`
 
@@ -151,10 +151,11 @@ A fighter (`FighterInput`):
 | --- | --- | --- |
 | `weapon` | string | Required. A weapon id from `/api/catalog`. |
 | `name` | string | Optional. Shown above the ball and in the winner banner. `team` is accepted in its place. |
-| `upgrades` | `string[]` or `{ [id]: count }` | Optional. A list of upgrade ids (repeat an id to stack it) or a map of id to copies, 0 to 100 each. `['damage', 'damage']` and `{ damage: 2 }` are the same. Upgrades are applied in the order given, except that transformations always go first. |
+| `upgrades` | `string[]` or `{ [id]: count }` | Optional. A list of upgrade ids (repeat an id to stack it) or a map of id to copies, 0 to 100 each. `['damage', 'damage']` and `{ damage: 2 }` are the same. Upgrades are applied in the order given. A transformation here is a 400. |
+| `transformations` | `string[]` or `{ [id]: count }` | Optional. Transformation ids from `transformations` in `/api/catalog`, in the same forms. They are applied before the upgrades. An upgrade that is not a transformation here is a 400. |
 
-Every upgrade must exist, fit the weapon, stay within its `maxStacks` and have
-the upgrades it `requires`. A bad request gets a 400 and nothing is queued.
+Every upgrade and transformation must exist, fit the weapon, stay within its
+`maxStacks` and have the upgrades it `requires`. A bad request gets a 400 and nothing is queued.
 Success is a **201** with the new `Match`:
 
 ```json
@@ -162,8 +163,8 @@ Success is a **201** with the new `Match`:
   "id": "5f0c3a1e-8d4b-4b8e-9a52-1c7e2f6a9d10",
   "status": "queued",
   "fighters": [
-    { "name": "Alpha", "weapon": "sword", "upgrades": ["damage", "damage", "lifesteal"] },
-    { "name": "Beta", "weapon": "mace", "upgrades": ["health", "health"] }
+    { "name": "Alpha", "weapon": "sword", "upgrades": ["damage", "damage", "lifesteal"], "transformations": ["captain"] },
+    { "name": "Beta", "weapon": "mace", "upgrades": ["health", "health"], "transformations": [] }
   ],
   "seed": 2894113750,
   "timeLimit": 180,
@@ -177,7 +178,7 @@ Success is a **201** with the new `Match`:
 ```
 
 The stored `fighters` are normalised: `team` is folded into `name` (`null` when
-neither was given), and `upgrades` is always a flat list of ids.
+neither was given), and `upgrades` and `transformations` are always flat lists of ids.
 
 #### The `Match` object
 
@@ -185,7 +186,7 @@ neither was given), and `upgrades` is always a flat list of ids.
 | --- | --- | --- |
 | `id` | string | UUID. |
 | `status` | `'queued'` \| `'playing'` \| `'done'` \| `'cancelled'` | See the lifecycle below. |
-| `fighters` | `[Fighter, Fighter]` | `{ name: string \| null, weapon: string, upgrades: string[] }`. |
+| `fighters` | `[Fighter, Fighter]` | `{ name: string \| null, weapon: string, upgrades: string[], transformations: string[] }`. |
 | `seed` | integer | The seed the fight is played with, whether you passed it or not. |
 | `timeLimit` | number | Sim seconds before a draw is called. |
 | `tiebreak` | `'hp'` \| `null` | As requested. |
@@ -257,18 +258,27 @@ playing stops on the display, and the next one in the queue goes on. Waiters on
       "description": "…",
       "weapons": null,
       "requires": [],
-      "maxStacks": null,
-      "transformation": false
+      "maxStacks": null
+    }
+  ],
+  "transformations": [
+    {
+      "id": "captain",
+      "name": "Captain",
+      "description": "…",
+      "weapons": ["sword"],
+      "requires": [],
+      "maxStacks": 1
     }
   ]
 }
 ```
 
-For an upgrade, `weapons` is the list of weapon ids it fits (`null` for any
-weapon), `requires` the upgrade ids the fighter must also have, `maxStacks` the
-most copies allowed (`null` for no limit) and `transformation` whether it is a
-big upgrade that reshapes the weapon. `description` is per copy. Upgrades are
-listed in menu order.
+`upgrades` holds the small upgrades and `transformations` the big upgrades that
+reshape the weapon. Both lists use the same shape. `weapons` is the list of
+weapon ids it fits (`null` for any weapon), `requires` the upgrade ids the
+fighter must also have and `maxStacks` the most copies allowed (`null` for no
+limit). `description` is per copy. Both lists are in menu order.
 
 #### Errors
 

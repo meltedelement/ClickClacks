@@ -106,7 +106,7 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
       <main className="page">
         <div className="stack">
           <h1 className="title">Join the quiz</h1>
-          <p className="lead">Every correct answer earns your team an upgrade for the battle at the end.</p>
+          <p className="lead">Every correct answer earns your team an upgrade. After every second round, your ball fights in the arena.</p>
         </div>
         <form onSubmit={submit} className="card stack loose">
           <label className="field">
@@ -135,6 +135,7 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
   const [busy, setBusy] = useState(false);
   const { team } = view;
   const upgradeName = (id: string) => view.upgrades.find((u) => u.id === id)?.name ?? id;
+  const transformation = (id: string) => view.transformations.find((t) => t.id === id);
   const weaponName = view.weapons.find((w) => w.id === team.weapon)?.name ?? team.weapon;
   const canChangeWeapon = view.phase === 'lobby' && !view.weaponsLocked;
   const upgrades = Object.entries(team.upgrades).filter(([, n]) => n > 0);
@@ -249,6 +250,22 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
           </section>
         )}
 
+        {team.transformPicks > 0 && team.transformOffer.length > 0 && (
+          <section className="card stack">
+            <div className="card-head" style={{ marginBottom: 0 }}>
+              <h2>Pick a transformation</h2>
+              {team.transformPicks > 1 && <span className="pill accent">{team.transformPicks} to pick</span>}
+            </div>
+            <p className="muted">A transformation reshapes your weapon for the rest of the battle. Pick one before the next stage starts.</p>
+            {team.transformOffer.map((id) => (
+              <button key={id} className="upgrade" disabled={busy} onClick={() => act('/api/transform', { transformationId: id, count: team.transformations.length })}>
+                <strong>{transformation(id)?.name ?? id}</strong>
+                <span>{transformation(id)?.description}</span>
+              </button>
+            ))}
+          </section>
+        )}
+
         {view.phase === 'battle' && (
           <section className="card stack">
             <h2>Battle time</h2>
@@ -266,6 +283,20 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
             <dd className="row start">
               <WeaponSwatch id={team.weapon} /> {weaponName}
             </dd>
+            {team.transformations.length > 0 && (
+              <>
+                <dt>Transformations</dt>
+                <dd>
+                  <div className="chips">
+                    {team.transformations.map((id) => (
+                      <span key={id} className="chip">
+                        {transformation(id)?.name ?? id}
+                      </span>
+                    ))}
+                  </div>
+                </dd>
+              </>
+            )}
             <dt>Upgrades</dt>
             <dd>
               {upgrades.length === 0 ? (
@@ -293,20 +324,32 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
 }
 
 function BattleStatus({ battle }: { battle: NonNullable<TeamView['battle']> }) {
-  const { round, state, opponent, champion } = battle;
+  const { round, bracket, side, losses, state, opponent, champion } = battle;
   const vs = opponent && <strong>{opponent}</strong>;
+  const where = bracket ? `${round}, ${bracket}` : round;
+  const lives = side === 'final' ? '' : losses === 0 ? ' You have not lost yet.' : ' One more loss and you are out.';
   switch (state) {
     case 'champion':
       return <p className="notice good">You won the battle!</p>;
     case 'out':
       return <p className="notice bad">You are out.{champion && <> {champion} won the battle.</>}</p>;
     case 'bye':
-      return <p className="notice good">{round}: you have a bye and go through to the next round.</p>;
+      return <p className="notice good">{where}: you have no match this stage.{lives}</p>;
     case 'through':
-      return <p className="notice good">You won against {vs}. Wait for the next round.</p>;
+      return <p className="notice good">You won against {vs}. Wait for the next stage.</p>;
+    case 'dropped':
+      return (
+        <p className="notice bad">
+          You lost against {vs}. {side === 'final' ? 'You get one more match: the grand final reset.' : 'You go to the losers bracket. One more loss and you are out.'}
+        </p>
+      );
     case 'fighting':
-      return <p className="notice">{round}: you are fighting {vs} now.</p>;
+      return <p className="notice">{where}: you are fighting {vs} now.</p>;
     case 'waiting':
-      return <p className="notice">{round}: you fight {vs} next. The host starts the round.</p>;
+      return (
+        <p className="notice">
+          {where}: you fight {vs} next.{lives} The host starts the stage.
+        </p>
+      );
   }
 }
