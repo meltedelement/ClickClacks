@@ -61,9 +61,10 @@ src/
     Ability.js         Base class for special moves on a cooldown
     SpinSwipe.js       Sword: one rapid full spin for bonus damage
     ChargeDash.js      Spear: stop, aim, lunge for bonus damage
-    SpearThrow.js      Spear (Olympian): stop, aim, throw the spear, dash after it
+    SpearThrow.js      Spear (Olympian): stop, aim, throw the spear round a loop back to hand
     DropSlam.js        Mace: from high up, plunge to the floor; damage grows with the fall
     DashFlurry.js      Daggers: gather both blades, then three rapid dashes
+    Buzzsaw.js         Daggers (Saw): launch the blades as a saw that chases the enemy
   upgrades/
     Upgrade.js         Base class for roguelike upgrades applied from a loadout
     common.js          Small upgrades any weapon can take
@@ -73,6 +74,10 @@ src/
                        Big upgrades that reshape the Sword (Stalwart, Captain...)
     spear-transformations.js
                        Big upgrades that reshape the Spear (Hoplite, Poseidon...)
+    mace-transformations.js
+                       Big upgrades that reshape the Mace (Portaler, Devil...)
+    daggers-transformations.js
+                       Big upgrades that reshape the Daggers (Rogue, Trickster...)
     index.js           Registry of upgrades (menu order), plus loadout validation
   game/                Browser-only
     Game.js            Fixed-timestep loop, pause/speed/hitstop, sim events -> effects
@@ -390,6 +395,8 @@ That's it. It appears in the fighter dropdowns and the balance script.
 | ------------------------------ | ---------------------------------------------- |
 | `onHit(target, sim)`           | After this weapon damages a ball (scaling goes here) |
 | `onParry(otherWeapon, sim)`    | When this weapon clashes with another          |
+| `canParry(otherWeapon)`        | Whether a clash right now parries (default: not within the parry cooldown) |
+| `clashesWith(otherWeapon)`     | Return false to swing straight through that weapon: it isn't blocked, but the other one still is. The Daggers do this against other Daggers while they can't parry |
 | `update(dt, sim)`              | Every physics step (call `super.update(dt, sim)`) |
 | `drawLocal(ctx, start)`        | Drawing the weapon                             |
 
@@ -438,6 +445,7 @@ every step:
 | Modifier              | Effect                                                        |
 | --------------------- | ------------------------------------------------------------- |
 | `spinMultiplier`      | Multiplies weapon spin speed (0 freezes it so you can aim it) |
+| `bonusDamage`         | Flat damage added to the weapon's own before any multiplier; bonuses add up |
 | `damageMultiplier`    | Multiplies damage dealt                                       |
 | `knockbackMultiplier` | Multiplies how hard hits launch the target                    |
 | `controlsMovement`    | When true, the ball stops easing back to its normal speed, so the ability can set `owner.vel` itself |
@@ -504,16 +512,19 @@ Modifier getters and hooks run once however many copies there are, so scale them
 with `this.stacks` (e.g. `return 1 + 0.2 * this.stacks`).
 
 After the weapon, its ability and its shields are built, upgrades are applied in
-loadout order, except that transformations go first (see below). Then the ball's HP is
+loadout order, except that transformations go first (see below) and, within each group,
+a lower `static order` (default 0) goes first. The same order holds for every hook, e.g. which
+upgrade's `preventHit` is asked first (Slippery's -1 puts it before Rogue). Then the ball's HP is
 filled to `maxHp`. An upgrade can do any mix of these:
 
 | What                       | How                                                           |
 | -------------------------- | ------------------------------------------------------------- |
 | Change starting stats      | `apply()`: `this.weapon.blades += 1`, `this.owner.maxHp += 20`, `this.ability.windup *= 0.5` |
 | Combat stats               | `weapon.critChance`, `weapon.critMultiplier`, `owner.armor`, `owner.dodgeChance`, `contactDamage` on each of `weapon.shields`, `weapon.widthScale` (draw width, set it with `thickness`) |
-| Change behaviour live      | The same modifier getters as abilities. Multipliers multiply together; flags are on if anything turns them on |
-| React to things            | `onUpdate`, `onHit(target, sim, damage, point)`, `onParry`, `onOwnerHit(attacker, sim, damage)`, `onBlock(attacker, sim)`, `onWallBounce(sim)`, `onAbilityStart`, `onAbilityEnd` |
+| Change behaviour live      | The same modifier getters as abilities. Multipliers multiply together, `bonusDamage` adds up (use it for "+N damage on your next hit", not a multiplier, or two such bonuses multiply each other); flags are on if anything turns them on |
+| React to things            | `onUpdate`, `onHit(target, sim, damage, point)`, `onParry`, `onOwnerHit(attacker, sim, damage)`, `onBlock(attacker, sim)`, `onWallBounce(sim)`, `onBump(otherBall, sim)` (the balls' bodies touched, every step they do), `onAbilityStart`, `onAbilityEnd` |
 | Care where a hit landed    | `critsAt(point)`: return true to make that hit always crit. `damageMultiplierAt(point)`: scale its damage. `point` is on the blade, e.g. `Spear.headHit(point)` tells the head from the shaft |
+| Hold an ability back       | `allowsAbilityStart(ability, sim)`: return false and that ability of this weapon won't start this step (Dancer keeps its dance and Charge Dash from overlapping) |
 | Cancel a hit               | `preventHit(attacker, sim)`: return true and a weapon hit on this ball does nothing (after dodge, before crit) |
 | Deal extra damage          | `sim.dealDamage(this.owner, target, amount, { reason, color })`: no knockback, ignores armor and dodge |
 | Put an effect on a ball    | `target.addStatus(new Burning({ source: this.owner, ... }), sim)`: see `src/sim/Status.js` |
@@ -531,20 +542,32 @@ first cooldown was already worked out. If an upgrade emits a new phase and shoul
 A status is a timed effect on a ball, usually put there by an enemy's upgrade: Fire
 Eater's `Burning` deals damage over time and Gladiator's `Netted` slows the ball and
 makes it take more damage. Tackler's `GuardBroken` sets `guardBroken`, so the ball's weapon and
-shields stop blocking, and Poseidon's `Impaled` pins the ball to the trident's tip. Extend `Status` (`src/sim/Status.js`), set the modifier
-getters (`speedMultiplier`, `damageTakenMultiplier`, `guardBroken`) and/or `onUpdate(dt, sim)`, and draw
-it in `draw(ctx)`. A ball holds one status of each class, so applying it again refreshes
+shields stop blocking, and Poseidon's `Impaled` pins the ball to the trident's tip. Crusher's
+`Stunned` sets `stunned`, so the ball deals no damage at all (its weapon hits pass through and
+`sim.dealDamage` skips it as a source), and Rubber Mace's `Bouncing` uses `onWallBounce(sim)`
+to hurt the ball on every wall it hits. Extend `Status` (`src/sim/Status.js`), set the modifier
+getters (`speedMultiplier`, `damageTakenMultiplier`, `guardBroken`, `stunned`) and/or the hooks
+(`onUpdate(dt, sim)`, `onWallBounce(sim)`), and draw it in `draw(ctx)`. A ball holds one status of each class, so applying it again refreshes
 it. Guard damage with `sim.over` so nothing ticks after the match is decided.
 
 ### Transformations
 
 Transformations are big upgrades that reshape a weapon, like the Sword's Stalwart (a
 second shield) or Dual Wielder (the shield becomes a short sword), and the Spear's Poseidon
-(a trident that skewers) or Olympian (swaps Charge Dash for Spear Throw). Mark one with
+(a trident that skewers) or Olympian (swaps Charge Dash for Spear Throw), and the Mace's
+Portaler (Drop Slam falls through the floor and out of the ceiling) or Devil (a pillar of fire
+where the slam lands), and the Daggers' Rogue (teleport away from a hit) or Saw (swaps Dash
+Flurry for Buzzsaw). Mark one with
 `static transformation = true`; they usually have `maxStacks = 1`. They combine freely with
 each other and with small upgrades, are listed in their own group in the menu, and are
 applied before every small upgrade, so e.g. Big Shield widens both of Stalwart's shields
 whatever order they were picked in.
+
+Most Mace transformations work through Drop Slam's fields: `canRise` (Pilot) lets it fly up
+to the ceiling, `wraps` (Portaler) sends it through the floor, `phase === 'drop'` is the part
+that hits, and `landing` (`{ pos, dir, fallen, tips }`, set when it reaches the floor or
+ceiling, until the next slam starts) lets `onAbilityEnd` react to where it came down (Kamikaze,
+Devil).
 
 A weapon can hold several shields (`weapon.shields`). Code that adds or replaces shields
 should keep that in mind, and a thrown shield sets `shield.away` so it can't block while
@@ -562,6 +585,7 @@ npm run balance -- -g 2000 -w sword,mace # only some weapons
 npm run balance -- -g 1000 --mirror      # include sword vs sword etc.
 npm run balance -- -w sword,sword+lifesteal,mace   # fighters with upgrades
 npm run balance -- -w sword,sword+damage:3+crit    # :N stacks an upgrade
+npm run balance -- -T -g 200             # every transformation vs every other
 npm run balance -- --list                # weapon and upgrade ids
 npm run balance -- -s 42 --json a.json   # fixed seed: rerun after a tweak and compare
 npm run balance -- --csv matches.csv     # one row per match for your own analysis

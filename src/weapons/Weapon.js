@@ -37,6 +37,8 @@ export class Weapon {
     this.ability = null;
     // Off-hand shields that block enemy weapons, e.g. `this.shields = [new Shield(this, { ... })]`. See Shield.js.
     this.shields = [];
+    // Burning ground the ability lays down, if an upgrade (Runner) gives it one.
+    this.fireTrail = null;
     // Roguelike upgrades from the loadout, added by Ball after construction. See src/upgrades/.
     this.upgrades = [];
   }
@@ -46,10 +48,11 @@ export class Weapon {
   }
 
   // Damage this weapon deals right now, including ability and upgrade bonuses.
+  // Flat bonuses are added to the base first, then everything is multiplied.
   // With `point` (where a hit landed), upgrades that care where the blade
   // connected get a say too.
   getDamage(point) {
-    let damage = this.damage * this.multiplier('damageMultiplier');
+    let damage = (this.damage + this.sum('bonusDamage')) * this.multiplier('damageMultiplier');
     if (point) for (const upgrade of this.upgrades) damage *= upgrade.damageMultiplierAt(point);
     return damage;
   }
@@ -109,6 +112,13 @@ export class Weapon {
     return this.parryCooldown <= 0;
   }
 
+  // Whether this weapon is stopped by touching `otherWeapon` right now. If
+  // not, it swings straight through: no parry, and it can still hit, but the
+  // other weapon is blocked as usual. Shields still stop it.
+  clashesWith(otherWeapon) {
+    return true;
+  }
+
   // Draw the weapon pointing along +x, starting at x = `start`.
   // The canvas is already translated to the ball's centre and rotated.
   drawLocal(ctx, start) {
@@ -162,10 +172,22 @@ export class Weapon {
     for (const upgrade of this.upgrades) upgrade.onWallBounce(sim);
   }
 
+  // This weapon's ball bumped into `other` ball (their bodies touched).
+  registerBump(other, sim) {
+    for (const upgrade of this.upgrades) upgrade.onBump(other, sim);
+  }
+
   // A modifier multiplied across the ability and every upgrade (1 if none change it).
   multiplier(key) {
     let value = this.ability?.[key] ?? 1;
     for (const upgrade of this.upgrades) value *= upgrade[key];
+    return value;
+  }
+
+  // A modifier added up across the ability and every upgrade (0 if none change it).
+  sum(key) {
+    let value = this.ability?.[key] ?? 0;
+    for (const upgrade of this.upgrades) value += upgrade[key];
     return value;
   }
 

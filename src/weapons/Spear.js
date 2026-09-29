@@ -10,12 +10,12 @@ export class Spear extends Weapon {
 
   constructor(owner) {
     super(owner);
-    this.damage = 1;
+    this.damage = 3;
     this.spinSpeed = 2.6;
     this.length = 110;
     this.thickness = 4;
     this.reachPerHit = 6; // px of length gained per hit
-    this.damagePerHit = 0.5;
+    this.damagePerHit = 0.2;
     this.headLength = 20; // px of point at the end of the shaft; see headHit()
     this.head = 'spear'; // 'spear' | 'trident' (the Poseidon transformation)
     this.ability = new ChargeDash(this);
@@ -36,17 +36,21 @@ export class Spear extends Weapon {
     const end = start + this.length;
     const shaftEnd = end - this.headLength;
 
-    // Shaft
-    ctx.fillStyle = '#8b5a2b';
+    // Shaft: sea-green for Poseidon's trident
+    const trident = this.head === 'trident';
+    ctx.fillStyle = trident ? '#2d6e73' : '#8b5a2b';
     ctx.fillRect(start, -2.5, shaftEnd - start, 5);
 
     // Binding where the head meets the shaft
     ctx.fillStyle = '#3d2a17';
     ctx.fillRect(shaftEnd - 6, -3.5, 6, 7);
 
-    ctx.fillStyle = '#c8d0d8';
-    if (this.head === 'trident') drawTridentHead(ctx, shaftEnd, end);
-    else drawSpearHead(ctx, shaftEnd, end);
+    if (trident) {
+      drawTridentHead(ctx, shaftEnd, end);
+    } else {
+      ctx.fillStyle = '#c8d0d8';
+      drawSpearHead(ctx, shaftEnd, end);
+    }
   }
 }
 
@@ -59,9 +63,11 @@ function drawSpearHead(ctx, base, end) {
   ctx.fill();
 }
 
-// A crossbar with two short barbed prongs either side of a big leaf-shaped centre blade.
+// A golden crossbar with two short barbed prongs either side of a big
+// leaf-shaped centre blade.
 function drawTridentHead(ctx, base, end) {
   const len = end - base;
+  ctx.fillStyle = '#e8c04a';
   ctx.fillRect(base, -13, 5, 26);
   for (const side of [-1, 1]) {
     ctx.beginPath();
@@ -78,7 +84,7 @@ function drawTridentHead(ctx, base, end) {
   ctx.quadraticCurveTo(base + len * 0.45, 10, base + 3, 3);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#8f99a3';
+  ctx.strokeStyle = '#a07a1c';
   ctx.lineWidth = 1.2;
   ctx.beginPath();
   ctx.moveTo(base + 6, 0);

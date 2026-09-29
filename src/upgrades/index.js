@@ -18,7 +18,9 @@ import { Captain, Dizzy, DualWielder, FireEater, Gladiator, Piercer, Stalwart, W
 import { DashGuard, DeadlyCrits, LongDash, QuickCharge, RapidGrowth } from './spear.js';
 import { Bouncer, Dancer, Hoplite, Olympian, Poseidon, Runner, Tackler, Tactician } from './spear-transformations.js';
 import { CloseQuarters, Evasion, Momentum, QuickRecovery, Rebound } from './daggers.js';
+import { Axeman, Careful, Multidexterous, Rogue, Saw, Slippery, Thief, Trickster } from './daggers-transformations.js';
 import { GreatMace, HeavyImpact, HighBounce, Meteor, QuickDrop } from './mace.js';
+import { Crusher, Devil, Kamikaze, Metalworker, Pilot, Portaler, RubberMace, Valkyrie } from './mace-transformations.js';
 
 // Every upgrade that can go into a loadout, in the order the menu lists them.
 // Add new ones here (after writing them in common.js for any weapon, or in the
@@ -75,12 +77,30 @@ export const UPGRADES = [
   CloseQuarters,
   Evasion,
   Rebound,
+  // Daggers transformations
+  Rogue,
+  Thief,
+  Saw,
+  Trickster,
+  Multidexterous,
+  Slippery,
+  Careful,
+  Axeman,
   // Mace
   QuickDrop,
   HeavyImpact,
   HighBounce,
   GreatMace,
   Meteor,
+  // Mace transformations
+  Portaler,
+  Valkyrie,
+  Metalworker,
+  Pilot,
+  Crusher,
+  RubberMace,
+  Kamikaze,
+  Devil,
 ];
 
 export function getUpgradeById(id) {

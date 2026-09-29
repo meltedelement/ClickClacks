@@ -32,6 +32,11 @@ export class Ability {
     return 1;
   }
 
+  // Flat damage added to the weapon's own, before any multiplier.
+  get bonusDamage() {
+    return 0;
+  }
+
   get damageMultiplier() {
     return 1;
   }
@@ -114,9 +119,15 @@ export class Ability {
       this.onUpdate(dt, sim);
     } else if (this.cooldownLeft > 0) {
       this.cooldownLeft -= dt;
-    } else if (!sim.over && this.shouldActivate(sim)) {
+    } else if (!sim.over && this.allowedToStart(sim) && this.shouldActivate(sim)) {
       this.start(sim);
     }
+  }
+
+  // False while an upgrade is holding this ability back (e.g. Dancer, so its
+  // spin and the weapon's ability never run at the same time).
+  allowedToStart(sim) {
+    return this.weapon.upgrades.every((upgrade) => upgrade.allowsAbilityStart(this, sim));
   }
 
   start(sim) {

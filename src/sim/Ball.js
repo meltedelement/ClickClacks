@@ -5,7 +5,8 @@ import { formatNumber } from '../utils/format.js';
 export class Ball {
   // `upgrades` are Upgrade classes, applied in order once the weapon is built.
   // A class listed more than once stacks onto the same instance. Transformations
-  // go first, so the small upgrades build on the weapon they turned it into.
+  // go first, so the small upgrades build on the weapon they turned it into, and
+  // within each group a lower `static order` goes first.
   // `name` (e.g. a team name) replaces the weapon's name on screen.
   constructor({ position, color, WeaponClass, upgrades = [], name = null }) {
     this.pos = { ...position };
@@ -26,7 +27,7 @@ export class Ball {
     this.statuses = [];
 
     this.weapon = new WeaponClass(this);
-    const ordered = [...upgrades.filter((U) => U.transformation), ...upgrades.filter((U) => !U.transformation)];
+    const ordered = [...upgrades].sort((A, B) => B.transformation - A.transformation || A.order - B.order);
     for (const UpgradeClass of ordered) {
       let upgrade = this.weapon.upgrades.find((u) => u.constructor === UpgradeClass);
       if (!upgrade) {
@@ -97,6 +98,17 @@ export class Ball {
   // True if any status stops this ball's weapon and shields from blocking.
   get guardBroken() {
     return this.statuses.some((status) => status.guardBroken);
+  }
+
+  // True if any status stops this ball from dealing damage.
+  get stunned() {
+    return this.statuses.some((status) => status.stunned);
+  }
+
+  // This ball bounced off a wall: tell its upgrades and statuses.
+  registerWallBounce(sim) {
+    this.weapon.registerWallBounce(sim);
+    for (const status of this.statuses) status.onWallBounce(sim);
   }
 
   // A status modifier multiplied across every status (1 if there are none).

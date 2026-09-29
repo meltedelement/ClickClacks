@@ -2,6 +2,14 @@ import { TAU, add, fromAngle, sub } from '../sim/math.js';
 
 const SPIKES = 3;
 
+// Colours for each shield look, from the outside of the plate in.
+const LOOKS = {
+  wood: { rim: '#c3c9d1', face: '#8a6a3f', boss: '#c3c9d1' },
+  bronze: { rim: '#8c5a1c', face: '#d9a441', boss: '#8c5a1c' }, // Hoplite
+  // 'captain' (Captain) has its own drawing: see drawCaptainShield
+};
+const CAPTAIN_RINGS = [['#d62b2b', 1], ['#f4f4f4', 0.78], ['#d62b2b', 0.58], ['#2a55c9', 0.4]];
+
 // An off-hand shield: a curved plate just outside the ball that sits at a fixed
 // angle from its weapon and turns with it. Enemy weapons that touch it are
 // blocked. With `contactDamage` set, it also hurts enemy balls it touches.
@@ -18,6 +26,7 @@ export class Shield {
     this.contactColor = '#c3c9d1';
     this.spikeLength = 0; // px of extra reach towards balls, for spikes on the face
     this.away = false; // true while it's out of the owner's hands (thrown): it can't block or hurt
+    this.style = 'wood'; // 'wood' | 'bronze' (Hoplite) | 'captain' (Captain); see LOOKS
   }
 
   get angle() {
@@ -34,6 +43,7 @@ export class Shield {
     const copy = new this.constructor(this.weapon, { offset, distance, width, thickness });
     copy.contactDamage = this.contactDamage;
     copy.spikeLength = this.spikeLength;
+    copy.style = this.style;
     return copy;
   }
 
@@ -51,31 +61,32 @@ export class Shield {
     const from = this.angle - halfArc;
     const to = this.angle + halfArc;
 
-    ctx.save();
-    ctx.lineCap = 'round';
-
-    // Metal rim
-    ctx.strokeStyle = '#c3c9d1';
-    ctx.lineWidth = 11;
-    ctx.beginPath();
-    ctx.arc(x, y, this.radius, from, to);
-    ctx.stroke();
-
-    // Wooden face
-    ctx.strokeStyle = '#8a6a3f';
-    ctx.lineWidth = 7;
-    ctx.beginPath();
-    ctx.arc(x, y, this.radius, from, to);
-    ctx.stroke();
-
-    // Boss in the middle
-    const boss = add({ x, y }, fromAngle(this.angle, this.radius));
-    ctx.fillStyle = '#c3c9d1';
-    ctx.beginPath();
-    ctx.arc(boss.x, boss.y, 3, 0, TAU);
-    ctx.fill();
-    ctx.restore();
-
+    if (this.style === 'captain') {
+      drawCaptainShield(ctx, add({ x, y }, fromAngle(this.angle, this.radius)), this.angle, this.width / 2);
+    } else {
+      const look = LOOKS[this.style];
+      ctx.save();
+      ctx.lineCap = 'round';
+      // Metal rim
+      ctx.strokeStyle = look.rim;
+      ctx.lineWidth = 11;
+      ctx.beginPath();
+      ctx.arc(x, y, this.radius, from, to);
+      ctx.stroke();
+      // Face
+      ctx.strokeStyle = look.face;
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.arc(x, y, this.radius, from, to);
+      ctx.stroke();
+      // Boss in the middle
+      const boss = add({ x, y }, fromAngle(this.angle, this.radius));
+      ctx.fillStyle = look.boss;
+      ctx.beginPath();
+      ctx.arc(boss.x, boss.y, 3, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
     if (this.spikeLength > 0) this.drawSpikes(ctx);
   }
 
@@ -107,8 +118,14 @@ export class Shield {
     ctx.save();
     ctx.translate(pos.x, pos.y);
     ctx.rotate(spin);
-    ctx.fillStyle = '#8a6a3f';
-    ctx.strokeStyle = '#c3c9d1';
+    if (this.style === 'captain') {
+      ctx.restore();
+      drawCaptainShield(ctx, pos, spin, r, r);
+      return;
+    }
+    const look = LOOKS[this.style];
+    ctx.fillStyle = look.face;
+    ctx.strokeStyle = look.rim;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, TAU);
@@ -118,7 +135,7 @@ export class Shield {
     ctx.moveTo(-r, 0);
     ctx.lineTo(r, 0);
     ctx.stroke();
-    ctx.fillStyle = '#c3c9d1';
+    ctx.fillStyle = look.boss;
     ctx.beginPath();
     ctx.arc(0, 0, 3.5, 0, TAU);
     ctx.fill();
@@ -138,4 +155,35 @@ export class Shield {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+// A round shield centred on `pos`: red, white and red rings round a blue
+// centre with a white star. Held, it's squashed to `depth` px along `angle`
+// (pointing out from the ball) so it stays inside the hitbox.
+function drawCaptainShield(ctx, pos, angle, r, depth = 8) {
+  ctx.save();
+  ctx.translate(pos.x, pos.y);
+  ctx.rotate(angle);
+  for (const [color, share] of CAPTAIN_RINGS) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, depth * share, r * share, 0, 0, TAU);
+    ctx.fill();
+  }
+  ctx.scale(depth / r, 1);
+  ctx.fillStyle = '#ffffff';
+  drawStar(ctx, { x: 0, y: 0 }, r * 0.36, -Math.PI / 2);
+  ctx.restore();
+}
+
+// A five-pointed star centred on (x, y), with one point along `angle`.
+function drawStar(ctx, { x, y }, r, angle) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = angle + (i * Math.PI) / 5;
+    const d = i % 2 === 0 ? r : r * 0.45;
+    ctx.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d);
+  }
+  ctx.closePath();
+  ctx.fill();
 }

@@ -7,6 +7,11 @@ const MAX_DROP_TIME = 1.5; // safety net in case it somehow never lands
 // plunge straight down to the floor. Nothing stops the fall: the weapon can't
 // be parried and the ball shoves through anything in its way. The further it
 // has fallen when it connects, the harder it hits.
+//
+// Upgrades can also let it rise instead (`canRise`, from low down, up to the
+// ceiling) and loop through the floor and out of the ceiling (`wraps`). Where
+// it hit the floor or ceiling is kept in `landing` until the next slam starts,
+// so upgrades can react to it in onAbilityEnd.
 export class DropSlam extends Ability {
   static displayName = 'Drop Slam';
 
@@ -22,17 +27,23 @@ export class DropSlam extends Ability {
     this.damagePerPx = 1 / 80; // +100% damage for every 80 px fallen
     this.slamKnockbackMultiplier = 1.4;
     this.landBounce = 1; // upward speed after landing, as a multiple of the ball's speed
+    this.canRise = false; // true: from low down, fly up to the ceiling instead (Pilot)
+    this.wraps = 0; // times each slam goes through the floor and comes out of the ceiling before landing (Portaler)
 
     this.phase = null; // 'hover' | 'drop'
     this.timer = 0;
     this.side = 1; // 1 = weapon held out to the right, -1 = left
+    this.dir = 1; // 1 = falling to the floor, -1 = rising to the ceiling
+    this.wrapsLeft = 0;
     this.startY = 0;
     this.fallSpeed = 0;
     this.target = null;
+    this.landing = null; // { pos, dir, fallen, tips } from the last slam that reached the floor or ceiling
   }
 
+  // Distance travelled since the drop began (rising counts too).
   get fallen() {
-    return this.phase === 'drop' ? Math.max(0, this.owner.pos.y - this.startY) : 0;
+    return this.phase === 'drop' ? Math.max(0, (this.owner.pos.y - this.startY) * this.dir) : 0;
   }
 
   get spinMultiplier() {
@@ -60,13 +71,23 @@ export class DropSlam extends Ability {
   }
 
   shouldActivate(sim) {
-    const floor = sim.arena.height - this.owner.radius;
-    return floor - this.owner.pos.y >= this.minDropHeight;
+    return this.chooseDirection(sim) !== 0;
+  }
+
+  // 1 to slam down to the floor, -1 to rise to the ceiling, 0 if there's no room for either.
+  chooseDirection(sim) {
+    const { owner } = this;
+    if (sim.arena.height - owner.radius - owner.pos.y >= this.minDropHeight) return 1;
+    if (this.canRise && owner.pos.y - owner.radius >= this.minDropHeight) return -1;
+    return 0;
   }
 
   onStart(sim) {
     this.target = this.nearestEnemy(sim);
     this.side = this.target ? Math.sign(this.target.pos.x - this.owner.pos.x) || 1 : 1;
+    this.dir = this.chooseDirection(sim) || 1;
+    this.wrapsLeft = this.wraps;
+    this.landing = null;
     this.phase = 'hover';
     this.timer = this.hoverTime;
   }
@@ -84,7 +105,7 @@ export class DropSlam extends Ability {
         this.timer = MAX_DROP_TIME;
         this.startY = owner.pos.y;
         this.fallSpeed = this.startSpeed;
-        owner.vel = vec(0, this.startSpeed);
+        owner.vel = vec(0, this.startSpeed * this.dir);
         weapon.angle = sideAngle;
       }
       return;
@@ -92,12 +113,16 @@ export class DropSlam extends Ability {
 
     this.fallSpeed += this.gravity * dt;
 
-    // Land as soon as the next step would reach the floor.
-    const floor = sim.arena.height - owner.radius;
-    if (owner.pos.y + this.fallSpeed * dt >= floor) {
-      owner.pos.y = floor;
-      this.land(sim);
-      return;
+    // Land (or go through a portal) as soon as the next step would reach the floor.
+    const end = this.dir > 0 ? sim.arena.height - owner.radius : owner.radius;
+    if ((owner.pos.y + this.fallSpeed * this.dir * dt - end) * this.dir >= 0) {
+      if (this.wrapsLeft > 0) {
+        this.wrap(sim, end);
+      } else {
+        owner.pos.y = end;
+        this.land(sim);
+        return;
+      }
     }
 
     let drift = 0;
@@ -105,19 +130,37 @@ export class DropSlam extends Ability {
       const idealX = this.target.pos.x - this.side * (owner.radius + weapon.gap + weapon.length * 0.6);
       drift = clamp((idealX - owner.pos.x) * 5, -this.steerSpeed, this.steerSpeed);
     }
-    owner.vel = vec(drift, this.fallSpeed);
+    owner.vel = vec(drift, this.fallSpeed * this.dir);
     weapon.angle = sideAngle;
 
     if (this.timer <= 0) this.end(sim);
   }
 
-  land(sim) {
+  // Through the floor and out of the ceiling (or the other way round when
+  // rising), still falling just as fast. The height counts again from there.
+  wrap(sim, end) {
     const { owner } = this;
+    const start = this.dir > 0 ? owner.radius : sim.arena.height - owner.radius;
+    this.startY = start;
+    owner.pos.y = start;
+    this.wrapsLeft -= 1;
+    this.timer = MAX_DROP_TIME;
+    this.emit(sim, 'portal', { burst: { color: '#ff9f2e', count: 14, speed: 200, life: 0.4 } });
+  }
+
+  land(sim) {
+    const { owner, weapon } = this;
+    this.landing = {
+      pos: { ...owner.pos },
+      dir: this.dir,
+      fallen: this.fallen,
+      tips: weapon.getSegments().map(({ b }) => b), // where each blade's head came down
+    };
     this.emit(sim, 'slam', {
       shake: 3 + this.fallen * 0.015,
       burst: { color: '#b9a88f', count: 18, speed: 240, life: 0.5 },
     });
-    owner.vel = vec(0, -owner.speed * this.landBounce);
+    owner.vel = vec(0, -this.dir * owner.speed * this.landBounce);
     this.end(sim);
   }
 
@@ -144,7 +187,7 @@ export class DropSlam extends Ability {
     ctx.setLineDash([8, 8]);
     ctx.beginPath();
     ctx.moveTo(x, owner.pos.y);
-    ctx.lineTo(x, 10000);
+    ctx.lineTo(x, this.dir * 10000);
     ctx.stroke();
 
     ctx.setLineDash([]);
@@ -156,7 +199,7 @@ export class DropSlam extends Ability {
     ctx.restore();
   }
 
-  // Afterimages trailing above the falling ball.
+  // Afterimages trailing behind the falling (or rising) ball.
   drawDrop(ctx) {
     const { owner } = this;
     ctx.save();
@@ -164,7 +207,7 @@ export class DropSlam extends Ability {
     for (let i = 1; i <= 4; i++) {
       ctx.globalAlpha = 0.3 * (1 - i / 5);
       ctx.beginPath();
-      ctx.arc(owner.pos.x, owner.pos.y - this.fallSpeed * 0.018 * i, owner.radius, 0, TAU);
+      ctx.arc(owner.pos.x, owner.pos.y - this.dir * this.fallSpeed * 0.018 * i, owner.radius, 0, TAU);
       ctx.fill();
     }
     ctx.restore();

@@ -1,5 +1,5 @@
 import { Ability } from './Ability.js';
-import { TAU, angleOf, distance, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
+import { TAU, add, angleOf, distance, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
 
 // Stop, aim at the nearest enemy, then lunge forward weapon-first.
 // Getting hit while charging, or having the dash parried, cancels it.
@@ -118,16 +118,25 @@ export class ChargeDash extends Ability {
     ctx.arc(x, y, owner.radius + 4 + 16 * (1 - progress), 0, TAU);
     ctx.stroke();
 
-    const start = fromAngle(weapon.angle, owner.radius + weapon.gap + weapon.length);
-    const end = fromAngle(weapon.angle, owner.radius + weapon.gap + weapon.length + this.dashSpeed * this.dashDuration);
+    const { from, to } = this.aimLine();
     ctx.globalAlpha = 0.25 * progress;
     ctx.setLineDash([8, 8]);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x + start.x, y + start.y);
-    ctx.lineTo(x + end.x, y + end.y);
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
     ctx.stroke();
     ctx.restore();
+  }
+
+  // Where the windup's aiming line goes: ahead of the weapon, as far as the dash would take it.
+  aimLine() {
+    const { owner, weapon } = this;
+    const reach = owner.radius + weapon.gap + weapon.length;
+    return {
+      from: add(owner.pos, fromAngle(weapon.angle, reach)),
+      to: add(owner.pos, fromAngle(weapon.angle, reach + this.dashSpeed * this.dashDuration)),
+    };
   }
 
   // Afterimages trailing behind the ball.

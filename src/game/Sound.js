@@ -139,6 +139,17 @@ export class Sound {
       case 'catch':
         this.clang([520, 790], 0.15, 0.12);
         break;
+      case 'wrap':
+        this.whoosh(0.15, 1200, 2800, 0.3);
+        break;
+      case 'portal':
+        this.tone({ type: 'sine', freq: 260, freqEnd: 1100, dur: 0.3, gain: 0.3 });
+        this.whoosh(0.3, 400, 1800, 0.35);
+        break;
+      case 'saw':
+        this.tone({ type: 'sawtooth', freq: 220, freqEnd: 480, dur: 0.5, gain: 0.12, attack: 0.05, lowpass: 2400 });
+        this.whoosh(0.3, 800, 3000, 0.35);
+        break;
       case 'slam': {
         const power = Math.min(shake / 12, 1);
         this.tone({ type: 'sine', freq: 110, freqEnd: 30, dur: 0.4 + power * 0.3, gain: 0.8 + power * 0.2 });
@@ -191,6 +202,40 @@ export class Sound {
         break;
       case 'hasten':
         this.tone({ type: 'triangle', freq: 880, freqEnd: 1320, dur: 0.1, gain: 0.1 });
+        break;
+      case 'clang':
+        this.clang([1850, 2780, 4100], 0.25, 0.07);
+        break;
+      case 'stun':
+        this.clang([990, 1485], 0.3, 0.15);
+        this.tone({ type: 'triangle', freq: 1400, freqEnd: 700, dur: 0.35, gain: 0.12 });
+        break;
+      case 'launch':
+        this.tone({ type: 'sine', freq: 110, freqEnd: 520, dur: 0.3, gain: 0.5 });
+        break;
+      case 'explode':
+        this.tone({ type: 'sine', freq: 80, freqEnd: 25, dur: 0.7, gain: 1 });
+        this.noise({ filter: 'lowpass', freq: 2200, freqEnd: 120, dur: 0.6, gain: 0.8 });
+        break;
+      case 'pillar':
+        this.noise({ filter: 'lowpass', freq: 300, freqEnd: 2600, dur: 0.5, gain: 0.5, attack: 0.08 });
+        this.tone({ type: 'sawtooth', freq: 70, freqEnd: 140, dur: 0.5, gain: 0.15, lowpass: 600 });
+        break;
+      case 'shadow':
+        this.tone({ type: 'sine', freq: 520, freqEnd: 260, dur: 0.25, gain: 0.15 });
+        break;
+      case 'teleport':
+        this.tone({ type: 'sine', freq: 1200, freqEnd: 300, dur: 0.2, gain: 0.25 });
+        this.whoosh(0.2, 1200, 3600, 0.3);
+        break;
+      case 'steal':
+        this.tone({ type: 'triangle', freq: 1320, freqEnd: 1760, dur: 0.08, gain: 0.12 });
+        break;
+      case 'loot':
+        this.clang([1760, 2640], 0.2, 0.1);
+        break;
+      case 'slip':
+        this.tone({ type: 'sine', freq: 300, freqEnd: 900, dur: 0.15, gain: 0.25 });
         break;
     }
   }

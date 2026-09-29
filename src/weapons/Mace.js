@@ -13,11 +13,12 @@ export class Mace extends Weapon {
 
   constructor(owner) {
     super(owner);
-    this.damage = 3;
+    this.damage = 5;
     this.spinSpeed = 2.4;
     this.length = 72;
     this.thickness = 7;
-    this.damagePerHit = 1;
+    this.damagePerHit = 0.4;
+    this.head = 'mace'; // 'mace' | 'hammer' (the Metalworker transformation)
     this.ability = new DropSlam(this);
   }
 
@@ -32,6 +33,11 @@ export class Mace extends Weapon {
     // Handle
     ctx.fillStyle = '#5a3d22';
     ctx.fillRect(start, -3, headX - start, 6);
+
+    if (this.head === 'hammer') {
+      drawHammerHead(ctx, headX);
+      return;
+    }
 
     // Spikes
     ctx.fillStyle = '#8d949c';
@@ -52,4 +58,17 @@ export class Mace extends Weapon {
     ctx.arc(headX, 0, HEAD_RADIUS, 0, TAU);
     ctx.fill();
   }
+}
+
+// A smith's sledgehammer head: an iron block across the handle, with bright
+// striking faces on both ends.
+function drawHammerHead(ctx, headX) {
+  ctx.fillStyle = '#6f7780';
+  ctx.fillRect(headX - 8, -15, 16, 30);
+  ctx.fillStyle = '#b4bcc5';
+  ctx.fillRect(headX - 9, -18, 18, 5);
+  ctx.fillRect(headX - 9, 13, 18, 5);
+  ctx.strokeStyle = '#3f454c';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(headX - 8, -15, 16, 30);
 }
