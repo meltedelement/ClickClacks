@@ -29,6 +29,9 @@ import { GAME_API, type GameStatus as GameApiStatus } from './game.ts';
 
 // How many random transformations a team sees when it has a pick.
 const TRANSFORM_OFFER_SIZE = 3;
+// Teams get a transformation pick before every TRANSFORM_EVERY-th stage,
+// starting with the first (stages 1, 3, 5, ...).
+const TRANSFORM_EVERY = 2;
 
 const DATA_DIR = path.join(import.meta.dirname, '..', 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
@@ -216,15 +219,18 @@ function rollOffer(team: Team): string[] {
   return randomSample(eligibleUpgrades(team).map((u) => u.id), getCatalog().offerSize);
 }
 
-// A team still in the battle gets one transformation pick for each stage: the
-// stages already on the game, plus the next one while the quiz is in a battle
-// break. Picks it did not use carry over. Zero when nothing fits its weapon.
+// A team still in the battle gets one transformation pick for every
+// TRANSFORM_EVERY-th stage: those already on the game, plus the next one while
+// the quiz is in a battle break. Picks it did not use carry over. Zero when
+// nothing fits its weapon.
 export function transformPicks(team: Team): number {
   const battle = state.battle;
   const round = battle && currentRound(battle);
   if (!battle || !round || !stillIn(battle, team.id)) return 0;
   if (eligibleTransformations(team, getCatalog()).length === 0) return 0;
-  const earned = battle.rounds.filter((r) => r.status !== 'waiting').length + (state.phase === 'battle' && round.status === 'waiting' ? 1 : 0);
+  const givesPick = (index: number) => index % TRANSFORM_EVERY === 0;
+  const started = battle.rounds.filter((r) => r.status !== 'waiting' && givesPick(r.index)).length;
+  const earned = started + (state.phase === 'battle' && round.status === 'waiting' && givesPick(round.index) ? 1 : 0);
   return Math.max(0, earned - team.transformations.length);
 }
 

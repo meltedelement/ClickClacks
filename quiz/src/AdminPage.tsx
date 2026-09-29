@@ -81,8 +81,8 @@ export function AdminPage() {
                 </button>
               </div>
               <p className="hint">
-                Order: question (teams answer) → locked (answers closed) → reveal (teams that got it right pick an upgrade at once). After every {BATTLE_EVERY} rounds and after the last round: battle (teams pick a transformation, then one stage
-                plays). Selecting a question opens it for answers.
+                Order: question (teams answer) → locked (answers closed) → reveal (teams that got it right pick an upgrade at once). After every {BATTLE_EVERY} rounds and after the last round: battle (before every second stage, teams pick a
+                transformation; then one stage plays). Selecting a question opens it for answers.
               </p>
             </section>
 

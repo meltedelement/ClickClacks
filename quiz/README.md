@@ -1,6 +1,6 @@
 # The Quiz of Doom
 
-The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick. After every second round, the quiz stops for a battle break: each team picks a transformation, and one stage of a double elimination plays through the game's match API (see [Battle](#battle)).
+The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick. After every second round, the quiz stops for a battle break: before every second stage each team picks a transformation, and one stage of a double elimination plays through the game's match API (see [Battle](#battle)).
 
 ## Run
 
@@ -46,7 +46,7 @@ Each team has its own colour from a fixed palette of 16 (`shared/colors.ts`). A 
 2. **question**: Teams answer. A team can change its answer until the host closes answers.
 3. **locked**: Answers are closed.
 4. **reveal**: Teams see the correct answer. Each team that got it right sees `offerSize` random upgrades and picks one immediately.
-5. **battle**: A battle break. Teams pick a transformation, and one stage of the bracket plays. It comes after every second round and after the last round.
+5. **battle**: A battle break. Before every second stage, teams pick a transformation. Then one stage of the bracket plays. It comes after every second round and after the last round.
 
 Picks are calculated again from the answers each time. Picks left = correct revealed answers × `upgradesPerCorrect` + bonus picks − picks used. Thus, if you change an answer or a "revealed" box on the admin page, the pick count is correct immediately.
 
@@ -122,7 +122,8 @@ stages 4 and 5 after round 7.
 ### Transformations
 
 Transformations are the big upgrades that reshape a weapon. The quiz never
-offers them for correct answers. Instead, before each stage, each team that is
+offers them for correct answers. Instead, before every second stage (stages 1,
+3, 5 and so on, `TRANSFORM_EVERY` in `server/store.ts`), each team that is
 still in the battle picks one transformation on its phone. The phone shows 3
 random transformations from the ones that fit the team's weapon. The offer stays
 the same until the team picks. The team keeps every

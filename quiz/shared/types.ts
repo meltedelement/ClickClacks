@@ -31,7 +31,7 @@ export interface Upgrade {
 export interface Catalog {
   weapons: WeaponInfo[];
   upgrades: Upgrade[]; // earned with correct answers
-  transformations: Upgrade[]; // big upgrades: one pick before each battle stage
+  transformations: Upgrade[]; // big upgrades: one pick before every second battle stage
   upgradesPerCorrect: number;
   offerSize: number;
   // Where this catalog came from. 'game' = live from GET /api/catalog,
