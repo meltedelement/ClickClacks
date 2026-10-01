@@ -2,7 +2,6 @@ import {
   Armor,
   Compact,
   Critical,
-  ExtraBlade,
   Focus,
   HeavyBlade,
   Lifesteal,
@@ -21,6 +20,8 @@ import { CloseQuarters, Evasion, Momentum, QuickRecovery, Rebound } from './dagg
 import { Axeman, Careful, Multidexterous, Rogue, Saw, Slippery, Thief, Trickster } from './daggers-transformations.js';
 import { GreatMace, HeavyImpact, HighBounce, Meteor, QuickDrop } from './mace.js';
 import { Crusher, Devil, Kamikaze, Metalworker, Pilot, Portaler, RubberMace, Valkyrie } from './mace-transformations.js';
+import { Boosters, DefenseMatrix, QuickProduction, QuickRepair, SpikedDrones } from './drone.js';
+import { Ace, Daredevils, Fighters, Fortress, Legion, NonEuclidean, Slicers, Wingmen } from './drone-transformations.js';
 
 // Every upgrade that can go into a loadout, in the order the menu lists them.
 // Add new ones here (after writing them in common.js for any weapon, or in the
@@ -40,7 +41,6 @@ export const UPGRADES = [
   Armor,
   Lifesteal,
   Critical,
-  ExtraBlade,
   // Sword
   ShieldBash,
   WideSwipe,
@@ -101,6 +101,21 @@ export const UPGRADES = [
   RubberMace,
   Kamikaze,
   Devil,
+  // Drone
+  QuickRepair,
+  QuickProduction,
+  DefenseMatrix,
+  Boosters,
+  SpikedDrones,
+  // Drone transformations
+  NonEuclidean,
+  Ace,
+  Legion,
+  Fighters,
+  Daredevils,
+  Slicers,
+  Fortress,
+  Wingmen,
 ];
 
 export function getUpgradeById(id) {

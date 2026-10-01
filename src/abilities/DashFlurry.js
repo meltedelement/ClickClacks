@@ -1,5 +1,5 @@
 import { Ability } from './Ability.js';
-import { TAU, angleOf, distance, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
+import { TAU, angleOf, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
 
 // Gather every blade together at the front, then three quick dashes at the
 // enemy. Between dashes the ball keeps moving while it re-aims. Each dash can
@@ -50,8 +50,7 @@ export class DashFlurry extends Ability {
   }
 
   shouldActivate(sim) {
-    const enemy = this.nearestEnemy(sim);
-    return enemy !== null && distance(enemy.pos, this.owner.pos) < this.triggerRange;
+    return this.enemyWithin(sim, this.triggerRange) !== null;
   }
 
   onStart(sim) {

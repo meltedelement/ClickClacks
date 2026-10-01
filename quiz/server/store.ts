@@ -3,29 +3,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
-import type {
-  AdminView,
-  Battle,
-  BattleMatch,
-  BattleMatchStatus,
-  DecidedBy,
-  Fighter,
-  GameRestart,
-  GameScreen,
-  Loadout,
-  Phase,
-  Question,
-  State,
-  Team,
-  TeamView,
-  Upgrade,
-} from '../shared/types.ts';
+import type { AdminView, Loadout, Phase, Question, State, Team, TeamView, Tournament, Upgrade } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
 import { roundPosition } from '../shared/rounds.ts';
 import { TEAM_COLORS } from '../shared/colors.ts';
-import { advance, currentRound, drawLosers as drawLosersIn, eligibleTransformations, fitLoadout, fitsWeapon, stillIn, teamProgress, undrawLosers } from '../shared/battle.ts';
+import { eligibleTransformations, fitLoadout, fitsWeapon } from '../shared/loadout.ts';
+import { currentStage } from '../shared/tournament.ts';
 import { getCatalog } from './catalog.ts';
-import { GAME_API, type GameStatus as GameApiStatus } from './game.ts';
+import * as tournament from './tournament.ts';
 
 // How many random transformations a team sees when it has a pick.
 const TRANSFORM_OFFER_SIZE = 3;
@@ -77,7 +62,7 @@ function freshState(questions: Question[], teams: Team[] = []): State {
     teams,
     message: '',
     weaponsLocked: false,
-    battle: null,
+    tournamentId: null,
     intro: null,
   };
 }
@@ -87,14 +72,15 @@ function freshState(questions: Question[], teams: Team[] = []): State {
 export let state: State = fs.existsSync(STATE_FILE) ? readJson<State>(STATE_FILE) : freshState(loadQuestions());
 // The old 'upgrades' phase was removed: teams now pick as soon as they earn an upgrade.
 if (!PHASES.includes(state.phase)) state.phase = 'lobby';
-// A state.json from before the double elimination (the single knockout or the old round-robin), or a damaged one.
-if (!state.battle || !Array.isArray(state.battle.rounds) || !Array.isArray(state.battle.matches) || !state.battle.rounds.every((r) => Array.isArray(r.groups))) {
-  state.battle = null;
-}
+// A state.json from before the tournament service: the quiz kept the bracket
+// itself. It can't be carried over; the host draws a new one.
+delete (state as State & { battle?: unknown }).battle;
+state.tournamentId ??= null;
 // A state.json from before the round title moved to the server.
 state.intro ??= null;
 // A state.json from before transformations were kept apart from upgrades: move them over.
 for (const team of state.teams) {
+  team.entrantId ??= randomUUID(); // from before the tournament service
   team.transformations ??= [];
   for (const t of getCatalog().transformations) {
     const count = team.upgrades[t.id] ?? 0;
@@ -140,48 +126,23 @@ export function onCatalogChanged() {
   else notify();
 }
 
-// ---- The game server --------------------------------------------------------
+// ---- The battle ---------------------------------------------------------------
 
-// Cached so every view can show it without waiting for a request.
-const gameInfo = {
-  url: GAME_API,
-  reachable: false,
-  displays: 0,
-  screens: 0,
-  onScreen: {} as Record<string, GameScreen>,
-  restart: null as GameRestart | null,
-};
-
-// The game's GET /api/status, or null when the game server did not answer.
-export function setGameStatus(status: GameApiStatus | null) {
-  const next = {
-    reachable: status !== null,
-    displays: status?.displays ?? 0,
-    screens: status?.screens ?? 0,
-    onScreen: Object.fromEntries(
-      (status?.onScreen ?? []).filter((m) => m.screen !== null).map((m) => [m.id, { screen: m.screen as number, playing: m.status === 'playing' }]),
-    ),
-  };
-  const before = JSON.stringify([gameInfo.reachable, gameInfo.displays, gameInfo.screens, gameInfo.onScreen]);
-  Object.assign(gameInfo, next);
-  if (JSON.stringify([next.reachable, next.displays, next.screens, next.onScreen]) !== before) notify();
+// The quiz's tournament, as the tournament service last reported it. Null
+// before the host draws it (or while the quiz has not heard from the service).
+export function battle(): Tournament | null {
+  const t = tournament.current;
+  return t && t.id === state.tournamentId ? t : null;
 }
 
-// The game server forgot a match the quiz sent (it restarted), and the quiz
-// sends it again. Kept until the next stage starts, so the host sees why the
-// matches on screen started over.
-export function noteGameRestart(matchId: string) {
-  const restart = gameInfo.restart ?? { at: new Date().toISOString(), matches: [] };
-  if (!restart.matches.includes(matchId)) restart.matches.push(matchId);
-  gameInfo.restart = restart;
-  notify();
+export function setTournament(id: string | null) {
+  mutate(() => (state.tournamentId = id));
+  tournament.follow(id);
 }
 
-export function clearGameRestart() {
-  if (!gameInfo.restart) return;
-  gameInfo.restart = null;
-  notify();
-}
+// The tournament changed there: transformation picks and offers follow from it.
+tournament.onChange(() => mutate(() => {}));
+tournament.follow(state.tournamentId);
 
 // ---- Derived data -----------------------------------------------------------
 
@@ -228,13 +189,14 @@ function rollOffer(team: Team): string[] {
 // the quiz is in a battle break. Picks it did not use carry over. Zero when
 // nothing fits its weapon.
 export function transformPicks(team: Team): number {
-  const battle = state.battle;
-  const round = battle && currentRound(battle);
-  if (!battle || !round || !stillIn(battle, team.id)) return 0;
+  const t = battle();
+  const stage = t && currentStage(t);
+  const entrant = t?.entrants.find((e) => e.id === team.entrantId);
+  if (!t || !stage || !entrant || t.champion || entrant.progress.state === 'out') return 0;
   if (eligibleTransformations(team, getCatalog()).length === 0) return 0;
   const givesPick = (index: number) => index % TRANSFORM_EVERY === 0;
-  const started = battle.rounds.filter((r) => r.status !== 'waiting' && givesPick(r.index)).length;
-  const earned = started + (state.phase === 'battle' && round.status === 'waiting' && givesPick(round.index) ? 1 : 0);
+  const started = t.stages.filter((s) => s.status !== 'waiting' && givesPick(s.index)).length;
+  const earned = started + (state.phase === 'battle' && stage.status === 'waiting' && givesPick(stage.index) ? 1 : 0);
   return Math.max(0, earned - team.transformations.length);
 }
 
@@ -292,25 +254,25 @@ export function teamView(team: Team): TeamView {
   };
 }
 
-// Where one team is in the double elimination. Null until the host draws the bracket.
+// Where one team is in the battle. Null until the host draws the bracket.
 function battleForTeam(team: Team): TeamView['battle'] {
-  const battle = state.battle;
-  const round = battle && currentRound(battle);
-  if (!battle || !round) return null;
-  const { state: where, opponent, side, bracket, losses } = teamProgress(battle, team.id);
+  const t = battle();
+  const stage = t && currentStage(t);
+  const entrant = t?.entrants.find((e) => e.id === team.entrantId);
+  if (!t || !stage || !entrant) return null;
+  const { state: where, opponent, side, bracket, wins, losses } = entrant.progress;
+  const name = (id: string) => t.entrants.find((e) => e.id === id)?.name ?? 'a deleted team';
   return {
-    round: round.name,
+    format: t.format,
+    round: stage.name,
     bracket,
     side,
+    wins,
     losses,
     state: where,
-    opponent: opponent ? teamName(opponent) : null,
-    champion: battle.champion ? teamName(battle.champion) : null,
+    opponent: opponent ? name(opponent) : null,
+    champion: t.champion ? name(t.champion) : null,
   };
-}
-
-function teamName(id: string): string {
-  return state.teams.find((t) => t.id === id)?.name ?? 'a deleted team';
 }
 
 export function adminView(online: string[]): AdminView {
@@ -321,8 +283,16 @@ export function adminView(online: string[]): AdminView {
     picks: Object.fromEntries(state.teams.map((t) => [t.id, picksAvailable(t)])),
     transformPicks: Object.fromEntries(state.teams.map((t) => [t.id, transformPicks(t)])),
     online,
+    tournament: battle(),
+    formats: tournament.formats,
     game: {
-      ...gameInfo,
+      tournamentUrl: tournament.TOURNAMENT_API,
+      tournamentReachable: tournament.link.reachable,
+      url: tournament.link.game?.url ?? '',
+      displayUrl: tournament.link.game?.displayUrl ?? '',
+      reachable: tournament.link.reachable && Boolean(tournament.link.game?.reachable),
+      displays: tournament.link.game?.displays ?? 0,
+      screens: tournament.link.game?.screens ?? 0,
       catalogSource: catalog.source ?? 'file',
       catalogSyncedAt: catalog.syncedAt ?? null,
     },
@@ -423,6 +393,7 @@ export function join(name: string, weapon: string, color: string, code: string):
   checkWeapon(weapon);
   const team: Team = {
     id: randomUUID(),
+    entrantId: randomUUID(),
     code: newCode(),
     name,
     color: checkColor(color),
@@ -482,186 +453,6 @@ export function pickTransformation(team: Team, id: string, count?: number) {
   mutate(() => {
     team.transformations.push(id);
     team.transformOffer = null;
-  });
-}
-
-// ---- Battle -----------------------------------------------------------------
-// State changes for the double elimination, used by server/battle.ts (which talks to the
-// game) and by the views. They only touch `state.battle`.
-
-function findBattleMatch(id: string): BattleMatch | undefined {
-  return state.battle?.matches.find((m) => m.id === id);
-}
-
-export function beginBattle(battle: Battle) {
-  mutate(() => {
-    state.battle = battle;
-  });
-}
-
-// The current stage goes on the game. Each of its unplayed matches gets the
-// two teams' loadouts as they are now.
-export function startRound(fighters: Map<string, Fighter>) {
-  mutate(() => {
-    const round = state.battle && currentRound(state.battle);
-    if (!state.battle || !round) return;
-    round.status = 'playing';
-    for (const match of state.battle.matches) {
-      if (match.round !== round.index || match.status !== 'pending') continue;
-      const a = fighters.get(match.a);
-      const b = fighters.get(match.b);
-      if (a && b) match.fighters = [a, b];
-    }
-  });
-}
-
-// The winners bracket of the current stage is finished: draw its losers
-// bracket. In a stage that is playing, its matches get the teams' loadouts from
-// `fighters` (as they are now). Returns true when there was something to draw.
-export function drawLosers(fighters: Map<string, Fighter>): boolean {
-  const battle = state.battle;
-  const round = battle && currentRound(battle);
-  const waiting = round?.groups.find((g) => g.side === 'losers' && g.pending);
-  const winners = round && battle.matches.filter((m) => m.round === round.index && m.side === 'winners');
-  if (!waiting || !winners || !winners.every((m) => m.status === 'done' && m.winner !== null)) return false;
-  mutate(() => {
-    const matches = drawLosersIn(state.battle!);
-    if (round.status !== 'playing') return; // startRound copies the loadouts
-    for (const match of matches) {
-      const a = fighters.get(match.a);
-      const b = fighters.get(match.b);
-      if (a && b) match.fighters = [a, b];
-    }
-  });
-  return true;
-}
-
-// The current stage goes back to waiting. Matches sent to the game go back to
-// pending (the driver cancels them there); played matches keep their result.
-export function stopRound() {
-  mutate(() => {
-    const round = state.battle && currentRound(state.battle);
-    if (!state.battle || !round || round.status !== 'playing') return;
-    round.status = 'waiting';
-    for (const match of state.battle.matches) {
-      if (match.round === round.index && match.status === 'queued') {
-        match.status = 'pending';
-        match.gameId = null;
-      }
-    }
-  });
-}
-
-// Every match in the current stage has a winner: draw the next stage, or crown the champion.
-export function finishRound() {
-  mutate(() => {
-    const battle = state.battle;
-    const round = battle && currentRound(battle);
-    if (!battle || !round || round.status === 'done') return;
-    const next = advance(battle);
-    round.status = 'done';
-    if ('champion' in next) {
-      battle.champion = next.champion;
-      battle.finishedAt = new Date().toISOString();
-    } else {
-      battle.rounds.push(next.round);
-      battle.matches.push(...next.matches);
-    }
-  });
-}
-
-export function setMatchGame(id: string, gameId: string | null, status: BattleMatchStatus) {
-  mutate(() => {
-    const match = findBattleMatch(id);
-    if (!match) return;
-    match.gameId = gameId;
-    match.status = status;
-  });
-}
-
-// A duplicate result (two displays, or a retry) is a no-op.
-export function recordResult(id: string, result: { winner: string; decidedBy: DecidedBy; hp: [number, number]; time: number }) {
-  mutate(() => {
-    const match = findBattleMatch(id);
-    if (!match || match.status === 'done') return;
-    match.status = 'done';
-    match.winner = result.winner;
-    match.decidedBy = result.decidedBy;
-    match.hp = result.hp;
-    match.time = result.time;
-    delete match.error;
-  });
-}
-
-// The host decides a match, e.g. one the game could not play.
-export function setWinner(id: string, winner: string) {
-  const match = findBattleMatch(id);
-  if (!match) throw new UserError('Unknown match.');
-  if (winner !== match.a && winner !== match.b) throw new UserError('The winner must be one of the two teams.');
-  if (match.status === 'queued') throw new UserError('That match is on the game now. Stop the round first.');
-  if (state.battle?.rounds[match.round]?.status === 'done') throw new UserError('That stage is finished.');
-  mutate(() => {
-    // Another winner drops another team: draw the losers bracket again.
-    if (match.side === 'winners') undrawLosers(state.battle!);
-    match.status = 'done';
-    match.winner = winner;
-    match.decidedBy = 'host';
-    match.gameId = null;
-    delete match.error;
-  });
-}
-
-// The match is played again, with a new seed so it is a new fight.
-export function replayMatch(id: string, seed: number) {
-  const match = findBattleMatch(id);
-  if (!match) throw new UserError('Unknown match.');
-  if (match.status === 'queued') throw new UserError('That match is on the game now.');
-  const round = state.battle?.rounds[match.round];
-  if (!round || round !== currentRound(state.battle!)) throw new UserError('Only a match in the current stage can be played again.');
-  mutate(() => {
-    // The losers bracket waits for this match again.
-    if (match.side === 'winners') undrawLosers(state.battle!);
-    Object.assign(match, { status: 'pending', seed, gameId: null, winner: null, decidedBy: null, hp: null, time: null });
-    delete match.error;
-    // Only the grand final can be replayed after it is done: that undoes the champion.
-    if (round.status === 'done') {
-      round.status = 'waiting';
-      state.battle!.champion = null;
-      state.battle!.finishedAt = null;
-    }
-  });
-}
-
-export function cancelMatch(id: string, reason: string) {
-  mutate(() => {
-    const match = findBattleMatch(id);
-    if (match) {
-      match.status = 'cancelled';
-      match.error = reason;
-    }
-  });
-}
-
-export function failMatch(id: string, error: string) {
-  mutate(() => {
-    const match = findBattleMatch(id);
-    if (match) {
-      match.status = 'failed';
-      match.error = error;
-    }
-  });
-}
-
-export function setBattleNote(note: string) {
-  if (!state.battle || state.battle.note === note) return;
-  mutate(() => {
-    if (state.battle) state.battle.note = note;
-  });
-}
-
-export function resetBattle() {
-  mutate(() => {
-    state.battle = null;
   });
 }
 

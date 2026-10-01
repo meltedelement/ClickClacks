@@ -356,9 +356,8 @@ export class Trickster extends DaggersTransformation {
   // in the middle of the ability.
   tryThrow(sim) {
     const { owner, weapon } = this;
-    const enemy = this.nearestEnemy(sim);
-    if (weapon.blades < 2 || weapon.ability?.active) return;
-    if (!enemy || distance(enemy.pos, owner.pos) > this.triggerRange) return;
+    const enemy = this.enemyWithin(sim, this.triggerRange);
+    if (weapon.blades < 2 || weapon.ability?.active || !enemy) return;
 
     const angles = weapon.bladeAngles();
     const pos = add(owner.pos, fromAngle(angles[0], owner.radius + weapon.gap + weapon.length / 2));
@@ -391,8 +390,7 @@ export class Trickster extends DaggersTransformation {
     ctx.translate(pos.x, pos.y);
     ctx.rotate(spin);
     ctx.scale(1, weapon.widthScale);
-    weapon.drawLocal(ctx, -weapon.length / 2);
-    for (const upgrade of weapon.upgrades) upgrade.drawBlade(ctx, -weapon.length / 2);
+    weapon.drawBladeAt(ctx, -weapon.length / 2);
     ctx.restore();
   }
 }

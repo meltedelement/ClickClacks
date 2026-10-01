@@ -1,4 +1,4 @@
-import { distance } from '../sim/math.js';
+import { nearestEnemy, withinRange } from '../sim/targeting.js';
 
 // Base class for a weapon's special move. Abilities fire automatically once
 // they're off cooldown and shouldActivate() says it's a good moment.
@@ -92,22 +92,20 @@ export class Ability {
 
   // ---- Helpers --------------------------------------------------------------
 
+  // See src/sim/targeting.js for how enemies are measured.
   nearestEnemy(sim) {
-    let nearest = null;
-    let best = Infinity;
-    for (const ball of sim.aliveBalls) {
-      if (ball === this.owner) continue;
-      const d = distance(ball.pos, this.owner.pos);
-      if (d < best) {
-        best = d;
-        nearest = ball;
-      }
-    }
-    return nearest;
+    return nearestEnemy(this.owner, sim);
+  }
+
+  // The nearest enemy if it's within `range` (px, grown in a royale), else null.
+  enemyWithin(sim, range) {
+    const enemy = nearestEnemy(this.owner, sim);
+    return enemy && withinRange(this.owner, enemy, range) ? enemy : null;
   }
 
   // Tell the game something visual happened. `fx` is optional presentation info:
-  //   { shake: number, burst: { color?, count?, speed?, life?, size? } }
+  //   { shake: number, burst: { color?, count?, speed?, life?, size? }, pos?: { x, y } }
+  // The burst appears at `pos`, or on this ability's ball if it's left out.
   emit(sim, phase, fx = {}) {
     sim.onEvent('ability', { ball: this.owner, ability: this, phase, ...fx });
   }

@@ -68,6 +68,10 @@ export class WideSwipe extends Upgrade {
     this.weapon.length -= this.added;
     this.added = 0;
   }
+
+  onGrow(factor) {
+    this.added *= factor;
+  }
 }
 
 export class LongSwipe extends Upgrade {

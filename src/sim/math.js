@@ -21,24 +21,30 @@ export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 export const randomRange = (lo, hi) => lo + Math.random() * (hi - lo);
 export const randomSign = () => (Math.random() < 0.5 ? -1 : 1);
 
+// Written out in scalars (here and below): collision tests call these for
+// every blade every step, and the intermediate vectors add up.
 export function closestPointOnSegment(p, a, b) {
-  const ab = sub(b, a);
-  const lenSq = dot(ab, ab);
-  if (lenSq < 1e-9) return { ...a };
-  const t = clamp(dot(sub(p, a), ab) / lenSq, 0, 1);
-  return add(a, scale(ab, t));
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const lenSq = abx * abx + aby * aby;
+  if (lenSq < 1e-9) return { x: a.x, y: a.y };
+  const t = clamp(((p.x - a.x) * abx + (p.y - a.y) * aby) / lenSq, 0, 1);
+  return { x: a.x + abx * t, y: a.y + aby * t };
 }
 
 // Closest points between segments p1-q1 and p2-q2
 // (Ericson, "Real-Time Collision Detection", 5.1.9).
 export function closestPointsBetweenSegments(p1, q1, p2, q2) {
   const EPS = 1e-9;
-  const d1 = sub(q1, p1);
-  const d2 = sub(q2, p2);
-  const r = sub(p1, p2);
-  const a = dot(d1, d1);
-  const e = dot(d2, d2);
-  const f = dot(d2, r);
+  const d1x = q1.x - p1.x;
+  const d1y = q1.y - p1.y;
+  const d2x = q2.x - p2.x;
+  const d2y = q2.y - p2.y;
+  const rx = p1.x - p2.x;
+  const ry = p1.y - p2.y;
+  const a = d1x * d1x + d1y * d1y;
+  const e = d2x * d2x + d2y * d2y;
+  const f = d2x * rx + d2y * ry;
   let s;
   let t;
 
@@ -49,12 +55,12 @@ export function closestPointsBetweenSegments(p1, q1, p2, q2) {
     s = 0;
     t = clamp(f / e, 0, 1);
   } else {
-    const c = dot(d1, r);
+    const c = d1x * rx + d1y * ry;
     if (e <= EPS) {
       t = 0;
       s = clamp(-c / a, 0, 1);
     } else {
-      const b = dot(d1, d2);
+      const b = d1x * d2x + d1y * d2y;
       const denom = a * e - b * b;
       s = denom !== 0 ? clamp((b * f - c * e) / denom, 0, 1) : 0;
       t = (b * s + f) / e;
@@ -68,15 +74,19 @@ export function closestPointsBetweenSegments(p1, q1, p2, q2) {
     }
   }
 
-  const c1 = add(p1, scale(d1, s));
-  const c2 = add(p2, scale(d2, t));
-  return { c1, c2, distance: distance(c1, c2) };
+  const c1 = { x: p1.x + d1x * s, y: p1.y + d1y * s };
+  const c2 = { x: p2.x + d2x * t, y: p2.y + d2y * t };
+  return { c1, c2, distance: Math.hypot(c1.x - c2.x, c1.y - c2.y) };
 }
 
 export const angleOf = (v) => Math.atan2(v.y, v.x);
 
+// How far `target` is from `angle`, the short way round, in [-PI, PI).
+export function angleDiff(angle, target) {
+  return ((((target - angle + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+}
+
 // Rotate `angle` towards `target` by at most `maxStep` radians, the short way round.
 export function turnTowards(angle, target, maxStep) {
-  const diff = ((((target - angle + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
-  return angle + clamp(diff, -maxStep, maxStep);
+  return angle + clamp(angleDiff(angle, target), -maxStep, maxStep);
 }

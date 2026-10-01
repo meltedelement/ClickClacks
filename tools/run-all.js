@@ -1,14 +1,16 @@
-// Runs the game and the quiz together, for a test run or an event.
+// Runs the game, the tournament service and the quiz together, for a test run
+// or an event.
 //
 //   npm run dev:all     hot reload
-//                       game (and match API) on 5173, quiz client on 5174,
-//                       quiz API on 3001
-//   npm run start:all   builds both, then serves
-//                       game (and match API) on 3002, quiz on 3001
+//                       game (and match API) on 5173, tournament API on 3003,
+//                       quiz client on 5174, quiz API on 3001
+//   npm run start:all   builds the game and the quiz, then serves
+//                       game (and match API) on 3002, tournament API on 3003,
+//                       quiz on 3001
 //
-// The quiz server is pointed at the game's match API for you, which is the part
-// that is easy to get wrong when the two are started by hand. Either server
-// stopping stops the other, and Ctrl-C stops everything.
+// Quiz -> tournament API -> game API: each service is pointed at the next for
+// you, which is the part that is easy to get wrong when they are started by
+// hand. Any server stopping stops the others, and Ctrl-C stops everything.
 //
 // The terminal shows only what the host needs: the admin page, the big screen,
 // the admin key and the address teams join at. The servers' own output is
@@ -21,6 +23,7 @@ import path from 'node:path';
 
 const ROOT = path.join(import.meta.dirname, '..');
 const QUIZ = path.join(ROOT, 'quiz');
+const TOURNAMENT = path.join(ROOT, 'tournament');
 const built = process.argv.includes('--built');
 const verbose = process.argv.includes('--verbose');
 const KEY_FILE = path.join(QUIZ, 'data', 'admin-token.txt');
@@ -29,9 +32,11 @@ const LOG_LINES = 300; // kept per server, to print if it goes wrong
 const GAME_PORT = built ? 3002 : 5173;
 const QUIZ_PORT = 3001;
 const QUIZ_CLIENT_PORT = 5174;
-// 127.0.0.1 rather than localhost: the quiz server has to reach this, and
-// `localhost` can resolve to ::1 only, which the game server may not be on.
+const TOURNAMENT_PORT = 3003;
+// 127.0.0.1 rather than localhost: the other servers have to reach these, and
+// `localhost` can resolve to ::1 only, which a server may not be on.
 const GAME_API = `http://127.0.0.1:${GAME_PORT}/api`;
+const TOURNAMENT_API = `http://127.0.0.1:${TOURNAMENT_PORT}/api`;
 
 const children = [];
 let shuttingDown = false;
@@ -166,13 +171,14 @@ const gameVite = path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 const quizVite = path.join(QUIZ, 'node_modules', 'vite', 'bin', 'vite.js');
 
 need(path.join(QUIZ, 'server', 'index.ts'), 'This script belongs in the Weapon Balls repo.');
+need(path.join(TOURNAMENT, 'server', 'index.ts'), 'This script belongs in the Weapon Balls repo.');
 
 if (!built) {
   need(gameVite, 'Run `npm install` in the repo root first.');
   need(quizVite, 'Run `npm install` in quiz/ first.');
 }
 
-const ports = built ? [GAME_PORT, QUIZ_PORT] : [GAME_PORT, QUIZ_PORT, QUIZ_CLIENT_PORT];
+const ports = built ? [GAME_PORT, TOURNAMENT_PORT, QUIZ_PORT] : [GAME_PORT, TOURNAMENT_PORT, QUIZ_PORT, QUIZ_CLIENT_PORT];
 const busy = [];
 for (const port of ports) if (!(await portFree(port))) busy.push(port);
 if (busy.length > 0) {
@@ -180,7 +186,7 @@ if (busy.length > 0) {
   process.exit(1);
 }
 
-console.log(built ? 'Starting the built game and quiz...' : 'Starting the game and quiz in dev mode...');
+console.log(built ? 'Starting the built game, tournament server and quiz...' : 'Starting the game, tournament server and quiz in dev mode...');
 
 if (built) {
   build(ROOT, 'game');
@@ -190,8 +196,11 @@ if (built) {
 }
 
 const quizApiArgs = built ? ['server/index.ts'] : ['--watch', 'server/index.ts'];
-const quizEnv = { PORT: String(QUIZ_PORT), GAME_API };
+const quizEnv = { PORT: String(QUIZ_PORT), TOURNAMENT_API };
+const tournamentArgs = built ? ['server/index.ts'] : ['--watch', 'server/index.ts'];
+const tournamentEnv = { PORT: String(TOURNAMENT_PORT), GAME_API };
 
+run('tournament', process.execPath, tournamentArgs, { cwd: TOURNAMENT, env: tournamentEnv });
 if (built) {
   run('game', process.execPath, ['server/index.js'], { env: { PORT: String(GAME_PORT) } });
   run('quiz', process.execPath, quizApiArgs, { cwd: QUIZ, env: quizEnv });
@@ -204,11 +213,12 @@ if (built) {
 }
 
 const gameUp = await ready(`http://127.0.0.1:${GAME_PORT}/api/status`, 90);
+const tournamentUp = await ready(`${TOURNAMENT_API}/game`, 90);
 const quizUp = await ready(`http://127.0.0.1:${QUIZ_PORT}/api/weapons`, 90);
 
-if (!gameUp || !quizUp) {
+if (!gameUp || !tournamentUp || !quizUp) {
   for (const child of children) printLog(child);
-  console.error(`\n${!gameUp ? 'The game' : 'The quiz'} did not come up. See the output above.`);
+  console.error(`\n${!gameUp ? 'The game' : !tournamentUp ? 'The tournament server' : 'The quiz'} did not come up. See the output above.`);
   shutdown(1);
 } else {
   const port = built ? QUIZ_PORT : QUIZ_CLIENT_PORT;
@@ -221,7 +231,7 @@ if (!gameUp || !quizUp) {
 
   Teams join at:  http://${lan ?? 'localhost'}:${port}${lan ? '' : '  (no network address found)'}
 
-Ctrl-C stops both.`);
+Ctrl-C stops all three.`);
 }
 
 // The address phones on the local network reach this machine at, from the quiz

@@ -377,19 +377,38 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
 }
 
 function BattleStatus({ battle }: { battle: NonNullable<TeamView['battle']> }) {
-  const { round, bracket, side, losses, state, opponent, champion } = battle;
+  const { format, round, bracket, side, wins, losses, state, opponent, champion } = battle;
   const vs = opponent && <strong>{opponent}</strong>;
   const where = bracket ? `${round}, ${bracket}` : round;
-  const lives = side === 'final' ? '' : losses === 0 ? ' You have not lost yet.' : ' One more loss and you are out.';
+  let lives = '';
+  if (format === 'double-elimination' && side !== 'final') lives = losses === 0 ? ' You have not lost yet.' : ' One more loss and you are out.';
+  else if (format === 'single-elimination') lives = ' One loss and you are out.';
+  else if (format === 'round-robin') lives = ` You have ${wins} win${wins === 1 ? '' : 's'} from ${wins + losses} match${wins + losses === 1 ? '' : 'es'}.`;
   switch (state) {
     case 'champion':
       return <p className="notice good">You won the battle!</p>;
     case 'out':
-      return <p className="notice bad">You are out.{champion && <> {champion} won the battle.</>}</p>;
+      return format === 'round-robin' && champion ? (
+        <p className="notice">
+          The battle is over: {champion} won it.{lives}
+        </p>
+      ) : (
+        <p className="notice bad">You are out.{champion && <> {champion} won the battle.</>}</p>
+      );
+    case 'lost':
+      return (
+        <p className="notice bad">
+          You lost against {vs}. Wait for the next stage.{lives}
+        </p>
+      );
     case 'bye':
       return <p className="notice good">{where}: you have no match this stage.{lives}</p>;
     case 'through':
-      return <p className="notice good">You won against {vs}. Wait for the next stage.</p>;
+      return (
+        <p className="notice good">
+          You won against {vs}. Wait for the next stage.{format === 'round-robin' ? lives : ''}
+        </p>
+      );
     case 'dropped':
       return (
         <p className="notice bad">

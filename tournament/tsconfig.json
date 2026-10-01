@@ -1,0 +1,19 @@
+{
+  // No dependencies of its own: `npm run typecheck` borrows the quiz's TypeScript
+  // and Node types (run `npm install` in ../quiz first).
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "typeRoots": ["../quiz/node_modules/@types"],
+    "types": ["node"]
+  },
+  "include": ["formats", "lib", "server", "../api"]
+}

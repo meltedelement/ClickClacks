@@ -77,7 +77,16 @@ class Screen {
       e.currentTarget.blur();
       this.toggleMute();
     });
-    this.cell.append(canvas, this.muteButton);
+    this.endButton = el('button', 'screen-end');
+    this.endButton.type = 'button';
+    this.endButton.textContent = 'End';
+    this.endButton.title = `End the match on screen ${index + 1} (decided on HP if it has the tiebreak)`;
+    this.endButton.hidden = true;
+    this.endButton.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      this.game.endMatch();
+    });
+    this.cell.append(canvas, this.muteButton, this.endButton);
     parent.append(this.cell);
 
     this.game = new Game(canvas, {
@@ -116,7 +125,7 @@ class Screen {
     const { match } = this;
     if (!match) return null;
     const fighters = match.fighters.map(({ transformations = [], upgrades = [], ...fighter }) => ({ ...fighter, upgrades: [...transformations, ...upgrades] }));
-    return { fighters, seed: match.seed, timeLimit: match.timeLimit, tiebreak: match.tiebreak };
+    return { fighters, seed: match.seed, timeLimit: match.timeLimit, tiebreak: match.tiebreak, suddenDeath: match.suddenDeath };
   }
 
   toggleMute() {
@@ -155,6 +164,7 @@ class Screen {
     this.match = match;
     this.reported = false;
     this.game.newMatch();
+    this.endButton.hidden = !match;
     if (match) post(`/api/matches/${match.id}/start`);
   }
 
@@ -162,12 +172,14 @@ class Screen {
   onMatchEnd(sim) {
     if (!this.match || this.reported) return; // e.g. a replay after pressing R
     this.reported = true;
+    this.endButton.hidden = true;
     this.finishedAt = performance.now();
     this.result = {
       winner: sim.winner ? sim.balls.indexOf(sim.winner) : null,
       decidedBy: sim.decidedBy ?? 'ko',
       time: sim.time,
       hp: sim.balls.map((ball) => ball.hp),
+      ranking: sim.ranking,
     };
     this.report();
   }

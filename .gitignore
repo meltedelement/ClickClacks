@@ -10,6 +10,9 @@ dist-ssr/
 # Vite cache
 .vite/
 
+# Upgrade sweep results (tools/sweep.js)
+sweeps/
+
 # Logs
 logs/
 *.log

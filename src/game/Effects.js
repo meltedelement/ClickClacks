@@ -1,4 +1,5 @@
 import { TAU, randomRange } from '../sim/math.js';
+import { drawText } from './TextSprites.js';
 
 // Purely cosmetic stuff: sparks, floating damage numbers, and screen shake.
 //
@@ -11,6 +12,8 @@ const DEFAULT_TEXT_BUDGET = 40;
 const SPRITE_SIZE = 32; // px radius of the cached spark sprite
 const MAX_SPRITE_COLORS = 128; // spark colours are cached; team colours can be arbitrary
 const SPRITE_RADIUS = SPRITE_SIZE - 1;
+// Floating damage numbers; `fill` is set per text.
+const TEXT_STYLE = { weight: 'bold', size: 22, family: 'system-ui, sans-serif', fill: '#ffffff', stroke: 'rgba(0, 0, 0, 0.6)', strokeWidth: 4, baseline: 'middle' };
 
 // One disc per colour, drawn once and blitted per particle. `globalAlpha` does
 // the fade, so the sprite itself is opaque.
@@ -154,7 +157,8 @@ export class Effects {
     if (this.shakeAmount < 0.1) this.shakeAmount = 0;
   }
 
-  draw(ctx) {
+  // `pixelScale` is device pixels per arena unit, for sharp text (see TextSprites).
+  draw(ctx, pixelScale = 1) {
     const particles = this.particles;
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
@@ -172,18 +176,10 @@ export class Effects {
       }
     }
 
-    if (this.texts.length > 0) {
-      ctx.font = 'bold 22px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
-      for (const t of this.texts) {
-        ctx.globalAlpha = Math.min(1, (t.life / t.maxLife) * 2);
-        ctx.strokeText(t.text, t.x, t.y);
-        ctx.fillStyle = t.color;
-        ctx.fillText(t.text, t.x, t.y);
-      }
+    for (const t of this.texts) {
+      ctx.globalAlpha = Math.min(1, (t.life / t.maxLife) * 2);
+      TEXT_STYLE.fill = t.color;
+      drawText(ctx, t.text, t.x, t.y, TEXT_STYLE, pixelScale);
     }
     ctx.globalAlpha = 1;
   }

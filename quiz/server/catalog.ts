@@ -1,10 +1,11 @@
 // The quiz's weapon and upgrade catalog.
 //
 // The source of truth is the game, so the quiz offers upgrades by their real
-// ids, weapon fits, stack limits and requirements. At startup (and again
-// whenever the game comes back) we read GET /api/catalog. quiz/data/game.json
-// is a generated offline fallback for when the game server is not running; see
-// scripts/sync-catalog.js.
+// ids, weapon fits, stack limits and requirements. The quiz does not talk to
+// the game: at startup (and again whenever the game comes back) it reads the
+// game's catalog through the tournament service (GET /api/game/catalog there).
+// quiz/data/game.json is a generated offline fallback for when the game is not
+// running; see scripts/sync-catalog.js.
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Catalog } from '../shared/types.ts';
@@ -63,7 +64,8 @@ export function getSettings(): CatalogSettings {
   };
 }
 
-// Reads the catalog from the game. Returns true when the catalog in use is the
+// Reads the catalog from `apiUrl` + /catalog (the game's, through the
+// tournament service). Returns true when the catalog in use is the
 // game's, which it stays even if a later read fails — an older live catalog is
 // closer to the truth than the file. Never throws: the quiz must still run the
 // lobby while the game is down.

@@ -1,6 +1,5 @@
 import { Upgrade } from './Upgrade.js';
 import { Burning } from './sword-transformations.js';
-import { CONFIG } from '../config.js';
 import { DropSlam } from '../abilities/DropSlam.js';
 import { Status } from '../sim/Status.js';
 import { TAU, add, clamp, distance, fromAngle, normalize, scale, sub } from '../sim/math.js';
@@ -59,7 +58,7 @@ export class Portaler extends MaceTransformation {
     const { ability, owner } = this;
     if (!(ability instanceof DropSlam)) return;
     if (ability.active && ability.wrapsLeft < this.wrapsLeft) {
-      this.exit = { x: owner.pos.x, y: ability.dir > 0 ? 0 : CONFIG.arena.height, timeLeft: PORTAL_CLOSE_TIME };
+      this.exit = { x: owner.pos.x, y: ability.dir > 0 ? 0 : owner.arena.height, timeLeft: PORTAL_CLOSE_TIME };
     }
     this.wrapsLeft = ability.active ? ability.wrapsLeft : 0;
   }
@@ -70,7 +69,7 @@ export class Portaler extends MaceTransformation {
     const { ability, owner } = this;
     if (this.exit) drawPortal(ctx, this.exit.x, this.exit.y, owner.radius, PORTAL_OUT, this.time, this.exit.timeLeft / PORTAL_CLOSE_TIME);
     if (!(ability instanceof DropSlam) || !ability.active || ability.wrapsLeft <= 0) return;
-    const { height } = CONFIG.arena;
+    const { height } = owner.arena;
     const opening = ability.phase === 'hover' ? 1 - ability.timer / ability.hoverTime : 1;
     const entry = ability.dir > 0 ? height : 0;
     drawPortal(ctx, owner.pos.x, entry, owner.radius, PORTAL_IN, this.time, opening);
@@ -338,20 +337,20 @@ const STUN_COLOR = '#ffe066';
 export class Crusher extends MaceTransformation {
   static id = 'crusher';
   static displayName = 'Crusher';
-  static description =
-    'A Drop Slam hit stuns the enemy for 1 s: they deal no damage and move at 20% speed until it wears off. With Rubber Mace, the stun starts once they stop bouncing around.';
+  static description = 'A Drop Slam hit stuns the enemy for 2.5 s: they deal 30% damage and move at 30% speed until it wears off.';
   // After Rubber Mace, so on the same hit the enemy is already Bouncing and the stun waits for it.
   static order = 1;
 
   constructor(weapon) {
     super(weapon);
-    this.stunDuration = 1;
-    this.stunSlow = 0.2;
+    this.stunDuration = 2.5;
+    this.stunSlow = 0.3;
+    this.stunDamage = 0.3; // share of their damage a stunned enemy still deals
   }
 
   onHit(target, sim) {
     if (!slamming(this.ability) || !target.alive || sim.over) return;
-    target.addStatus(new Stunned({ source: this.owner, duration: this.stunDuration, slow: this.stunSlow, crusher: this }), sim);
+    target.addStatus(new Stunned({ source: this.owner, duration: this.stunDuration, slow: this.stunSlow, damage: this.stunDamage, crusher: this }), sim);
   }
 
   // Heavy iron bands around the head.
@@ -370,13 +369,14 @@ export class Crusher extends MaceTransformation {
   }
 }
 
-// From Crusher: the ball can't deal damage for a while, and is dazed and slow.
+// From Crusher: the ball deals much less damage for a while, and is dazed and slow.
 // While Rubber Mace has it Bouncing, the stun waits (and doesn't tick down),
 // then starts in full once the bouncing is over.
 export class Stunned extends Status {
-  constructor({ source, duration, slow, crusher }) {
+  constructor({ source, duration, slow, damage, crusher }) {
     super({ source, duration });
     this.slow = slow;
+    this.damage = damage;
     this.crusher = crusher; // the Crusher upgrade, to show the stun when it starts
     this.started = false;
   }
@@ -385,8 +385,8 @@ export class Stunned extends Status {
     return this.ball.hasStatus(Bouncing);
   }
 
-  get stunned() {
-    return this.started;
+  get damageDealtMultiplier() {
+    return this.started ? this.damage : 1;
   }
 
   get speedMultiplier() {
@@ -666,7 +666,7 @@ export class Devil extends MaceTransformation {
 
   // A column of fire shooting across the arena from where it erupted, flames licking up its sides.
   drawPillar(ctx, { x, from, timeLeft, age }) {
-    const { height } = CONFIG.arena;
+    const { height } = this.owner.arena;
     const reach = height * Math.min(1, age / PILLAR_RISE_TIME);
     const top = from > 0 ? from - reach : 0;
     const w = this.pillarWidth;

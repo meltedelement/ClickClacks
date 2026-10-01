@@ -1,0 +1,403 @@
+:root {
+  --bg: #0f1116;
+  --panel: #171a21;
+  --panel-border: #2a303c;
+  --control: #252a35;
+  --text: #e6e9ef;
+  --muted: #8b93a3;
+  --accent: #5b8cff;
+  --gold: #ffd23f;
+  --error: #ff6b6b;
+  --radius: 0.625rem;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+}
+
+p {
+  margin: 0;
+}
+
+code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--error);
+}
+
+/* ---- Layout: the controls and finds on the left, the arena filling the rest. ---- */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(20rem, 26rem) 1fr;
+  height: 100%;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  overflow-y: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--panel-border);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.viewer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 1rem;
+  gap: 0.75rem;
+}
+
+.arena {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  container-type: size;
+}
+
+.arena canvas {
+  display: block;
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  border-radius: var(--radius);
+}
+
+.viewer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+@media (max-width: 800px) {
+  .layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  .arena {
+    flex: none;
+    height: min(100vw - 2rem, 80vh);
+  }
+}
+
+/* ---- Form ---- */
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 0.75rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+input[type='number'],
+input[type='text'],
+textarea,
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--panel-border);
+  border-radius: 0.4rem;
+}
+
+input[type='number'],
+input[type='text'],
+textarea {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+}
+
+textarea {
+  resize: vertical;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+input:focus,
+textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+  accent-color: var(--accent);
+}
+
+button {
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.speed output {
+  min-width: 2.5em;
+}
+
+/* The fighter list: a spec box, a must-win box under the "Must win" heading, and a remove button. */
+.fighter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.fighter-head,
+.fighter-row {
+  display: grid;
+  grid-template-columns: 1fr 4.5rem 2rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fighter-head {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.fighter-head span:last-child {
+  text-align: center;
+}
+
+.fighter-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fighter-row .spec {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+.fighter-row .must-win {
+  justify-self: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+.fighter-row .remove {
+  padding: 0.3rem 0;
+  color: var(--muted);
+}
+
+.hint {
+  font-size: 0.8rem;
+}
+
+.ids {
+  font-size: 0.85rem;
+}
+
+.ids summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.ids p {
+  margin-top: 0.4rem;
+}
+
+/* ---- Progress and finds ---- */
+
+.progress-bar {
+  height: 0.35rem;
+  background: var(--control);
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+#progress-fill {
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+}
+
+.result.watching {
+  border-color: var(--accent);
+}
+
+.result-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.fighters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fighters li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fighters li.winner {
+  font-weight: 600;
+}
+
+.swatch {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.badge {
+  padding: 0 0.4rem;
+  font-size: 0.75rem;
+  color: #000;
+  background: var(--gold);
+  border-radius: 1rem;
+}
+
+.tag {
+  padding: 0 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  border: 1px solid var(--panel-border);
+  border-radius: 1rem;
+}
+
+.result .buttons button {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.toast {
+  position: absolute;
+  left: 50%;
+  top: 1.5rem;
+  transform: translateX(-50%);
+  max-width: min(90%, 36rem);
+  padding: 0.6rem 1rem;
+  background: var(--control);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.4);
+}
+
+.toast.error {
+  border-color: var(--error);
+}
+
+.toast a {
+  color: var(--accent);
+}

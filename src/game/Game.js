@@ -15,10 +15,12 @@ const realRandom = Math.random;
 // into effects, handles pause / speed / hitstop, and draws each frame.
 export class Game {
   // chooseMatch() returns the next match to play, or null to show an empty
-  // arena: { fighters, seed?, timeLimit?, tiebreak? }, where fighters are
-  // loadouts (see Simulation). A seeded match plays out the same way every
-  // time. A match still going at timeLimit (in sim seconds) is a draw, or with
-  // tiebreak 'hp' goes to the fighter with the most HP left. onMatchEnd(sim) is
+  // arena: { fighters, seed?, timeLimit?, tiebreak?, suddenDeath?, royale? }, where
+  // fighters are loadouts (see Simulation; `royale: true` for a royale). A seeded match plays out the same
+  // way every time. suddenDeath is the sim time sudden death starts (default
+  // CONFIG.suddenDeath.after, null for none). A match still going at timeLimit
+  // (in sim seconds) is a draw, or with tiebreak 'hp' goes to the fighter with
+  // the most HP left. onMatchEnd(sim) is
   // called once the match is decided. soundKey gives this game its own saved
   // mute switch (see Sound).
   constructor(canvas, { chooseMatch, onMatchEnd, soundKey }) {
@@ -52,8 +54,8 @@ export class Game {
     this.match = this.chooseMatch();
     this.random = this.match?.seed == null ? realRandom : mulberry32(this.match.seed);
     const onEvent = (type, data) => this.withRandom(realRandom, () => this.handleSimEvent(type, data));
-    const { fighters, tiebreak } = this.match ?? {};
-    this.sim = this.match && this.withRandom(this.random, () => new Simulation(fighters, { onEvent, tiebreak }));
+    const { fighters, tiebreak, suddenDeath, royale } = this.match ?? {};
+    this.sim = this.match && this.withRandom(this.random, () => new Simulation(fighters, { onEvent, tiebreak, suddenDeath, royale }));
     this.effects.clear();
     this.accumulator = 0;
     this.hitstop = 0;
@@ -76,6 +78,12 @@ export class Game {
       cancelAnimationFrame(this.frameRequest);
       this.frameRequest = null;
     }
+  }
+
+  // For an arena that's being removed: stops the loop and lets go of the canvas.
+  destroy() {
+    this.stop();
+    this.renderer.destroy();
   }
 
   frame = (now) => {
@@ -153,6 +161,12 @@ export class Game {
     });
   }
 
+  // Ends the match now, as if its time limit ran out (so the HP tiebreak applies).
+  endMatch() {
+    if (!this.sim || this.sim.over) return;
+    this.withRandom(this.random, () => this.sim.endOnTime());
+  }
+
   // The sim runs with the match's seeded Math.random. Effects and sounds swap
   // the real one back in, so they don't use up the seeded sequence and change
   // how the match plays out.
@@ -167,6 +181,12 @@ export class Game {
   }
 
   handleSimEvent(type, data) {
+    // A royale has hits and kills every step: hitstop and shake would never
+    // stop, and damage numbers would bury the arena. Sparks stay, and growth shows.
+    if (this.sim.royale) {
+      this.handleRoyaleEvent(type, data);
+      return;
+    }
     const { effects, sound } = this;
     const hs = CONFIG.hitstop;
 
@@ -212,10 +232,10 @@ export class Game {
         this.hitstop = Math.max(this.hitstop, hs.parry);
         break;
       case 'ability': {
-        const { ball, phase, shake, burst } = data;
+        const { ball, phase, shake, burst, pos = ball.pos } = data;
         sound.ability(phase, shake);
         if (shake) effects.shake(shake);
-        if (burst) effects.burst(ball.pos, burst.color ?? ball.color, burst);
+        if (burst) effects.burst(pos, burst.color ?? ball.color, burst);
         break;
       }
       case 'upgrade': {
@@ -233,6 +253,56 @@ export class Game {
         break;
       case 'end':
         sound.end(data.winner !== null);
+        this.onMatchEnd(this.sim);
+        break;
+    }
+  }
+
+  // Effects for a royale (see handleSimEvent): sparks sized to the balls
+  // involved, a flash of the killer's colour when it grows, and no hitstop.
+  handleRoyaleEvent(type, data) {
+    const { effects, sound } = this;
+    switch (type) {
+      case 'hit': {
+        const { attacker, target, damage, crit, point } = data;
+        sound.hit(damage, attacker.weapon.constructor.id);
+        effects.burst(point, crit ? '#ffd23f' : target.color, { count: 6, size: 3 * target.size, speed: 220 * target.size });
+        if (crit) sound.crit();
+        break;
+      }
+      case 'damage': {
+        const { target, color = '#ffffff' } = data;
+        effects.burst(target.pos, color, { count: 3, speed: 160 * target.size, life: 0.3, size: 2 * target.size });
+        break;
+      }
+      case 'block':
+      case 'parry':
+        if (type === 'block') sound.block();
+        else sound.parry();
+        effects.burst(data.point, '#ffd966', { count: 6, speed: 320, life: 0.3, size: 2.5 });
+        break;
+      case 'ability':
+      case 'upgrade': {
+        const { ball, phase, burst, pos = ball.pos } = data;
+        if (type === 'ability') sound.ability(phase, 0);
+        else sound.upgrade(phase, 0);
+        if (burst) effects.burst(pos, burst.color ?? ball.color, burst);
+        break;
+      }
+      case 'death': {
+        const { ball } = data;
+        effects.burst(ball.pos, ball.color, { count: 40, speed: 450 * ball.size, life: 0.8, size: 4 * ball.size });
+        sound.death();
+        break;
+      }
+      case 'grow': {
+        const { ball } = data;
+        effects.burst(ball.pos, ball.color, { count: 24, speed: 260 * ball.size, life: 0.5, size: 3 * ball.size });
+        break;
+      }
+      case 'end':
+        sound.end(data.winner !== null);
+        effects.shake(10);
         this.onMatchEnd(this.sim);
         break;
     }

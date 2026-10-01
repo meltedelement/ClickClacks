@@ -36,10 +36,10 @@ export class Status {
     return false;
   }
 
-  // True while the ball can't deal damage: its weapon hits do nothing and its
-  // non-weapon damage (spikes, thorns, burns it caused...) is skipped.
-  get stunned() {
-    return false;
+  // Multiplies all damage the ball deals: its weapon hits and its non-weapon
+  // damage (spikes, thorns, burns it caused...).
+  get damageDealtMultiplier() {
+    return 1;
   }
 
   // ---- Hooks ----------------------------------------------------------------

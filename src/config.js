@@ -21,6 +21,26 @@ export const CONFIG = {
     parryKnockback: 1.3,
   },
 
+  // A match still going `after` sim seconds in goes to sudden death: every
+  // `interval` seconds each ball loses `damage` HP, plus `ramp` more per tick,
+  // until one drops. Armor, dodge and upgrades don't apply. A match can set its
+  // own `after`, or turn it off with null (see Simulation).
+  suddenDeath: { after: 120, interval: 1, damage: 2, ramp: 1 },
+
+  // Royale: a crowd of balls in one big arena. A kill hands the victim's mass
+  // to the killer, and a ball's size (radius, blade length, shields) is
+  // mass ** sizeExponent, so kills make it bigger. Max HP and damage dealt are
+  // multiplied by size ** hpScaling and size ** damageScaling (0 = don't
+  // scale). See Simulation's `royale` option and Ball.grow.
+  royale: {
+    spacing: 190, // arena units of side per sqrt(ball): the arena is spacing * sqrt(count) square
+    sizeExponent: 1 / 3, // size from mass; 1/2 would keep area equal to mass, but the last two would fill the arena
+    hpScaling: 1,
+    damageScaling: 0.5,
+    // Sudden death starts at base + perBall * count sim seconds.
+    suddenDeath: { base: 60, perBall: 1.2 },
+  },
+
   // Brief freeze on impact to make hits feel heavy. Purely visual, lives in the game loop.
   hitstop: { base: 0.035, perDamage: 0.008, max: 0.18, parry: 0.03, crit: 0.12 },
 };

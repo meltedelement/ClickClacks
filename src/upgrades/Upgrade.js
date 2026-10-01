@@ -1,4 +1,4 @@
-import { distance } from '../sim/math.js';
+import { nearestEnemy, withinRange } from '../sim/targeting.js';
 
 // Base class for a roguelike upgrade: a permanent change to one fighter that's
 // in effect for the whole match. Upgrades are chosen outside the sim and passed
@@ -134,6 +134,7 @@ export class Upgrade {
   preventHit(attackerWeapon, sim) { return false; } // return true to cancel a weapon hit on this ball
   onWallBounce(sim) {} // this ball bounced off a wall
   onBump(otherBall, sim) {} // this ball's body touched another ball (every step they touch)
+  onGrow(factor) {} // royale: this ball grew by `factor`; scale any px you're holding on to (see Ball.grow)
   allowsAbilityStart(ability, sim) { return true; } // return false to hold an ability of this weapon back from starting
   onAbilityStart(ability, sim) {}
   onAbilityEnd(ability, sim) {}
@@ -146,18 +147,15 @@ export class Upgrade {
 
   // ---- Helpers --------------------------------------------------------------
 
+  // See src/sim/targeting.js for how enemies are measured.
   nearestEnemy(sim) {
-    let nearest = null;
-    let best = Infinity;
-    for (const ball of sim.aliveBalls) {
-      if (ball === this.owner) continue;
-      const d = distance(ball.pos, this.owner.pos);
-      if (d < best) {
-        best = d;
-        nearest = ball;
-      }
-    }
-    return nearest;
+    return nearestEnemy(this.owner, sim);
+  }
+
+  // The nearest enemy if it's within `range` (px, grown in a royale), else null.
+  enemyWithin(sim, range) {
+    const enemy = nearestEnemy(this.owner, sim);
+    return enemy && withinRange(this.owner, enemy, range) ? enemy : null;
   }
 
   // Tell the game something visual happened; sent as an 'upgrade' event.

@@ -6,13 +6,15 @@
 //   -g, --games N         matches per pairing (default 500, sides alternate)
 //   -w, --weapons a,b,c   fighters to test (default: every weapon, no upgrades).
 //                         A fighter is a weapon id, optionally with upgrades:
-//                         sword+extra-blade+lifesteal. Upgrades stack: repeat
+//                         sword+crit+lifesteal. Upgrades stack: repeat
 //                         an id or add :N, e.g. sword+damage:3+crit
 //   -T, --transformations every transformation (sword+stalwart, mace+devil, ...) as a
 //                         fighter, all fighting each other. Ignored if -w is given
 //   -l, --list            list weapon and upgrade ids (by weapon)
 //   -m, --mirror          also run mirror matches (sword vs sword, ...)
 //   -t, --time-limit S    simulated seconds before a match is called a draw (default 180)
+//   -d, --sudden-death S  simulated seconds before sudden death starts, or "off"
+//                         (default: CONFIG.suddenDeath.after)
 //   -s, --seed N          base seed; the same seed and options give the same results
 //   -j, --jobs N          worker threads (default: CPU cores - 1)
 //       --json FILE       write the full summary as JSON
@@ -24,7 +26,7 @@
 //   npm run balance -- -T -g 200 --seed 1 --json transformations.json
 //   npm run balance -- -g 5000 -w sword,mace --csv matches.csv
 //   npm run balance -- -g 1000 --seed 42 --json before.json
-//   npm run balance -- -g 2000 -w sword,sword+extra-blade,spear,mace,daggers
+//   npm run balance -- -g 2000 -w sword,sword+lifesteal,spear,mace,daggers
 //   npm run balance -- -g 1000 -w spear,spear+crit:2+crit-damage,mace
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -46,18 +48,18 @@ const DT = 1 / CONFIG.physicsHz;
 
 // ---- Worker: running matches -------------------------------------------------
 
-function runTask({ pairIndex, a, b, start, count, seed, timeLimit }) {
+function runTask({ pairIndex, a, b, start, count, seed, timeLimit, suddenDeath }) {
   const records = [];
   for (let game = start; game < start + count; game++) {
     const matchSeed = mixSeed(seed, hashString(`${a}|${b}`), game);
     const lineup = game % 2 === 0 ? [a, b] : [b, a];
-    records.push({ pairIndex, game, ...runMatch(lineup, matchSeed, timeLimit) });
+    records.push({ pairIndex, game, ...runMatch(lineup, matchSeed, timeLimit, suddenDeath) });
   }
   return records;
 }
 
 // `lineup` is fighter specs, e.g. ['sword+lifesteal', 'mace'].
-function runMatch(lineup, seed, timeLimit) {
+function runMatch(lineup, seed, timeLimit, suddenDeath) {
   // Everything random in the sim goes through Math.random, so seeding it makes matches reproducible.
   Math.random = mulberry32(seed);
 
@@ -78,7 +80,7 @@ function runMatch(lineup, seed, timeLimit) {
   }));
   let firstHit = -1;
 
-  const sim = new Simulation(lineup.map(parseFighter), { onEvent });
+  const sim = new Simulation(lineup.map(parseFighter), { onEvent, suddenDeath });
   const slot = (ball) => sim.balls.indexOf(ball);
   const weaponStats = ({ weapon }) => ({ damage: weapon.damage, spinSpeed: weapon.spinSpeed, length: weapon.length });
   const start = sim.balls.map(weaponStats);
@@ -98,7 +100,8 @@ function runMatch(lineup, seed, timeLimit) {
       }
       if (firstHit < 0) firstHit = a;
       fighters[t].worstDeficit = Math.max(fighters[t].worstDeficit, e.attacker.hp - e.target.hp);
-    } else if (type === 'damage') {
+    } else if (type === 'damage' && e.source) {
+      // Sudden death has no source: it isn't anyone's damage and hits both sides alike.
       const s = slot(e.source);
       const t = slot(e.target);
       fighters[s].damageDealt += e.dealt;
@@ -128,6 +131,7 @@ function runMatch(lineup, seed, timeLimit) {
   return {
     seed,
     time: sim.time,
+    suddenDeath: sim.inSuddenDeath,
     winner: sim.over && sim.winner ? slot(sim.winner) : -1,
     firstHit,
     fighters: sim.balls.map((ball, i) => ({
@@ -151,7 +155,8 @@ async function main() {
 
   console.log(
     `${opts.games} matches per pairing x ${pairings.length} pairings = ${total} matches` +
-      `  (${jobs} workers, seed ${opts.seed}, time limit ${opts.timeLimit}s)\n`,
+      `  (${jobs} workers, seed ${opts.seed}, time limit ${opts.timeLimit}s, ` +
+      `sudden death ${opts.suddenDeath === null ? 'off' : `${opts.suddenDeath}s`})\n`,
   );
 
   const started = performance.now();
@@ -184,6 +189,7 @@ function readOptions() {
       list: { type: 'boolean', short: 'l', default: false },
       mirror: { type: 'boolean', short: 'm', default: false },
       'time-limit': { type: 'string', short: 't', default: '180' },
+      'sudden-death': { type: 'string', short: 'd' },
       seed: { type: 'string', short: 's' },
       jobs: { type: 'string', short: 'j' },
       json: { type: 'string' },
@@ -219,6 +225,7 @@ function readOptions() {
     weapons,
     mirror: values.mirror,
     timeLimit: positiveNumber(values['time-limit'], 'time-limit'),
+    suddenDeath: readSuddenDeath(values['sudden-death']),
     seed: values.seed !== undefined ? toUint32(values.seed) : (Math.random() * 2 ** 32) >>> 0,
     jobs: values.jobs ? positiveInt(values.jobs, 'jobs') : Math.max(1, availableParallelism() - 1),
     json: values.json,
@@ -291,11 +298,11 @@ function buildPairings(weapons, mirror) {
   return pairings;
 }
 
-function buildTasks(pairings, { games, seed, timeLimit }) {
+function buildTasks(pairings, { games, seed, timeLimit, suddenDeath }) {
   const tasks = [];
   pairings.forEach(([a, b], pairIndex) => {
     for (let start = 0; start < games; start += CHUNK_SIZE) {
-      tasks.push({ pairIndex, a, b, start, count: Math.min(CHUNK_SIZE, games - start), seed, timeLimit });
+      tasks.push({ pairIndex, a, b, start, count: Math.min(CHUNK_SIZE, games - start), seed, timeLimit, suddenDeath });
     }
   });
   return tasks;
@@ -356,7 +363,7 @@ function summarise(records, pairings, opts) {
     winnerHp: 0,
     lengths: [],
   }));
-  const totals = { matches: records.length, draws: 0, decided: 0, firstSlotWins: 0, firstHitWins: 0, comebacks: 0, lengths: [] };
+  const totals = { matches: records.length, draws: 0, suddenDeaths: 0, decided: 0, firstSlotWins: 0, firstHitWins: 0, comebacks: 0, lengths: [] };
 
   for (const r of records) {
     const m = matchups[r.pairIndex];
@@ -364,6 +371,7 @@ function summarise(records, pairings, opts) {
     m.games++;
     m.lengths.push(r.time);
     totals.lengths.push(r.time);
+    if (r.suddenDeath) totals.suddenDeaths++;
 
     if (!winner) {
       m.draws++;
@@ -428,7 +436,7 @@ function summarise(records, pairings, opts) {
   }
 
   return {
-    run: { games: opts.games, weapons: ids, mirror: opts.mirror, timeLimit: opts.timeLimit, seed: opts.seed },
+    run: { games: opts.games, weapons: ids, mirror: opts.mirror, timeLimit: opts.timeLimit, suddenDeath: opts.suddenDeath, seed: opts.seed },
     totals: finishTotals(totals),
     weapons: Object.fromEntries(Object.entries(weapons).map(([id, w]) => [id, finishWeapon(w)])),
     matchups: matchups.map(finishMatchup),
@@ -504,6 +512,7 @@ function finishTotals(t) {
   return {
     matches: t.matches,
     draws: t.draws,
+    suddenDeathRate: t.suddenDeaths / (t.matches || 1),
     firstSlotWinRate: t.decided ? t.firstSlotWins / t.decided : null,
     firstHitWinRate: t.decided ? t.firstHitWins / t.decided : null,
     comebackRate: t.decided ? t.comebacks / t.decided : null,
@@ -613,6 +622,7 @@ function printSummary({ run, totals, weapons, matchups, matrix }) {
   heading('Overall');
   const l = totals.length;
   console.log(`  Matches           ${totals.matches}  (${totals.draws} draws)`);
+  console.log(`  Sudden death      ${pctText(totals.suddenDeathRate)}  (matches that went on long enough to reach it)`);
   console.log(`  Match length      avg ${num(l.mean)}s, median ${num(l.median)}s, range ${num(l.min)}–${num(l.max)}s`);
   console.log(`  First hit -> win  ${pctText(totals.firstHitWinRate)}  (high = snowbally, 50% = first hit means nothing)`);
   console.log(`  Comeback wins     ${pctText(totals.comebackRate)}  (winner was ${COMEBACK_HP}+ HP behind at some point)`);
@@ -714,6 +724,12 @@ function positiveInt(text, label) {
   const n = Number(text);
   if (!Number.isInteger(n) || n < 1) fail(`--${label} must be a whole number above 0 (got "${text}")`);
   return n;
+}
+
+// Seconds before sudden death, or null for "off". Left out, the game's default.
+function readSuddenDeath(text) {
+  if (text === undefined) return CONFIG.suddenDeath.after;
+  return text === 'off' ? null : positiveNumber(text, 'sudden-death');
 }
 
 function positiveNumber(text, label) {

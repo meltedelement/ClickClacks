@@ -10,16 +10,32 @@ npm install
 npm run dev      # opens a dev server with hot reload
 ```
 
-To run the game and the [quiz](quiz/README.md) together, one command starts
-both and points the quiz at the match API for you:
+The repo holds three separate programs that talk only through JSON APIs:
+
+```
+quiz/ (or any driver) ──Tournament API──▶ tournament/ ──Game API──▶ the game (sim + display page)
+```
+
+- **The game** plays matches. Any program can queue matches on it over the
+  [match API](#match-api-tournaments) (`api/game.d.ts`); a display page plays
+  them on screen and reports each result.
+- **The [tournament service](tournament/README.md)** runs tournaments (double
+  elimination, single elimination, round robin) over the Tournament API
+  (`api/tournament.d.ts`). It sends every match to the game and reports the
+  brackets and results back. It knows nothing about quizzes.
+- **The [quiz](quiz/README.md)** is one program that drives the tournament
+  service: its teams are the entrants, and its battle breaks start the stages.
+
+To run all three together, one command starts them and points each at the
+next for you:
 
 ```sh
 npm install && (cd quiz && npm install)
-npm run dev:all    # hot reload: game 5173 (display), quiz client 5174, quiz API 3001
-npm run start:all  # builds both, then serves: game 3002, quiz 3001
+npm run dev:all    # hot reload: game 5173 (display), tournament API 3003, quiz client 5174, quiz API 3001
+npm run start:all  # builds the game and the quiz, then serves: game 3002, tournament API 3003, quiz 3001
 ```
 
-Either server stopping stops the other, and Ctrl-C stops everything. The
+Any server stopping stops the others, and Ctrl-C stops everything. The
 terminal shows only the two host pages, the admin key and the address teams
 join at; the servers' own output appears only for errors, or if a server fails
 (`npm run dev:all -- --verbose` shows all of it). Then open
@@ -29,14 +45,31 @@ the quiz's two host pages (`:3001` instead of `:5174` when built):
   and switches to it by itself while a battle stage plays.
 - Admin: `http://localhost:5174/admin`. The host drives the quiz from here.
 
-You can also start the two by hand. Then set `GAME_API` on the quiz server so
-that it finds the game (`GAME_API=http://localhost:5173/api npm run dev` in
-`quiz/`, or the built `:3002`).
+You can also start them by hand. Then set `GAME_API` on the tournament service
+so that it finds the game (`GAME_API=http://127.0.0.1:5173/api npm start` in
+`tournament/`, or the built `:3002`), and `TOURNAMENT_API` on the quiz server
+(default `http://127.0.0.1:3003/api`).
 
 Each fighter is a random weapon by default (rerolled every match, never a mirror
 match). The menu button in the top right can pin a specific weapon per fighter, add and
 remove upgrades per fighter (a Random fighter can only take upgrades that fit any weapon),
-and has restart, pause, speed, hitboxes, auto rematch, sound, and fullscreen.
+set the number of fighters (2–8, free-for-all) and a number of random upgrades each fighter
+rolls every match on top of its picked ones (never transformations), and has restart, pause, speed, hitboxes, auto rematch, sound, and fullscreen.
+**Arenas** (type any number) plays that many matches side by side, each rolling its own random
+fighters and upgrades; the other settings apply to every arena.
+
+**Royale** (the menu's Mode setting, or open the page with `?royale` / `?royale=150`) is a
+battle royale: a crowd of random fighters (**Balls**, 3–1000, plus the random upgrades
+setting) spread over one big arena. **Weapon mix** sets each weapon's share of the balls:
+shares are relative (60/40 is the same as 3/2), 0 leaves a weapon out, and each row shows
+the balls it works out to; **Even** resets it. `&mix=sword:60,spear:40` in the URL sets it
+too (weapons left out get none). When a ball knocks
+another out it takes the loser's mass and grows: its ball, blades and shields get bigger
+(size is mass^⅓), and its max HP and damage go up with its size. It plays down to the
+last two and then a winner. The numbers are in `CONFIG.royale` (`src/config.js`). A
+hundred balls run comfortably; a few hundred work, but the first seconds get heavy
+(`node tools/bench-render.js --royale=300` measures it). Royale is only on the main
+page: the match API and display page play normal matches.
 
 Shortcuts: **Space** pause, **R** restart, **H** hitboxes, **M** mute, **F** fullscreen, **Esc** close menu.
 
@@ -67,19 +100,20 @@ node tools/bench-render.js --screens=4 --storm=40 --quality=2        # sustained
 
 ```
 src/
-  config.js            Global tuning: arena size, ball speed/HP, knockback, hitstop
-  main.js              Entry point, wires Game + Controls together
+  config.js            Global tuning: arena size, ball speed/HP, knockback, sudden death, hitstop
+  main.js              Entry point, wires Arenas (or the display) + Controls together
   styles.css
   sim/                 Pure match logic, no DOM. Runs in the browser or in Node.
     Simulation.js      Spawning, the step loop, hits/parries/winner, emits events
     Ball.js            Movement, HP, hit cooldowns, statuses, drawing the ball
     Status.js          Base class for timed effects on a ball (burning, netted...)
     collisions.js      Wall bounce, ball-vs-ball, weapon-vs-ball, weapon-vs-weapon
+    broadphase.js      Which balls are near each other, so a royale's pair loops stay fast
     math.js            Vector + segment geometry helpers
     random.js          Seeded Math.random replacement for reproducible matches
   weapons/
     Weapon.js          Base class every weapon extends
-    Sword.js, Spear.js, Mace.js, Daggers.js
+    Sword.js, Spear.js, Mace.js, Daggers.js, Drone.js
                        One file per weapon: stats, scaling, and how it's drawn
     Shield.js          Off-hand shield that blocks enemy weapons
     OffhandSword.js    A shield shaped like a short sword (Dual Wielder)
@@ -88,10 +122,11 @@ src/
     Ability.js         Base class for special moves on a cooldown
     SpinSwipe.js       Sword: one rapid full spin for bonus damage
     ChargeDash.js      Spear: stop, aim, lunge for bonus damage
-    SpearThrow.js      Spear (Olympian): stop, aim, throw the spear round a loop back to hand
+    SpearThrow.js      Spear (Olympian): stop, aim, throw the spear into the wall, dash after it
     DropSlam.js        Mace: from high up, plunge to the floor; damage grows with the fall
     DashFlurry.js      Daggers: gather both blades, then three rapid dashes
     Buzzsaw.js         Daggers (Saw): launch the blades as a saw that chases the enemy
+    Swarm.js           Drone: every drone attacks straight away, and they fly faster
   upgrades/
     Upgrade.js         Base class for roguelike upgrades applied from a loadout
     common.js          Small upgrades any weapon can take
@@ -114,26 +149,41 @@ src/
     Sound.js           Sound effects, synthesised with Web Audio (no audio files)
   ui/
     Controls.js        Menu + keyboard shortcuts
+    Arenas.js          The main page's grid of arenas (the menu's Arenas setting)
     TournamentDisplay.js
                        Display mode (?display): plays up to four queued matches at once
+  flawless/            The flawless finder (flawless.html and tools/flawless.js)
+    search.js          The search, pure like the sim; shared by the page and the CLI
+    worker.js          Web Worker that runs the search for the page
+    main.js            The finder page: search form, finds, an arena to watch them in
 server/
   matches.js           Match API: queue matches over HTTP, get results back
   index.js             Serves the built game + the match API (npm start)
-  api.d.ts             TypeScript types for programs calling the match API
+api/
+  game.d.ts            The Game API contract: types for programs calling the match API
+  tournament.d.ts      The Tournament API contract: types for programs driving tournaments
+tournament/            The tournament service (its own README): formats, runner, HTTP API
+quiz/                  The quiz (its own README), a Tournament API client
 tools/
   balance.js           Headless batch balance tester (win rates + combat stats)
   bench-render.js      Headless frame benchmark for the browser loop (effects load)
+  sweep.js             Upgrade sweep: outlier upgrades, transformations and stacks per weapon
+  flawless.js          Finds seeded matches won without taking a hit, to replay on the display
+  headless-display.js  Plays queued matches like a display page, without a browser
+  run-all.js           npm run dev:all / start:all: game, tournament service and quiz together
 ```
 
 ## Match API (tournaments)
 
-Another program (such as the quiz server) can queue matches over HTTP. A
-display page plays them live, and each result goes back to that program. The
-display page decides the official result, so the recorded winner is always the
-one the audience saw. The quiz server in `quiz/` is the reference caller: at the
-battle phase it runs a knockout tournament through this API. It sends the
-matches of a round one bracket at a time (winners bracket first), and the
-display plays up to four of them at the same time (see `quiz/README.md`).
+Another program can queue matches over HTTP. A display page plays them live,
+and each result goes back to that program. The display page decides the
+official result, so the recorded winner is always the one the audience saw.
+The game knows nothing about tournaments: any tournament system can drive it.
+The [tournament service](tournament/README.md) in `tournament/` is the
+reference caller. It sends the matches of each stage in order, and the display
+plays up to four of them at the same time. To test a caller without a browser,
+`node tools/headless-display.js` connects as a display page and plays every
+match with the real sim.
 
 ```sh
 npm run dev                  # API at http://localhost:5173/api, display at http://localhost:5173/?display
@@ -156,7 +206,7 @@ down or pause background tabs, so keep the display tab visible. Then, from the
 calling program:
 
 ```ts
-import type { Match, MatchRequest } from './api'; // copy of server/api.d.ts
+import type { Match, MatchRequest } from './api'; // copy of api/game.d.ts
 
 const API = 'http://localhost:3002/api';
 const request: MatchRequest = {
@@ -171,7 +221,7 @@ const queued: Match = await res.json();
 
 // Holds the request open until the match has been played on screen.
 const done: Match = await (await fetch(`${API}/matches/${queued.id}?wait=1`)).json();
-console.log(done.result); // { winner: 0 | 1 | null, winnerName, reason: 'ko' | 'time' | 'hp', time, hp }
+console.log(done.result); // { winner: 0 | 1 | null, winnerName, reason: 'ko' | 'time' | 'hp', time, hp, ranking }
 ```
 
 ### API reference
@@ -179,13 +229,14 @@ console.log(done.result); // { winner: 0 | 1 | null, winnerName, reason: 'ko' | 
 Everything is JSON over HTTP under `/api`. Request bodies must be a JSON object
 (an empty body counts as `{}`) of at most 64 KB. CORS is open (`Access-Control-Allow-Origin: *`),
 so a page on another local port can call it. TypeScript types for every shape
-below are in [`server/api.d.ts`](server/api.d.ts); copy that file into the caller.
+below are in [`api/game.d.ts`](api/game.d.ts); copy that file into the caller.
 
 | Route | |
 | --- | --- |
 | `POST /api/matches` | Queue a match. |
+| `POST /api/validate` | Check fighters without queueing anything: the same checks as `POST /api/matches`. |
 | `GET /api/matches/:id` | One match. Add `?wait=1` to hold the request until it is `done` or `cancelled`. |
-| `GET /api/matches` | Every match since the server started, in the order queued. |
+| `GET /api/matches` | Every match since the server started, in the order queued. `?ref=` keeps the matches with that `ref`, `?status=` those in that status. |
 | `DELETE /api/matches/:id` | Cancel a match that is queued or playing. If it's on screen, it stops. |
 | `GET /api/status` | Displays connected, the matches on screen and the queue length. |
 | `GET /api/catalog` | Weapon, upgrade and transformation ids, for building menus or offers. |
@@ -196,10 +247,12 @@ Request body (`MatchRequest`):
 
 | Field | Type | |
 | --- | --- | --- |
-| `fighters` | `[Fighter, Fighter]` | Required, exactly two. `result.winner` indexes into this list. |
+| `fighters` | `Fighter[]` | Required, two or more. More than two is a free-for-all; there is no upper limit, but past about ten the balls start on a wider ring, and past about fourteen they start touching. `result.winner` indexes into this list. |
+| `ref` | string \| `null` | Optional, at most 200 characters. Your own tag, echoed on the match, e.g. a tournament's match id. `GET /api/matches?ref=` finds the match by it. |
 | `seed` | integer | Optional, 0 to 2³² − 1. The same seed and fighters give the same fight. Random if left out. |
 | `timeLimit` | number | Optional, sim seconds above 0 and at most 600. Default 180. |
 | `tiebreak` | `'hp'` \| `null` | Optional. With `'hp'` the match never ends in a draw: at `timeLimit`, or after a double KO, the fighter with the larger share of its max HP left wins. An exact tie is a coin flip from the match seed, so it is the same on every display. The banner says "WINS ON HP". Default `null`. |
+| `suddenDeath` | number \| `null` | Optional, sim seconds from 0 to 600 before sudden death starts: from then on both fighters lose HP every second, a little more each second (`CONFIG.suddenDeath`), until one drops. It ignores armor, dodging and upgrades. The one with more HP outlasts the other; only fighters level on HP go down together (a draw, or the `hp` tiebreak). A sudden-death knockout is `reason: 'ko'`. `null` turns it off. Default 120. |
 
 A fighter (`FighterInput`):
 
@@ -218,6 +271,7 @@ Success is a **201** with the new `Match`:
 ```json
 {
   "id": "5f0c3a1e-8d4b-4b8e-9a52-1c7e2f6a9d10",
+  "ref": null,
   "status": "queued",
   "fighters": [
     { "name": "Alpha", "color": "#e5484d", "weapon": "sword", "upgrades": ["damage", "damage", "lifesteal"], "transformations": ["captain"] },
@@ -226,6 +280,7 @@ Success is a **201** with the new `Match`:
   "seed": 2894113750,
   "timeLimit": 180,
   "tiebreak": null,
+  "suddenDeath": 120,
   "screen": null,
   "queuedAt": "2026-09-28T14:03:11.204Z",
   "startedAt": null,
@@ -242,11 +297,13 @@ neither was given), `color` is `null` when not given, and `upgrades` and `transf
 | Field | Type | |
 | --- | --- | --- |
 | `id` | string | UUID. |
+| `ref` | string \| `null` | Your tag from the request. |
 | `status` | `'queued'` \| `'playing'` \| `'done'` \| `'cancelled'` | See the lifecycle below. |
-| `fighters` | `[Fighter, Fighter]` | `{ name: string \| null, color: string \| null, weapon: string, upgrades: string[], transformations: string[] }`. |
+| `fighters` | `Fighter[]` | `{ name: string \| null, color: string \| null, weapon: string, upgrades: string[], transformations: string[] }`. |
 | `seed` | integer | The seed the fight is played with, whether you passed it or not. |
 | `timeLimit` | number | Sim seconds before a draw is called. |
 | `tiebreak` | `'hp'` \| `null` | As requested. |
+| `suddenDeath` | number \| `null` | Sim seconds before sudden death starts, or `null` for none. |
 | `screen` | integer \| `null` | The display screen (0 to `screens` − 1) the match plays on. `null` while it waits for a free screen. It keeps the number after the match ends. |
 | `queuedAt` | ISO timestamp | |
 | `startedAt` | ISO timestamp \| `null` | When a display started it. Reset to `null` if it goes back to `queued`. |
@@ -257,11 +314,12 @@ neither was given), `color` is `null` when not given, and `upgrades` and `transf
 
 | Field | Type | |
 | --- | --- | --- |
-| `winner` | `0` \| `1` \| `null` | Index into `fighters`, or `null` for a draw. |
+| `winner` | integer \| `null` | Index into `fighters`, or `null` for a draw. |
 | `winnerName` | string \| `null` | The winner's `name`, or its weapon id if it has no name. `null` for a draw. |
 | `reason` | `'ko'` \| `'time'` \| `'hp'` | `'time'` when nobody had won at `timeLimit`. `'hp'` when the `hp` tiebreak picked the winner. Otherwise `'ko'`. |
 | `time` | number | Sim seconds the match lasted. |
-| `hp` | `[number, number]` | HP left per fighter, in `fighters` order. |
+| `hp` | `number[]` | HP left per fighter, in `fighters` order. |
+| `ranking` | `number[]` | Fighter indices from first place to last: the winner, then fighters still standing (most HP share first), then the knocked out, last out first. For placing a free-for-all. |
 
 A draw is `winner: null`. It is usually `reason: 'time'`, but two fighters
 knocked out in the same step is also a draw, with `reason: 'ko'`. Check
@@ -280,7 +338,16 @@ match never plays and the wait never ends, so check `/api/status` first.
 #### `GET /api/matches`
 
 Returns `Match[]`, oldest first, including finished and cancelled matches. The
-server keeps them all until it restarts.
+server keeps them all until it restarts. `?ref=x` keeps the matches queued with
+`ref: "x"`, and `?status=playing` (or any status) those in that status. A caller
+that crashed between queueing a match and saving its id can find it this way.
+
+#### `POST /api/validate`
+
+Body `{ fighters: FighterInput[] }` (any number). Nothing is queued. Returns
+one entry per fighter, in order: `{ fighters: [{ valid: true, error: null }, { valid: false, error: 'Unknown weapon: axe' }] }`.
+The checks are the ones `POST /api/matches` makes, so a caller never has to
+copy the game's loadout rules.
 
 #### `DELETE /api/matches/:id`
 
@@ -362,7 +429,7 @@ calling program. They are listed for anyone writing another display.
 | --- | --- |
 | `GET /api/display` | A server-sent event stream. Each message's `data` is `{ screens: (Match \| null)[] }`: the match on each screen, or `null` for a free screen. One is sent on connecting and another whenever a screen changes. A `: ping` comment goes out every 20 seconds. |
 | `POST /api/matches/:id/start` | The display started playing the match. Moves it to `playing`. Only a match on a screen is accepted (409 otherwise). Safe to repeat. |
-| `POST /api/matches/:id/result` | Body `{ winner: 0 \| 1 \| null, time: number, hp: [number, number], decidedBy?: 'ko' \| 'hp' }`. Marks the match `done` and builds `result` (the server works out `winnerName` and `reason`). `decidedBy: 'hp'` needs a winner and a match with the `hp` tiebreak. The first result in wins: a later one for a finished match just returns it. 409 if the match is not on a screen, 400 for a malformed body. |
+| `POST /api/matches/:id/result` | Body `{ winner: number \| null, time: number, hp: number[], decidedBy?: 'ko' \| 'hp', ranking?: number[] }`. Without `ranking`, the server ranks the winner first and the rest by HP left. Marks the match `done` and builds `result` (the server works out `winnerName` and `reason`). `decidedBy: 'hp'` needs a winner and a match with the `hp` tiebreak. The first result in wins: a later one for a finished match just returns it. 409 if the match is not on a screen, 400 for a malformed body. |
 
 ### Lifecycle
 
@@ -492,7 +559,9 @@ every step:
 
 Hooks: `shouldActivate`, `onStart`, `onUpdate`, `onEnd`, `onHit`, `onParry`,
 `onOwnerHit` (the ability's ball got hit), and `draw(ctx)` / `drawOver(ctx)` for visuals, drawn
-underneath / on top of the balls. `nearestEnemy(sim)` is a handy helper for targeting, and
+underneath / on top of the balls. `nearestEnemy(sim)` is a handy helper for targeting;
+for "only when an enemy is close" use `enemyWithin(sim, range)` (upgrades have both too),
+which grows the range with the ball in a royale (see `src/sim/targeting.js`). And
 `target.clearHitCooldown(this.weapon)` lets a rapid multi-hit move land every hit.
 `ChargeDash.js` is the most complete example, with multiple phases, aiming,
 movement control, and cancelling.
@@ -581,10 +650,10 @@ A status is a timed effect on a ball, usually put there by an enemy's upgrade: F
 Eater's `Burning` deals damage over time and Gladiator's `Netted` slows the ball and
 makes it take more damage. Tackler's `GuardBroken` sets `guardBroken`, so the ball's weapon and
 shields stop blocking, and Poseidon's `Impaled` pins the ball to the trident's tip. Crusher's
-`Stunned` sets `stunned`, so the ball deals no damage at all (its weapon hits pass through and
-`sim.dealDamage` skips it as a source), and Rubber Mace's `Bouncing` uses `onWallBounce(sim)`
+`Stunned` sets `damageDealtMultiplier`, which scales both the ball's weapon hits and the damage
+`sim.dealDamage` credits to it, and Rubber Mace's `Bouncing` uses `onWallBounce(sim)`
 to hurt the ball on every wall it hits. Extend `Status` (`src/sim/Status.js`), set the modifier
-getters (`speedMultiplier`, `damageTakenMultiplier`, `guardBroken`, `stunned`) and/or the hooks
+getters (`speedMultiplier`, `damageTakenMultiplier`, `damageDealtMultiplier`, `guardBroken`) and/or the hooks
 (`onUpdate(dt, sim)`, `onWallBounce(sim)`), and draw it in `draw(ctx)`. A ball holds one status of each class, so applying it again refreshes
 it. Guard damage with `sim.over` so nothing ticks after the match is decided.
 
@@ -627,6 +696,7 @@ npm run balance -- -T -g 200             # every transformation vs every other
 npm run balance -- --list                # weapon and upgrade ids
 npm run balance -- -s 42 --json a.json   # fixed seed: rerun after a tweak and compare
 npm run balance -- --csv matches.csv     # one row per match for your own analysis
+npm run balance -- -d off                # no sudden death (-d 90: start it at 90s)
 npm run balance -- --help                # all options
 ```
 
@@ -641,7 +711,73 @@ It prints:
 - **Scaling**: average weapon stats at the end of a match vs. at the start.
 - **Win matrix** and **Matchups**: every pairing's win rates, match length
   (average, median, p10–p90), and how often the first hit decides the fight.
-- **Overall**: snowball factor (first hit -> win), comeback rate, spawn-side bias.
+- **Overall**: how many matches reached sudden death, snowball factor (first hit -> win), comeback rate, spawn-side bias.
 
 Win rates are red above 55% (60% for a single matchup) and cyan below 45% (40%).
+
+### Upgrade sweep
+
+`npm run sweep` looks for outliers among upgrades, transformations and stacks,
+per weapon and across weapons, at several upgrade levels. Every combination is
+far too many fighters, so it samples. For each tier (`U/T`: upgrade copies and
+transformations, default `1/0,3/0,6/1,10/2`) it draws a pool of random builds
+of every weapon at that tier, and candidates play the whole pool with the
+tournament's HP tiebreak:
+
+- **pick**: random bases one upgrade short of the tier, each completed with
+  every upgrade it can take. An upgrade's value is how many win % points its
+  builds gained over the other completions of the same base, so the weapon's own
+  strength cancels out. All completions of a base play the same seeds.
+- **transform**: the same with transformations.
+- **stack**: one upgrade N times (`--stack-levels`, default 1,3,5) against the
+  pool at N upgrades.
+
+```sh
+npm run sweep -- -n                              # plan size and a rough time, plays nothing
+npm run sweep                                    # ~90k matches, ~20 min on 12 cores
+npm run sweep -- -b 12 -g 4 -o sweeps/big.jsonl  # 4x the matches, half the error bars
+npm run sweep -- -w mace -S pick,stack --tiers 2/0,5/0
+npm run sweep -- -r sweeps/sweep-1.jsonl --json report.json   # reprint a finished sweep
+```
+
+Results go to `sweeps/sweep-<seed>.jsonl` as they come in; running the same
+command again resumes it. The report has weapon win rates per tier, a value
+table per weapon (and one across weapons for the shared upgrades), stacks, the
+best and worst builds, and a sorted list of outliers: cells more than
+`--threshold` points (default 5) off even at the edge of their 95% interval.
+Single-tier cells are noisier than the all-tier ones, so treat a lone flagged
+tier as a lead to check with `npm run balance`.
+
+### Flawless finder
+
+There's a page for it: with `npm run dev` running, open
+`http://localhost:5173/flawless.html` (or `/flawless.html` on `npm start`).
+List the fighters (`any` is a random build) and tick "Must win" on the one
+that has to win, press Search, and each find appears in a list you can watch in
+the page's own arena, queue on the display, or copy as JSON. The search runs in
+Web Workers on every core but one.
+
+From the command line, `npm run flawless` plays seeded matches until one is won
+by a fighter that never got hit: no enemy weapon hit landed and no HP was lost
+to anything else (thorns, burns, sudden death). Dodges and shield blocks don't
+count as hits. Plain weapons almost never manage it, so by default each fighter
+is a random build (a random weapon with up to 6 upgrades and 1 transformation);
+`-w` limits the search to fighters you list, written as for the balance tool.
+`any` in the list is a random build, and a `*` in front marks a fighter that
+must be the winner: every match then has one of them in it, and a match won by
+anyone else doesn't count. Each find prints its fighters, seed and a `POST
+/api/matches` body that replays it, and `--queue` sends it to the match API so
+an open `?display` page plays it. With nothing found it prints the closest
+miss. The page and the command share `src/flawless/search.js`, so the same seed
+and options find the same matches in both.
+
+```sh
+npm run flawless                                    # first flawless win among random builds
+npm run flawless -- -n 5 -s 1                       # five, reproducibly
+npm run flawless -- -w sword+damage:5,daggers,spear # only these fighters
+npm run flawless -- -w '*sword,any'                 # a plain sword beating a random build
+npm run flawless -- --queue                         # play finds on localhost:5173/?display
+npm run flawless -- --hits-only -f 4                # weapon hits only, four-way free-for-alls
+```
+
 Weapon numbers live in each weapon's file; everything shared lives in `src/config.js`.

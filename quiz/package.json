@@ -8,7 +8,7 @@
     "build": "vite build",
     "start": "node server/index.ts",
     "sync-catalog": "node scripts/sync-catalog.js",
-    "test": "node --test shared/battle.test.ts",
+    "test": "node --test shared/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

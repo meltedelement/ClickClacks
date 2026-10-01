@@ -9,6 +9,7 @@
 //   node tools/bench-render.js [--screens=4] [--seconds=20] [--seed=42] [--json]
 //                              [--fighters=2] [--storm=N] [--quality=N]
 //                              [--mode=display] [--visible=N] [--match-seconds=S]
+//                              [--royale=N]
 //
 // --storm=N spawns N synthetic sparks per screen per frame, to measure the
 // effects path on its own. --quality=N pins a quality level (0 high .. 3 minimal)
@@ -18,6 +19,7 @@
 // with the machine otherwise idle.
 
 import { mulberry32 } from '../src/sim/random.js';
+import { WEAPONS } from '../src/weapons/index.js';
 
 const args = new Map(
   process.argv.slice(2).map((a) => {
@@ -29,6 +31,8 @@ const SCREENS = Number(args.get('screens') ?? 4);
 const SECONDS = Number(args.get('seconds') ?? 20);
 const SEED = Number(args.get('seed') ?? 42);
 const FIGHTERS = Number(args.get('fighters') ?? 2);
+// --royale=N plays royales of N balls (every weapon in turn) instead of --fighters.
+const ROYALE = args.has('royale') ? Number(args.get('royale')) || 100 : 0;
 const STORM = Number(args.get('storm') ?? 0);
 const QUALITY = args.has('quality') ? Number(args.get('quality')) : null;
 const MODE = args.get('mode') ?? 'games'; // 'games' = N live arenas, 'display' = the real display page
@@ -208,11 +212,15 @@ const LOADOUTS = [
   { weapon: 'sword', name: 'BRAVO', color: '#4d8ce5', upgrades: ['piercer', 'wildling', 'thorns', 'crit'] },
   { weapon: 'spear', name: 'CHARLIE', color: '#e5c04d', upgrades: ['hoplite', 'tackler', 'dancer', 'health'] },
   { weapon: 'mace', name: 'DELTA', color: '#4de58c', upgrades: ['portaler', 'kamikaze', 'pilot', 'armor'] },
-  { weapon: 'daggers', name: 'ECHO', color: '#c04de5', upgrades: ['rogue', 'trickster', 'saw', 'extra-blade'] },
+  { weapon: 'daggers', name: 'ECHO', color: '#c04de5', upgrades: ['rogue', 'trickster', 'saw', 'multidexterous'] },
 ];
 
 let matchId = 0;
 function matchFor(screen, id) {
+  if (ROYALE) {
+    const fighters = Array.from({ length: ROYALE }, (_, j) => ({ weapon: WEAPONS[(screen + j) % WEAPONS.length].id }));
+    return { id: id ?? matchId++, seed: SEED + matchId, fighters, royale: true };
+  }
   const fighters = Array.from({ length: FIGHTERS }, (_, j) => LOADOUTS[(screen + j) % LOADOUTS.length]);
   return { id: id ?? matchId++, seed: SEED + matchId, fighters, timeLimit: 12, tiebreak: 'hp' };
 }

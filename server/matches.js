@@ -1,13 +1,15 @@
-// The match API: another program (the quiz/tournament server) queues matches
-// over HTTP, a display page plays them live, and the result goes back to
-// whoever asked. The display decides the official result, so what's on screen
-// is always what gets recorded. Types for callers are in api.d.ts.
+// The match API: another program (such as the tournament service in
+// tournament/) queues matches over HTTP, a display page plays them live, and
+// the result goes back to whoever asked. The display decides the official
+// result, so what's on screen is always what gets recorded. Types for callers
+// are in api/game.d.ts at the repo root.
 //
 // For the tournament program:
 //   GET    /api/catalog               weapons, upgrades and transformations the game knows
 //   GET    /api/status                displays connected, matches on screen, queue length
-//   POST   /api/matches               queue a match -> the match (201)
-//   GET    /api/matches               every match this server has seen
+//   POST   /api/validate              check fighters without queueing anything
+//   POST   /api/matches               queue a match (two fighters or more) -> the match (201)
+//   GET    /api/matches               every match this server has seen; ?ref= and ?status= filter
 //   GET    /api/matches/:id           one match; add ?wait=1 to hold the request until it's done
 //   DELETE /api/matches/:id           cancel a match that isn't done yet
 // For the display page (src/ui/TournamentDisplay.js):
@@ -25,6 +27,7 @@
 //
 // State lives in memory only: restarting the server forgets every match.
 import { randomUUID } from 'node:crypto';
+import { CONFIG } from '../src/config.js';
 import { WEAPONS, getWeaponById } from '../src/weapons/index.js';
 import { UPGRADES, getUpgradeById, resolveUpgrades } from '../src/upgrades/index.js';
 
@@ -33,6 +36,7 @@ const MAX_TIME_LIMIT = 600;
 const MAX_BODY = 64 * 1024;
 const MAX_COUNT = 100; // copies of one upgrade in the { id: count } form, whatever its maxStacks
 const HEX_COLOR = /^#[0-9a-f]{6}$/i; // a fighter's ball colour, e.g. a quiz team's colour
+const MAX_REF = 200; // characters in a caller's `ref` tag
 const PING_INTERVAL = 20_000; // keeps display connections open through proxies
 const MAX_SCREENS = 4; // the display lays out at most a 2×2 grid
 const SCREENS = Math.min(MAX_SCREENS, Math.max(1, Math.floor(Number(process.env.SCREENS ?? MAX_SCREENS)) || 1));
@@ -90,11 +94,15 @@ async function route(req, res, url) {
   if (method === 'GET' && url.pathname === '/api/catalog') return json(res, 200, catalog());
   if (method === 'GET' && url.pathname === '/api/status') return json(res, 200, status());
   if (method === 'GET' && url.pathname === '/api/display') return openDisplay(req, res);
+  if (url.pathname === '/api/validate') {
+    if (method !== 'POST') throw new ApiError(405, 'Use POST');
+    return json(res, 200, validate(await readBody(req)));
+  }
 
   if (resource !== 'matches' || parts.length > 3) throw new ApiError(404, 'Not found');
 
   if (!id) {
-    if (method === 'GET') return json(res, 200, [...matches.values()]);
+    if (method === 'GET') return json(res, 200, listMatches(url.searchParams));
     if (method === 'POST') return json(res, 201, queueMatch(await readBody(req)));
     throw new ApiError(405, 'Use GET or POST');
   }
@@ -148,17 +156,43 @@ function status() {
   };
 }
 
+// ?ref= keeps the matches a caller tagged that way, ?status= those in that status.
+function listMatches(params) {
+  const ref = params.get('ref');
+  const status = params.get('status');
+  return [...matches.values()].filter((match) => (ref === null || match.ref === ref) && (status === null || match.status === status));
+}
+
+// Checks fighters the way POST /api/matches does, without queueing anything,
+// so a caller can check a loadout without knowing the game's rules.
+function validate(body) {
+  if (!Array.isArray(body.fighters)) throw new ApiError(400, '"fighters" must be an array of fighters');
+  return {
+    fighters: body.fighters.map((input, i) => {
+      try {
+        parseFighter(input, i);
+        return { valid: true, error: null };
+      } catch (err) {
+        if (!(err instanceof ApiError)) throw err;
+        return { valid: false, error: err.message.replace(/^fighters\[\d+\](: |\.| )/, '') };
+      }
+    }),
+  };
+}
+
 function queueMatch(body) {
-  if (!Array.isArray(body.fighters) || body.fighters.length !== 2) {
-    throw new ApiError(400, '"fighters" must be an array of two fighters');
+  if (!Array.isArray(body.fighters) || body.fighters.length < 2) {
+    throw new ApiError(400, '"fighters" must be an array of two fighters or more');
   }
   const match = {
     id: randomUUID(),
+    ref: parseRef(body.ref),
     status: 'queued',
     fighters: body.fighters.map(parseFighter),
     seed: body.seed === undefined ? Math.floor(Math.random() * 2 ** 32) : parseSeed(body.seed),
     timeLimit: body.timeLimit === undefined ? DEFAULT_TIME_LIMIT : parseTimeLimit(body.timeLimit),
     tiebreak: parseTiebreak(body.tiebreak),
+    suddenDeath: body.suddenDeath === undefined ? CONFIG.suddenDeath.after : parseSuddenDeath(body.suddenDeath),
     screen: null,
     queuedAt: new Date().toISOString(),
     startedAt: null,
@@ -232,6 +266,12 @@ function parseUpgradeIds(upgrades, where) {
   });
 }
 
+function parseRef(ref) {
+  if (ref === undefined || ref === null) return null;
+  if (typeof ref !== 'string' || ref.length > MAX_REF) throw new ApiError(400, `"ref" must be a string of at most ${MAX_REF} characters`);
+  return ref;
+}
+
 function parseSeed(seed) {
   if (!Number.isInteger(seed) || seed < 0 || seed >= 2 ** 32) throw new ApiError(400, '"seed" must be a whole number from 0 to 2^32 - 1');
   return seed;
@@ -242,6 +282,15 @@ function parseTimeLimit(timeLimit) {
     throw new ApiError(400, `"timeLimit" must be a number of seconds above 0 and at most ${MAX_TIME_LIMIT}`);
   }
   return timeLimit;
+}
+
+// Sim seconds before sudden death starts, or null for none.
+function parseSuddenDeath(suddenDeath) {
+  if (suddenDeath === null) return null;
+  if (typeof suddenDeath !== 'number' || !(suddenDeath >= 0 && suddenDeath <= MAX_TIME_LIMIT)) {
+    throw new ApiError(400, `"suddenDeath" must be null or a number of seconds from 0 to ${MAX_TIME_LIMIT}`);
+  }
+  return suddenDeath;
 }
 
 // null (a draw is possible) or 'hp' (the fighter with the most HP left wins at the time limit).
@@ -333,12 +382,13 @@ function start(match) {
 }
 
 // Body: { winner: fighter index or null for a draw, time: sim seconds, hp: [hp left per fighter],
-//         decidedBy?: 'ko' | 'hp' (how the winner was found) }
+//         decidedBy?: 'ko' | 'hp' (how the winner was found),
+//         ranking?: [fighter indices, first place first] }
 function finish(match, body) {
   if (match.status === 'done') return match; // another display got there first
   if (!isOnScreen(match)) throw new ApiError(409, 'That match is not on screen');
 
-  const { winner, time, hp, decidedBy = 'ko' } = body;
+  const { winner, time, hp, decidedBy = 'ko', ranking = defaultRanking(match, winner, hp) } = body;
   if (decidedBy !== 'ko' && decidedBy !== 'hp') throw new ApiError(400, '"decidedBy" must be "ko" or "hp"');
   if (decidedBy === 'hp' && (winner === null || match.tiebreak !== 'hp')) {
     throw new ApiError(400, '"decidedBy": "hp" needs a winner and a match with the hp tiebreak');
@@ -348,6 +398,10 @@ function finish(match, body) {
   }
   if (typeof time !== 'number') throw new ApiError(400, '"time" must be a number');
   if (!Array.isArray(hp) || hp.length !== match.fighters.length) throw new ApiError(400, '"hp" must have one number per fighter');
+  const indices = match.fighters.map((_, i) => i);
+  if (!Array.isArray(ranking) || ranking.length !== indices.length || !indices.every((i) => ranking.includes(i)) || (winner !== null && ranking[0] !== winner)) {
+    throw new ApiError(400, '"ranking" must list every fighter index once, the winner first');
+  }
 
   match.status = 'done';
   match.startedAt ??= new Date().toISOString();
@@ -358,9 +412,18 @@ function finish(match, body) {
     reason: decidedBy === 'hp' ? 'hp' : winner === null && time >= match.timeLimit ? 'time' : 'ko',
     time,
     hp,
+    ranking,
   };
   settle(match);
   return match;
+}
+
+// For a display that doesn't send a ranking: the winner, then the others by HP left.
+function defaultRanking(match, winner, hp) {
+  if (!Array.isArray(hp)) return undefined;
+  return match.fighters
+    .map((_, i) => i)
+    .sort((a, b) => (b === winner) - (a === winner) || (hp[b] ?? 0) - (hp[a] ?? 0) || a - b);
 }
 
 // ---- HTTP helpers --------------------------------------------------------------

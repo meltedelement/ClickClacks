@@ -6,11 +6,13 @@ import { DropSlam } from '../abilities/DropSlam.js';
 export class QuickDrop extends Upgrade {
   static id = 'quick-drop';
   static displayName = 'Quick Drop';
-  static description = 'Drop Slam hangs in the air for 60% less time before falling (each copy cuts what is left).';
+  static description = 'Drop Slam gains 12.5% more damage from the height it falls.';
   static weapons = ['mace'];
 
   apply() {
-    if (this.ability instanceof DropSlam) this.ability.hoverTime *= 0.4;
+    if (!(this.ability instanceof DropSlam)) return;
+    this.base ??= this.ability.damagePerPx;
+    this.ability.damagePerPx += this.base * 0.125;
   }
 }
 
@@ -30,11 +32,25 @@ export class HeavyImpact extends Upgrade {
 export class HighBounce extends Upgrade {
   static id = 'high-bounce';
   static displayName = 'High Bounce';
-  static description = 'Drop Slam bounces you back up off the floor at +100% speed.';
+  static description =
+    'Drop Slam bounces you back up off the floor at +100% speed, and every other bounce off the floor gets +50% speed upwards.';
   static weapons = ['mace'];
+
+  constructor(weapon) {
+    super(weapon);
+    this.floorBoost = 0.5; // upward speed added by an ordinary floor bounce, as a fraction of the ball's speed
+  }
 
   apply() {
     if (this.ability instanceof DropSlam) this.ability.landBounce += 1;
+  }
+
+  // Drop Slam's own landing isn't a wall bounce (it stops just short of the
+  // floor), so this only catches ordinary bounces.
+  onWallBounce(sim) {
+    const { owner } = this;
+    if (this.weapon.controlsMovement || owner.pos.y < sim.arena.height - owner.radius) return;
+    owner.vel.y -= owner.speed * this.floorBoost * this.stacks;
   }
 }
 
@@ -59,18 +75,21 @@ export class GreatMace extends Upgrade {
     this.weapon.length -= this.added;
     this.added = 0;
   }
+
+  onGrow(factor) {
+    this.added *= factor;
+  }
 }
 
 export class Meteor extends Upgrade {
   static id = 'meteor';
   static displayName = 'Meteor';
-  static description = 'Drop Slam starts falling faster and accelerates 50% harder.';
+  static description = 'Drop Slam homes in on the enemy 25% better as it falls.';
   static weapons = ['mace'];
 
   apply() {
     if (!(this.ability instanceof DropSlam)) return;
-    this.base ??= { startSpeed: this.ability.startSpeed, gravity: this.ability.gravity };
-    this.ability.startSpeed += this.base.startSpeed * 0.5;
-    this.ability.gravity += this.base.gravity * 0.5;
+    this.base ??= this.ability.steerSpeed;
+    this.ability.steerSpeed += this.base * 0.25;
   }
 }

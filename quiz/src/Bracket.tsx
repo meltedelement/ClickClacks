@@ -1,31 +1,34 @@
-// The double elimination bracket: one column per stage, the winners bracket in
-// the top row and the losers bracket under it. The grand final spans both rows.
-// Stages (and losers brackets) that are not drawn yet show as empty slots. Used by the admin page
-// (with buttons per match).
+// The tournament: one column per stage. In a double elimination the winners
+// bracket is the top row and the losers bracket under it, and the grand final
+// spans both rows; other formats have one group per stage. Stages (and groups)
+// that are not drawn yet show as empty slots. Used by the admin page (with
+// buttons per match). A round robin also shows its table.
 import type { ReactNode } from 'react';
-import type { Battle, BattleMatch, BracketSide, GameScreen } from '../shared/types.ts';
-import { plannedStages, roundMatches } from '../shared/battle.ts';
+import type { Tournament, TournamentMatch } from '../shared/types.ts';
+import { isSent, stageCount, stageMatches } from '../shared/tournament.ts';
 import { TeamDot } from './ui.tsx';
 
 interface BracketProps {
-  battle: Battle;
+  battle: Tournament;
   teamName: (id: string) => string;
   teamColor: (id: string) => string;
-  actions?: (match: BattleMatch) => ReactNode; // admin buttons under a match
-  onScreen?: Record<string, GameScreen>; // game match id -> its screen on the display page
+  actions?: (match: TournamentMatch) => ReactNode; // admin buttons under a match
+  screensKnown?: boolean; // false: the display's screens are not known, so say less
 }
 
-const ROW: Record<BracketSide, string> = { winners: '2', losers: '3', final: '2 / span 2' };
+// The grid row of each group: the losers bracket goes under the rest.
+const ROW: Record<string, string> = { losers: '3', final: '2 / span 2' };
+const row = (side: string) => ROW[side] ?? '2';
 
-export function Bracket({ battle, teamName, teamColor, actions, onScreen }: BracketProps) {
-  const planned = plannedStages(battle.rounds[0]?.groups[0]?.teams.length ?? 0);
-  const stages = Math.max(planned.length, battle.rounds.length);
-  const current = battle.rounds.length - 1;
+export function Bracket({ battle, teamName, teamColor, actions, screensKnown = true }: BracketProps) {
+  const planned = battle.plan;
+  const stages = stageCount(battle);
+  const current = battle.stages.length - 1;
 
   return (
     <div className="bracket" style={{ gridTemplateColumns: `repeat(${stages}, minmax(13.125rem, 1fr))` }}>
       {Array.from({ length: stages }, (_, index) => {
-        const round = battle.rounds[index];
+        const round = battle.stages[index];
         const live = index === current && !battle.champion;
         const column = String(index + 1);
         return [
@@ -35,16 +38,16 @@ export function Bracket({ battle, teamName, teamColor, actions, onScreen }: Brac
           </h3>,
           ...(round
             ? round.groups.map((group) => (
-                <section key={`${index}${group.side}`} className={`bracket-group ${group.side}`} style={{ gridColumn: column, gridRow: ROW[group.side] }}>
+                <section key={`${index}${group.side}`} className={`bracket-group ${group.side}`} style={{ gridColumn: column, gridRow: row(group.side) }}>
                   <h4 className="bracket-group-name">{group.name}</h4>
                   {group.pending ? (
                     <div className="bracket-slots">
-                      <EmptySlots size={planned[index]?.find((g) => g.side === group.side)?.size ?? group.teams.length} />
+                      <EmptySlots size={planned[index]?.find((g) => g.side === group.side)?.size ?? group.entrants.length} />
                       <div className="bracket-meta">Drawn when the winners bracket is finished</div>
                     </div>
                   ) : (
                     <div className="bracket-slots">
-                      {roundMatches(battle, index)
+                      {stageMatches(battle, index)
                         .filter((match) => match.side === group.side)
                         .map((match) => (
                           <MatchCard
@@ -53,8 +56,7 @@ export function Bracket({ battle, teamName, teamColor, actions, onScreen }: Brac
                             teamName={teamName}
                             teamColor={teamColor}
                             waiting={round.status === 'waiting'}
-                            screen={match.gameId ? onScreen?.[match.gameId] : undefined}
-                            screensKnown={onScreen !== undefined}
+                            screensKnown={screensKnown}
                             actions={actions?.(match)}
                           />
                         ))}
@@ -63,7 +65,7 @@ export function Bracket({ battle, teamName, teamColor, actions, onScreen }: Brac
                           <div className="bracket-team">
                             <TeamLabel name={teamName(group.bye)} color={teamColor(group.bye)} />
                           </div>
-                          <div className="bracket-meta">{group.teams.length === 1 ? 'Waits for the other bracket' : 'Bye: no match this stage'}</div>
+                          <div className="bracket-meta">{group.entrants.length === 1 ? 'Waits for the other bracket' : 'Bye: no match this stage'}</div>
                         </div>
                       )}
                     </div>
@@ -71,7 +73,7 @@ export function Bracket({ battle, teamName, teamColor, actions, onScreen }: Brac
                 </section>
               ))
             : (planned[index] ?? []).map((group) => (
-                <section key={`${index}${group.side}`} className={`bracket-group ${group.side}`} style={{ gridColumn: column, gridRow: ROW[group.side] }}>
+                <section key={`${index}${group.side}`} className={`bracket-group ${group.side}`} style={{ gridColumn: column, gridRow: row(group.side) }}>
                   <h4 className="bracket-group-name">{group.name}</h4>
                   <div className="bracket-slots">
                     <EmptySlots size={group.size} />
@@ -104,20 +106,20 @@ function TeamLabel({ name, color }: { name: string; color: string }) {
 }
 
 interface MatchCardProps {
-  match: BattleMatch;
+  match: TournamentMatch;
   teamName: (id: string) => string;
   teamColor: (id: string) => string;
   waiting: boolean;
-  screen: GameScreen | undefined; // where the game has it, if it is on a screen
-  screensKnown: boolean; // false: the caller did not pass the screens, so say less
+  screensKnown: boolean; // false: the display's screens are not known, so say less
   actions?: ReactNode;
 }
 
-function MatchCard({ match, teamName, teamColor, waiting, screen, screensKnown, actions }: MatchCardProps) {
+function MatchCard({ match, teamName, teamColor, waiting, screensKnown, actions }: MatchCardProps) {
   const done = match.status === 'done';
   // Sent to the game. The game plays a few at once; the rest wait for a free screen.
-  const sent = match.status === 'queued';
-  const live = sent && (screen !== undefined || !screensKnown);
+  const sent = isSent(match);
+  const screen = match.screen;
+  const live = sent && (screen !== null || !screensKnown);
   const side = (id: string, i: 0 | 1) => {
     const classes = ['bracket-team'];
     if (done) classes.push(match.winner === id ? 'won' : 'lost');
@@ -133,19 +135,49 @@ function MatchCard({ match, teamName, teamColor, waiting, screen, screensKnown, 
   if (done) {
     const how = match.decidedBy === 'hp' ? 'Won on HP at the time limit' : match.decidedBy === 'host' ? 'Decided by the host' : 'Knockout';
     meta = `${how}${match.time !== null && match.decidedBy !== 'host' ? ` · ${Math.round(match.time)} s` : ''}`;
-  } else if (sent && screen) meta = <strong>{screen.playing ? `On screen ${screen.screen + 1}` : `Going on screen ${screen.screen + 1}`}</strong>;
+  } else if (sent && screen !== null) meta = <strong>{match.status === 'playing' ? `On screen ${screen + 1}` : `Going on screen ${screen + 1}`}</strong>;
   else if (sent) meta = screensKnown ? 'Waiting for a free screen' : 'On the game now';
   else if (match.status === 'pending') meta = waiting ? 'Up next' : 'Waiting for a display';
   else meta = <span className="error">{match.error ?? match.status}</span>;
 
   return (
     <div className={live ? 'bracket-match live' : 'bracket-match'}>
-      {side(match.a, 0)}
-      {side(match.b, 1)}
+      {side(match.entrants[0], 0)}
+      {side(match.entrants[1], 1)}
       <div className="bracket-meta">
         <span className="faint num">{match.id}</span> {meta}
       </div>
       {actions && <div className="bracket-actions">{actions}</div>}
     </div>
+  );
+}
+
+// A round robin's table: points, wins and losses, best first.
+export function Standings({ battle, teamName, teamColor }: Pick<BracketProps, 'battle' | 'teamName' | 'teamColor'>) {
+  return (
+    <table className="standings">
+      <thead>
+        <tr>
+          <th className="num">#</th>
+          <th>Team</th>
+          <th className="num">Won</th>
+          <th className="num">Lost</th>
+          <th className="num">Points</th>
+        </tr>
+      </thead>
+      <tbody>
+        {battle.standings.map((row) => (
+          <tr key={row.entrant} className={battle.champion === row.entrant ? 'won' : ''}>
+            <td className="num">{row.rank}</td>
+            <td>
+              <TeamLabel name={teamName(row.entrant)} color={teamColor(row.entrant)} />
+            </td>
+            <td className="num">{row.wins}</td>
+            <td className="num">{row.losses}</td>
+            <td className="num">{row.points}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

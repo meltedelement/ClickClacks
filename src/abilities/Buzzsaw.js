@@ -67,8 +67,7 @@ export class Buzzsaw extends Ability {
   }
 
   shouldActivate(sim) {
-    const enemy = this.nearestEnemy(sim);
-    return enemy !== null && distance(enemy.pos, this.owner.pos) < this.triggerRange;
+    return this.enemyWithin(sim, this.triggerRange) !== null;
   }
 
   onStart(sim) {
@@ -174,8 +173,7 @@ export class Buzzsaw extends Ability {
       ctx.save();
       ctx.rotate(spin + (i * TAU) / n);
       ctx.scale(1, weapon.widthScale);
-      weapon.drawLocal(ctx, HUB);
-      for (const upgrade of weapon.upgrades) upgrade.drawBlade(ctx, HUB);
+      weapon.drawBladeAt(ctx, HUB);
       ctx.restore();
     }
     ctx.fillStyle = '#4a4f57';

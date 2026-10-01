@@ -1,6 +1,6 @@
 import './styles.css';
-import { Game } from './game/Game.js';
 import { Quality } from './game/Quality.js';
+import { Arenas } from './ui/Arenas.js';
 import { Controls } from './ui/Controls.js';
 import { TournamentDisplay } from './ui/TournamentDisplay.js';
 
@@ -27,10 +27,25 @@ if (displayMode) {
   const display = new TournamentDisplay(document.querySelector('.stage'));
   new Controls(display.games, { fighters: 2, displayMode });
 } else {
-  const game = new Game(document.getElementById('arena'), {
-    chooseMatch: () => ({ fighters: controls.lineup }),
+  // One arena to start with; the menu's Arenas setting runs more side by side.
+  // `?royale` (or `?royale=150`) starts in royale mode, with that many balls,
+  // and `&mix=sword:60,spear:40` sets its weapon mix (weapons left out get none).
+  const royale = params.has('royale') ? Number(params.get('royale')) || 100 : null;
+  const mix = params.has('mix') ? parseMix(params.get('mix')) : null;
+  const arenas = new Arenas(document.querySelector('.stage'), {
+    chooseMatch: () => controls.nextMatch(),
   });
-  const controls = new Controls([game], { fighters: 2 });
-  controls.startMatch();
-  game.start();
+  const controls = new Controls(arenas.games, { fighters: 2, arenas, royale, mix });
+  controls.setArenaCount(1);
+}
+
+// `sword:60,spear:40` -> { sword: 60, spear: 40 }. Unknown weapons and bad numbers are skipped.
+function parseMix(text) {
+  const mix = {};
+  for (const part of text.split(',')) {
+    const [id, share] = part.split(':');
+    const n = Number(share);
+    if (id && Number.isFinite(n) && n >= 0) mix[id.trim()] = n;
+  }
+  return mix;
 }

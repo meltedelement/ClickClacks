@@ -499,7 +499,7 @@ export class Olympian extends SpearTransformation {
   static id = 'olympian';
   static displayName = 'Olympian';
   static description =
-    'Charge Dash becomes Spear Throw: stand still and hurl your spear along a straight line, out through the wall ahead and back in from the wall behind, until it returns to your hand. It pierces every enemy in its path for double damage and huge knockback. Unarmed until you catch it.';
+    'Charge Dash becomes Spear Throw: stand still and hurl your spear until it sticks in the wall, piercing every enemy in its path for double damage and huge knockback. Then dash to it, ramming enemies on the way. Unarmed until you pull it out.';
 
   apply() {
     this.weapon.ability = new SpearThrow(this.weapon);
@@ -928,7 +928,7 @@ class FlameLap extends ChargeDash {
 
   // The line it will run, from wall to wall.
   aimLine() {
-    const { frontWall: to, backWall: from } = lapLine(this.owner.pos, this.weapon.angle, CONFIG.arena, this.owner.radius);
+    const { frontWall: to, backWall: from } = lapLine(this.owner.pos, this.weapon.angle, this.owner.arena, this.owner.radius);
     return { from, to };
   }
 }
@@ -980,7 +980,7 @@ export class Runner extends SpearTransformation {
   static id = 'runner';
   static displayName = 'Runner';
   static description =
-    'Charge Dash becomes Flame Lap: charge along a straight line, out through the wall ahead and back in from the wall behind, until you are back where you started, ramming enemies on the way. The line catches fire from wall to wall, setting enemies burning. With Olympian, your thrown spear sets the fire instead.';
+    'Charge Dash becomes Flame Lap: charge along a straight line, out through the wall ahead and back in from the wall behind, until you are back where you started, ramming enemies on the way. The line catches fire from wall to wall, setting enemies burning. With Olympian, your thrown spear sets its path on fire instead.';
 
   constructor(weapon) {
     super(weapon);

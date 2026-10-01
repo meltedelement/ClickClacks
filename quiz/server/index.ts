@@ -7,8 +7,9 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import * as store from './store.ts';
 import * as catalog from './catalog.ts';
-import * as battle from './battle.ts';
-import * as game from './game.ts';
+import * as tournament from './tournament.ts';
+import { currentStage } from '../shared/tournament.ts';
+import type { FormatId } from '../shared/types.ts';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const DIST = path.join(import.meta.dirname, '..', 'dist');
@@ -61,6 +62,8 @@ function broadcast() {
   for (const client of clients) send(client);
 }
 store.onChange(broadcast);
+// The tournament holds each team's name, colour and loadout: keep them in step.
+store.onChange(() => void syncEntrants().catch(() => {}));
 
 // Only the admin view shows who is online.
 function sendAdmins() {
@@ -157,61 +160,110 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
   json(res, 404, { error: 'Not found' });
 }
 
-// Battle actions need the driver (which talks to the game server), so they are
-// handled here rather than in store.adminAction. Everything else goes to the
-// store.
+// Battle actions go to the tournament service, so they are handled here rather
+// than in store.adminAction. Everything else goes to the store.
 async function adminAction(body: any) {
-  switch (body?.type) {
-    case 'battleCreate':
-      return battle.create(body.seed === undefined || body.seed === '' || body.seed === null ? undefined : body.seed);
-    case 'battleStartRound':
-      return battle.startRound();
-    case 'battleStopRound':
-      return battle.stopRound();
-    case 'battleReplay':
-      return battle.replay(String(body.matchId));
-    case 'battleSetWinner':
-      return battle.setWinner(String(body.matchId), String(body.winner));
-    case 'battleReset':
-      return battle.reset();
-    case 'refreshCatalog':
-      return refreshCatalog();
-  }
-  // A quiz reset also drops the battle: take its matches off the game first.
-  if (body?.type === 'reset') battle.reset();
-  store.adminAction(body);
-  // Moving the quiz into the battle draws the bracket, so the presenter's Next
-  // button is all the host needs: the next press starts the first round. A
-  // loadout the game would refuse comes back as a 400 with the reason, which
-  // both the admin and the presenter pages show.
-  if (body?.type === 'setPhase' && body.phase === 'battle' && !store.state.battle && store.state.teams.length >= 2) {
-    battle.create();
+  try {
+    switch (body?.type) {
+      case 'battleCreate':
+        return await createBattle(body.format, body.seed === undefined || body.seed === '' || body.seed === null ? undefined : Number(body.seed));
+      case 'battleStartRound':
+        return await startStage();
+      case 'battleStopRound':
+        return await tournament.stop(battleId());
+      case 'battleReplay':
+        return await tournament.replay(battleId(), String(body.matchId));
+      case 'battleSetWinner':
+        return await tournament.setWinner(battleId(), String(body.matchId), String(body.winner));
+      case 'battleReset':
+        return await resetBattle();
+      case 'refreshCatalog':
+        return await refreshCatalog();
+    }
+    // A quiz reset also drops the battle: take its matches off the game first.
+    if (body?.type === 'reset') await resetBattle();
+    store.adminAction(body);
+    // Moving the quiz into the battle draws the bracket, so the presenter's Next
+    // button is all the host needs: the next press starts the first stage. A
+    // loadout the game would refuse comes back as a 400 with the reason, which
+    // both the admin and the presenter pages show.
+    if (body?.type === 'setPhase' && body.phase === 'battle' && !store.state.tournamentId && store.state.teams.length >= 2) {
+      await createBattle();
+    }
+  } catch (err) {
+    // The tournament service's refusals (a bad loadout, a stage already started) go to the host as they are.
+    if (err instanceof tournament.TournamentApiError) throw new store.UserError(err.message);
+    throw err;
   }
 }
 
-// The catalog comes from the game, so the quiz always offers upgrades by their
-// real ids and stack limits.
+function battleId(): string {
+  if (!store.state.tournamentId) throw new store.UserError('Draw the bracket first.');
+  return store.state.tournamentId;
+}
+
+// The teams as entrants: their public entrant ids, never the device tokens.
+function entrants() {
+  return store.state.teams.map((team) => ({ ...team, id: team.entrantId }));
+}
+
+function syncEntrants() {
+  return tournament.sync(entrants());
+}
+
+async function createBattle(format: FormatId = 'double-elimination', seed?: number) {
+  if (store.state.tournamentId) throw new store.UserError('There is already a bracket. Reset the battle first.');
+  if (store.state.teams.length < 2) throw new store.UserError('A battle needs at least two teams.');
+  if (seed !== undefined && !(Number.isInteger(seed) && seed >= 0 && seed < 2 ** 32)) {
+    throw new store.UserError('The seed must be a whole number from 0 to 4294967295.');
+  }
+  const t = await tournament.create(format, entrants().map(tournament.toEntrant), seed);
+  store.setTournament(t.id);
+}
+
+// Sends the teams' loadouts as they are now, then starts the stage.
+async function startStage() {
+  const t = store.battle();
+  const stage = t && currentStage(t);
+  if (!t || !stage) throw new store.UserError('Draw the bracket first.');
+  const ids = new Set(stage.groups.flatMap((g) => g.entrants));
+  if (store.state.teams.filter((team) => ids.has(team.entrantId)).length < ids.size) {
+    throw new store.UserError('A team in this stage was deleted. Reset the battle.');
+  }
+  await syncEntrants();
+  await tournament.start(t.id);
+}
+
+async function resetBattle() {
+  const id = store.state.tournamentId;
+  if (!id) return;
+  try {
+    await tournament.remove(id);
+  } catch (err) {
+    // The service is down: forget the battle here anyway, so the host is not stuck.
+    if (!(err instanceof tournament.TournamentApiError && err.status === 0)) throw err;
+  }
+  store.setTournament(null);
+}
+
+// The catalog comes from the game (through the tournament service), so the
+// quiz always offers upgrades by their real ids and stack limits.
 async function refreshCatalog() {
-  const live = await catalog.refresh(game.GAME_API);
+  const live = await catalog.refresh(`${tournament.TOURNAMENT_API}/game`);
   store.onCatalogChanged();
   const current = store.getCatalog();
   console.log(
     live
       ? `Catalog: ${current.upgrades.length} upgrades and ${current.weapons.length} weapons from the game.`
-      : `Catalog: offline copy (${current.upgrades.length} upgrades). Start the game server to sync.`,
+      : `Catalog: offline copy (${current.upgrades.length} upgrades). Start the game and tournament servers to sync.`,
   );
 }
 
-// Keeps the "displays connected" line and the screen shown for each match
-// honest, and reads the catalog again once the game server is up.
-async function pingGame() {
-  try {
-    const status = await game.status();
-    store.setGameStatus(status);
-    if (store.getCatalog().source !== 'game') await refreshCatalog();
-  } catch {
-    store.setGameStatus(null);
-  }
+// Keeps the "displays connected" line honest, and reads the catalog again once
+// the game is up.
+async function pingTournament() {
+  await tournament.ping();
+  if (tournament.link.game?.reachable && store.getCatalog().source !== 'game') await refreshCatalog();
 }
 
 const MIME: Record<string, string> = {
@@ -253,11 +305,15 @@ http
       ? 'from ADMIN_KEY'
       : `stored in ${path.relative(process.cwd(), KEY_FILE)} — delete that file for a new one`;
     console.log(`\n  Admin key: ${ADMIN_KEY}  (${source})\n  The host enters it on /admin.`);
-    console.log(`  Game API:  ${game.GAME_API}`);
+    console.log(`  Tournament API: ${tournament.TOURNAMENT_API}`);
   });
 
-// Read the game's catalog and pick up a battle that was interrupted, then keep
-// an eye on the game from here on.
-pingGame();
-setInterval(pingGame, 2_000).unref();
-battle.resume();
+// Read the game's catalog, then keep an eye on the tournament service and the
+// game from here on. A battle that was playing carries on by itself: the
+// tournament service runs it.
+void pingTournament();
+setInterval(() => void pingTournament(), 2_000).unref();
+// The tournament was deleted on the service (or the service lost it).
+tournament.onDeleted((id) => {
+  if (store.state.tournamentId === id) store.setTournament(null);
+});

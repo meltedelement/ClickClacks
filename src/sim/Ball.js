@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { TAU, fromAngle, length, scale } from './math.js';
+import { TAU, fromAngle, length } from './math.js';
 import { formatNumber } from '../utils/format.js';
 
 export class Ball {
@@ -8,9 +8,15 @@ export class Ball {
   // go first, so the small upgrades build on the weapon they turned it into, and
   // within each group a lower `static order` goes first.
   // `name` (e.g. a team name) replaces the weapon's name on screen.
-  constructor({ position, color, WeaponClass, upgrades = [], name = null }) {
+  // `arena` ({ width, height }) is the Simulation's, for code that has no sim to hand (drawing).
+  constructor({ position, color, WeaponClass, upgrades = [], name = null, arena = CONFIG.arena }) {
     this.pos = { ...position };
+    this.arena = arena;
     this.label = name;
+    // Royale growth (see grow). Always 1 in a normal match.
+    this.mass = 1;
+    this.size = 1;
+    this.power = 1; // multiplies damage dealt; see grow
     this.radius = CONFIG.ball.radius;
     this.speed = CONFIG.ball.speed;
     const heading = Math.random() * TAU;
@@ -47,20 +53,61 @@ export class Ball {
     return this.label ?? this.weapon.name;
   }
 
+  // Royale: this ball knocked out one of `mass` and takes it. Its size goes
+  // to mass ** sizeExponent: the radius, blades and shields grow in proportion
+  // (Weapon.scaleGeometry). Max HP and damage dealt follow size ** hpScaling
+  // and size ** damageScaling; the max HP gained is healed. Returns the growth factor.
+  grow(mass, { sizeExponent, hpScaling, damageScaling }) {
+    const before = this.size;
+    this.mass += mass;
+    this.size = this.mass ** sizeExponent;
+    const factor = this.size / before;
+    this.radius *= factor;
+    const gained = this.maxHp * (factor ** hpScaling - 1);
+    this.maxHp += gained;
+    if (this.alive) this.hp += gained;
+    this.power = this.size ** damageScaling;
+    this.weapon.registerGrow(factor);
+    return factor;
+  }
+
+  // Runs `fn` with the ball's geometry shrunk back to size 1, so drawing code
+  // can use the plain stats under a canvas scaled by `size` (see Weapon.draw).
+  // Puts the exact values back afterwards, so the sim isn't changed.
+  atUnitSize(fn) {
+    const size = this.size;
+    if (size === 1) return fn();
+    const radius = this.radius;
+    const saved = this.weapon.saveGeometry();
+    this.radius = radius / size;
+    this.weapon.scaleGeometry(1 / size);
+    try {
+      return fn();
+    } finally {
+      this.radius = radius;
+      this.weapon.restoreGeometry(saved);
+    }
+  }
+
   update(dt, sim) {
     if (!this.weapon.controlsMovement) this.recoverSpeed(dt);
     this.pos.x += this.vel.x * dt;
     this.pos.y += this.vel.y * dt;
     this.weapon.update(dt, sim);
 
-    for (const status of this.statuses) status.update(dt, sim);
-    if (this.statuses.some((status) => status.expired)) {
-      this.statuses = this.statuses.filter((status) => !status.expired);
+    if (this.statuses.length > 0) {
+      for (const status of this.statuses) status.update(dt, sim);
+      if (this.statuses.some((status) => status.expired)) {
+        this.statuses = this.statuses.filter((status) => !status.expired);
+      }
     }
 
-    for (const [weapon, time] of this.hitCooldowns) {
-      if (time - dt <= 0) this.hitCooldowns.delete(weapon);
-      else this.hitCooldowns.set(weapon, time - dt);
+    // Most steps there are none; skip making an iterator for an empty map.
+    if (this.hitCooldowns.size > 0) {
+      for (const [weapon, time] of this.hitCooldowns) {
+        if (time - dt <= 0) this.hitCooldowns.delete(weapon);
+        else this.hitCooldowns.set(weapon, time - dt);
+      }
     }
     if (this.flash > 0) this.flash -= dt;
   }
@@ -80,7 +127,10 @@ export class Ball {
     }
     const t = Math.min(1, dt * CONFIG.ball.speedRecovery);
     const next = current + (speed - current) * t;
-    this.vel = scale(this.vel, next / current);
+    // In place: this runs every step, and nothing holds on to a ball's old `vel`.
+    const k = next / current;
+    this.vel.x *= k;
+    this.vel.y *= k;
   }
 
   // Puts a status on this ball, replacing any of the same class (so it refreshes).
@@ -100,9 +150,9 @@ export class Ball {
     return this.statuses.some((status) => status.guardBroken);
   }
 
-  // True if any status stops this ball from dealing damage.
-  get stunned() {
-    return this.statuses.some((status) => status.stunned);
+  // Multiplies all damage this ball deals: its statuses, and its size in a royale.
+  get damageDealtMultiplier() {
+    return this.statusMultiplier('damageDealtMultiplier') * this.power;
   }
 
   // This ball bounced off a wall: tell its upgrades and statuses.
@@ -169,14 +219,17 @@ export class Ball {
     ctx.arc(x, y, this.radius, 0, TAU);
     ctx.fillStyle = flashing ? '#ffffff' : this.color;
     ctx.fill();
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 * this.size;
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.stroke();
+  }
 
-    ctx.fillStyle = flashing ? this.color : '#ffffff';
-    ctx.font = 'bold 20px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(formatNumber(this.hp), x, y + 1);
+  // The HP number on the ball: text and colour, drawn by the Renderer (which caches it).
+  get hpText() {
+    return formatNumber(this.hp);
+  }
+
+  get hpTextColor() {
+    return this.flash > 0 ? this.color : '#ffffff';
   }
 }

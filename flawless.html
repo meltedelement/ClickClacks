@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flawless Finder</title>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="panel">
+        <header>
+          <h1>Flawless Finder</h1>
+          <p class="muted">Plays seeded matches until one is won without taking a hit, then shows it here.</p>
+        </header>
+
+        <form id="search-form" class="section" autocomplete="off">
+          <div class="fighter-list">
+            <div class="fighter-head">
+              <span>Fighters</span>
+              <span>Must win</span>
+            </div>
+            <ol id="fighter-rows" class="fighter-rows"></ol>
+            <datalist id="fighter-suggestions"></datalist>
+            <div class="buttons">
+              <button id="add-fighter" type="button">+ Add fighter</button>
+            </div>
+            <p id="fighter-hint" class="muted hint"></p>
+            <details class="ids">
+              <summary>Weapon and upgrade ids</summary>
+              <div id="id-list"></div>
+            </details>
+          </div>
+
+          <div class="grid">
+            <label class="field" title="Each 'any' fighter gets 0 to this many upgrade copies">
+              <span>'any': max upgrades</span>
+              <input id="upgrades" type="number" min="0" step="1" value="6" />
+            </label>
+            <label class="field" title="Each 'any' fighter gets 0 to this many transformations">
+              <span>'any': max transformations</span>
+              <input id="transformations" type="number" min="0" step="1" value="1" />
+            </label>
+          </div>
+
+          <div class="grid">
+            <label class="field">
+              <span>Fighters per match</span>
+              <input id="fighters" type="number" min="2" step="1" value="2" />
+            </label>
+            <label class="field">
+              <span>Find</span>
+              <input id="count" type="number" min="1" step="1" value="3" />
+            </label>
+            <label class="field">
+              <span>Give up after</span>
+              <input id="max" type="number" min="1" step="1" value="200000" />
+            </label>
+            <label class="field" title="Leave blank for a random seed. The same seed and options find the same matches, here and in npm run flawless.">
+              <span>Seed</span>
+              <input id="seed" type="number" min="0" step="1" placeholder="random" />
+            </label>
+            <label class="field">
+              <span>Time limit (s)</span>
+              <input id="time-limit" type="number" min="1" max="600" step="1" value="180" />
+            </label>
+            <label class="field" title="Leave blank for no sudden death">
+              <span>Sudden death (s)</span>
+              <input id="sudden-death" type="number" min="0" max="600" step="1" placeholder="off" />
+            </label>
+          </div>
+
+          <label class="check" title="Thorns, burns, spikes and sudden death don't spoil a flawless win">
+            <input id="hits-only" type="checkbox" /> Only weapon hits count
+          </label>
+
+          <div class="buttons">
+            <button id="start" type="submit" class="primary">Search</button>
+            <button id="stop" type="button" disabled>Stop</button>
+          </div>
+          <p id="form-error" class="error" hidden></p>
+        </form>
+
+        <div class="section">
+          <div class="progress-bar"><div id="progress-fill"></div></div>
+          <p id="status" class="muted">Ready.</p>
+        </div>
+
+        <ol id="results" class="results"></ol>
+      </aside>
+
+      <main class="viewer">
+        <div class="arena"><canvas id="arena"></canvas></div>
+        <div class="viewer-bar">
+          <p id="now-playing" class="muted">Pick a find to watch it.</p>
+          <div class="buttons">
+            <button id="replay" type="button" disabled>Replay</button>
+            <button id="pause" type="button" disabled>Pause</button>
+            <label class="speed">Speed <input id="speed" type="range" min="0.25" max="4" step="0.25" value="1" /> <output id="speed-value">1×</output></label>
+            <label class="check"><input id="sound" type="checkbox" /> Sound</label>
+            <label class="check"><input id="hitboxes" type="checkbox" /> Hitboxes</label>
+          </div>
+        </div>
+        <p id="toast" class="toast" hidden></p>
+      </main>
+    </div>
+
+    <script type="module" src="/src/flawless/main.js"></script>
+  </body>
+</html>

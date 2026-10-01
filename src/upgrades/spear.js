@@ -25,8 +25,11 @@ export class QuickCharge extends Upgrade {
   static description = 'Charge Dash winds up twice as fast (each copy halves what is left).';
   static weapons = ['spear'];
 
+  // The aim turns faster to match, or a shorter windup would release before the spear faces the target.
   apply() {
-    if (this.ability instanceof ChargeDash) this.ability.windup *= 0.5;
+    if (!(this.ability instanceof ChargeDash)) return;
+    this.ability.windup *= 0.5;
+    this.ability.aimTurnRate *= 2;
   }
 
   // A yellow pennant just behind the spear head.

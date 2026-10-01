@@ -18,6 +18,10 @@
     {
       "id": "daggers",
       "name": "Daggers"
+    },
+    {
+      "id": "drone",
+      "name": "Drone"
     }
   ],
   "upgrades": [
@@ -124,15 +128,6 @@
       "id": "crit",
       "name": "Critical Hits",
       "description": "15% chance for a hit to deal double damage.",
-      "weapons": null,
-      "requires": [],
-      "excludedBy": [],
-      "maxStacks": null
-    },
-    {
-      "id": "extra-blade",
-      "name": "Extra Blade",
-      "description": "Adds another copy of your weapon.",
       "weapons": null,
       "requires": [],
       "excludedBy": [],
@@ -311,7 +306,7 @@
     {
       "id": "quick-drop",
       "name": "Quick Drop",
-      "description": "Drop Slam hangs in the air for 60% less time before falling (each copy cuts what is left).",
+      "description": "Drop Slam gains 12.5% more damage from the height it falls.",
       "weapons": [
         "mace"
       ],
@@ -333,7 +328,7 @@
     {
       "id": "high-bounce",
       "name": "High Bounce",
-      "description": "Drop Slam bounces you back up off the floor at +100% speed.",
+      "description": "Drop Slam bounces you back up off the floor at +100% speed, and every other bounce off the floor gets +50% speed upwards.",
       "weapons": [
         "mace"
       ],
@@ -355,7 +350,7 @@
     {
       "id": "meteor",
       "name": "Meteor",
-      "description": "Drop Slam starts falling faster and accelerates 50% harder.",
+      "description": "Drop Slam homes in on the enemy 25% better as it falls.",
       "weapons": [
         "mace"
       ],
@@ -500,7 +495,7 @@
     {
       "id": "olympian",
       "name": "Olympian",
-      "description": "Charge Dash becomes Spear Throw: stand still and hurl your spear along a straight line, out through the wall ahead and back in from the wall behind, until it returns to your hand. It pierces every enemy in its path for double damage and huge knockback. Unarmed until you catch it.",
+      "description": "Charge Dash becomes Spear Throw: stand still and hurl your spear until it sticks in the wall, piercing every enemy in its path for double damage and huge knockback. Then dash to it, ramming enemies on the way. Unarmed until you pull it out.",
       "weapons": [
         "spear"
       ],
@@ -533,7 +528,7 @@
     {
       "id": "runner",
       "name": "Runner",
-      "description": "Charge Dash becomes Flame Lap: charge along a straight line, out through the wall ahead and back in from the wall behind, until you are back where you started, ramming enemies on the way. The line catches fire from wall to wall, setting enemies burning. With Olympian, your thrown spear sets the fire instead.",
+      "description": "Charge Dash becomes Flame Lap: charge along a straight line, out through the wall ahead and back in from the wall behind, until you are back where you started, ramming enemies on the way. The line catches fire from wall to wall, setting enemies burning. With Olympian, your thrown spear sets its path on fire instead.",
       "weapons": [
         "spear"
       ],
@@ -676,7 +671,7 @@
     {
       "id": "crusher",
       "name": "Crusher",
-      "description": "A Drop Slam hit stuns the enemy for 1 s: they deal no damage and move at 20% speed until it wears off. With Rubber Mace, the stun starts once they stop bouncing around.",
+      "description": "A Drop Slam hit stuns the enemy for 2.5 s: they deal 30% damage and move at 30% speed until it wears off.",
       "weapons": [
         "mace"
       ],

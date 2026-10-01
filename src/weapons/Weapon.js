@@ -1,4 +1,4 @@
-import { add, fromAngle, randomSign, TAU } from '../sim/math.js';
+import { randomSign, TAU } from '../sim/math.js';
 
 const GATHERED_GAP = 0.3; // radians between neighbouring blades when gathered together
 const SPREAD_RATE = 14; // how quickly blades move between spread and gathered (per second)
@@ -32,6 +32,7 @@ export class Weapon {
     this.widthScale = 1; // stretches drawLocal across the blade; set it when changing thickness
     this.critChance = 0; // 0–1 chance a hit is a critical hit
     this.critMultiplier = 2; // damage multiplier on a critical hit
+    this.nudges = false; // true: a hit's knockback adds to the target's velocity instead of replacing it
 
     // Optional special move, e.g. `this.ability = new SpinSwipe(this)`. See src/abilities/.
     this.ability = null;
@@ -92,9 +93,27 @@ export class Weapon {
     return this.anyModifier('disarmed');
   }
 
+  // How far from the ball's centre any blade's hitbox can reach (thickness
+  // included). An upper bound for skipping collision tests between weapons too
+  // far apart to touch (see Simulation.resolveCombat), so it ignores `disarmed`.
+  // A weapon that overrides getSegments must override this to match.
+  get bladeReach() {
+    const start = this.owner.radius + this.gap;
+    return Math.max(Math.abs(start), Math.abs(start + this.length)) + this.thickness;
+  }
+
+  // Like bladeReach, but covering the shields too (thrown ones included).
+  get guardReach() {
+    let reach = this.bladeReach;
+    for (const shield of this.shields) reach = Math.max(reach, shield.reach);
+    return reach;
+  }
+
   // Shields in hand right now; a thrown one can't block or hurt anything until it's back.
+  // Usually that's all of them, and then this is `shields` itself: don't modify it.
   get heldShields() {
-    return this.shields.filter((shield) => !shield.away);
+    for (const shield of this.shields) if (shield.away) return this.shields.filter((s) => !s.away);
+    return this.shields;
   }
 
   // ---- Hooks for subclasses -------------------------------------------------
@@ -177,6 +196,36 @@ export class Weapon {
     for (const upgrade of this.upgrades) upgrade.onBump(other, sim);
   }
 
+  // This weapon's ball grew by `factor` (royale): the blades and shields grow
+  // with it, then the weapon and upgrades scale any other px they keep.
+  registerGrow(factor) {
+    this.scaleGeometry(factor);
+    this.onGrow(factor);
+    for (const upgrade of this.upgrades) upgrade.onGrow(factor);
+  }
+
+  onGrow(factor) {}
+
+  // Multiplies the blade and shield geometry by `factor` (see Ball.atUnitSize).
+  scaleGeometry(factor) {
+    this.length *= factor;
+    this.gap *= factor;
+    this.thickness *= factor;
+    for (const shield of this.shields) shield.scaleGeometry(factor);
+  }
+
+  // The geometry scaleGeometry changes, to put back exactly with restoreGeometry.
+  saveGeometry() {
+    return { length: this.length, gap: this.gap, thickness: this.thickness, shields: this.shields.map((shield) => shield.saveGeometry()) };
+  }
+
+  restoreGeometry(saved) {
+    this.length = saved.length;
+    this.gap = saved.gap;
+    this.thickness = saved.thickness;
+    this.shields.forEach((shield, i) => shield.restoreGeometry(saved.shields[i]));
+  }
+
   // A modifier multiplied across the ability and every upgrade (1 if none change it).
   multiplier(key) {
     let value = this.ability?.[key] ?? 1;
@@ -200,37 +249,80 @@ export class Weapon {
 
   // Angle of each blade. Spread out, blade 0 points along `this.angle`;
   // gathered, the blades fan either side of it.
+  // Plain loops here and in getSegments: they run several times per blade per
+  // step, and Array.from/map with a callback is several times slower in V8.
   bladeAngles() {
     const n = this.blades;
-    return Array.from({ length: n }, (_, i) => {
+    const count = Math.max(0, Math.floor(n)) || 0; // what Array.from({ length: n }) would give
+    const angles = new Array(count);
+    for (let i = 0; i < count; i++) {
       const even = (i * TAU) / n;
       const gathered = (i - (n - 1) / 2) * GATHERED_GAP;
-      return this.angle + gathered + (even - gathered) * this.spread;
-    });
+      angles[i] = this.angle + gathered + (even - gathered) * this.spread;
+    }
+    return angles;
   }
 
   // One { a, b } segment per blade, from hilt to tip, in arena coordinates.
   getSegments() {
     if (this.disarmed) return [];
+    const { x, y } = this.owner.pos;
     const start = this.owner.radius + this.gap;
-    return this.bladeAngles().map((angle) => ({
-      a: add(this.owner.pos, fromAngle(angle, start)),
-      b: add(this.owner.pos, fromAngle(angle, start + this.length)),
-    }));
+    const end = start + this.length;
+    const angles = this.bladeAngles();
+    const segments = new Array(angles.length);
+    for (let i = 0; i < angles.length; i++) {
+      const cos = Math.cos(angles[i]);
+      const sin = Math.sin(angles[i]);
+      segments[i] = { a: { x: x + cos * start, y: y + sin * start }, b: { x: x + cos * end, y: y + sin * end } };
+    }
+    return segments;
   }
 
+  // A grown ball's weapon is drawn at size 1 under a canvas scaled up around
+  // the ball, so every drawing keeps its proportions.
   draw(ctx) {
-    for (const angle of this.disarmed ? [] : this.bladeAngles()) {
+    const { owner } = this;
+    const { x, y } = owner.pos;
+    const size = owner.size;
+    if (size !== 1) {
       ctx.save();
-      ctx.translate(this.owner.pos.x, this.owner.pos.y);
-      ctx.rotate(angle);
-      ctx.scale(1, this.widthScale);
-      const start = this.owner.radius + this.gap;
-      this.drawLocal(ctx, start);
-      for (const upgrade of this.upgrades) upgrade.drawBlade(ctx, start);
-      ctx.restore();
+      ctx.translate(x, y);
+      ctx.scale(size, size);
+      ctx.translate(-x, -y);
     }
-    for (const shield of this.shields) shield.draw(ctx);
+    owner.atUnitSize(() => {
+      for (const angle of this.disarmed ? [] : this.bladeAngles()) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.scale(1, this.widthScale);
+        const start = owner.radius + this.gap;
+        this.drawLocal(ctx, start);
+        for (const upgrade of this.upgrades) upgrade.drawBlade(ctx, start);
+        ctx.restore();
+      }
+      for (const shield of this.shields) shield.draw(ctx);
+    });
+    if (size !== 1) ctx.restore();
+  }
+
+  // One blade (drawLocal plus the upgrades' drawBlade) drawn away from its
+  // ball (thrown, flying...), with the canvas already moved to the blade.
+  // Scaled to the ball's size like draw does; `start` is in arena units.
+  // `drone` is passed on to drawBlade, for the Drone's upgrades.
+  drawBladeAt(ctx, start, drone) {
+    const size = this.owner.size;
+    if (size !== 1) {
+      ctx.save();
+      ctx.scale(size, size);
+    }
+    this.owner.atUnitSize(() => {
+      const unitStart = start / size;
+      this.drawLocal(ctx, unitStart);
+      for (const upgrade of this.upgrades) upgrade.drawBlade(ctx, unitStart, drone);
+    });
+    if (size !== 1) ctx.restore();
   }
 
   drawHitbox(ctx) {

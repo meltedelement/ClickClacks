@@ -216,15 +216,3 @@ export class Critical extends Upgrade {
     this.weapon.critChance += 0.15;
   }
 }
-
-// Much bigger than the other small upgrades; closer to a transformation.
-export class ExtraBlade extends Upgrade {
-  static id = 'extra-blade';
-  static displayName = 'Extra Blade';
-  static description = 'Adds another copy of your weapon.';
-
-  // The extra blade is drawn and collides like the rest, so it needs no visuals of its own.
-  apply() {
-    this.weapon.blades += 1;
-  }
-}

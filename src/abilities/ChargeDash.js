@@ -1,5 +1,5 @@
 import { Ability } from './Ability.js';
-import { TAU, add, angleOf, distance, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
+import { TAU, add, angleOf, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
 
 // Stop, aim at the nearest enemy, then lunge forward weapon-first.
 // Getting hit while charging, or having the dash parried, cancels it.
@@ -41,8 +41,7 @@ export class ChargeDash extends Ability {
   }
 
   shouldActivate(sim) {
-    const enemy = this.nearestEnemy(sim);
-    return enemy !== null && distance(enemy.pos, this.owner.pos) < this.triggerRange;
+    return this.enemyWithin(sim, this.triggerRange) !== null;
   }
 
   onStart(sim) {

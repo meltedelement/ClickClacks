@@ -3,17 +3,29 @@ import { getUpgradeById, upgradesFor } from '../upgrades/index.js';
 import { Sound } from '../game/Sound.js';
 
 const RANDOM = 'random';
+const MAX_FIGHTERS = 8; // more don't fit around the spawn circle
+const MAX_RANDOM_UPGRADES = 10;
+const MIN_ROYALE = 3;
+const MAX_ROYALE = 1000; // the sim slows down well before this; see README
 
 // Wires the menu (fighter pickers, sim settings) and keyboard shortcuts to the
-// games: one normally, one per screen in display mode. Settings apply to all.
+// games: one per arena normally (see Arenas), one per screen in display mode.
+// Settings apply to all.
 export class Controls {
   // In display mode the match API picks the matchups, so the matchup section
-  // and auto rematch are hidden.
-  constructor(games, { fighters, displayMode = false }) {
+  // and auto rematch are hidden. `arenas` (the main page's Arenas) enables the
+  // arena count setting; `games` is then its games array, which grows and shrinks.
+  // `royale` (a ball count) starts the menu in royale mode, and `mix`
+  // ({ weaponId: share }) sets its starting weapon mix (see bindWeaponMix).
+  constructor(games, { fighters, displayMode = false, arenas = null, royale = null, mix = null }) {
     this.games = games;
+    this.arenas = arenas;
     this.paused = false;
+    this.settings = {}; // what setAll last set, for arenas added later
 
-    this.buildFighterSelects(fighters);
+    this.bindFighterSettings(fighters);
+    this.bindMode(royale, mix);
+    this.bindArenaCount();
     this.bindSettings();
     if (displayMode) {
       byId('matchup').hidden = true;
@@ -25,7 +37,9 @@ export class Controls {
   }
 
   // Loadouts for the next match. Random slots are rerolled every match and avoid
-  // weapons already in the fight, so random matchups aren't mirrors.
+  // weapons already in the fight, so random matchups aren't mirrors. Each fighter
+  // then gets `randomUpgrades` more upgrades rolled for its weapon, on top of the
+  // picked ones. Transformations are only ever picked by hand.
   get lineup() {
     const weapons = this.selects.map((select) => (select.value === RANDOM ? null : getWeaponById(select.value)));
     for (let i = 0; i < weapons.length; i++) {
@@ -33,59 +47,241 @@ export class Controls {
       const unused = WEAPONS.filter((W) => !weapons.includes(W));
       weapons[i] = randomItem(unused.length > 0 ? unused : WEAPONS);
     }
-    return weapons.map((W, i) => ({ weapon: W.id, upgrades: [...this.fighterUpgrades[i]] }));
+    return weapons.map((W, i) => ({ weapon: W.id, upgrades: this.rollUpgrades(W, [...this.fighterUpgrades[i]]) }));
+  }
+
+  // The next match for an arena (see Game's chooseMatch).
+  nextMatch() {
+    return this.royale ? { fighters: this.royaleLineup, royale: true } : { fighters: this.lineup };
+  }
+
+  // A royale's loadouts: each weapon as many times as the weapon mix gives it
+  // (see royaleCounts), in a random order, each with `randomUpgrades` random upgrades.
+  get royaleLineup() {
+    const counts = royaleCounts(this.royaleCount, this.royaleShares);
+    const weapons = WEAPONS.flatMap((W, i) => new Array(counts[i]).fill(W));
+    for (let i = weapons.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [weapons[i], weapons[j]] = [weapons[j], weapons[i]];
+    }
+    return weapons.map((W) => ({ weapon: W.id, upgrades: this.rollUpgrades(W, []) }));
+  }
+
+  // `upgrades` plus `randomUpgrades` more rolled for weapon W (never transformations).
+  rollUpgrades(W, upgrades) {
+    for (let n = 0; n < this.randomUpgrades; n++) {
+      const choices = upgradesFor(W.id, upgrades).filter((U) => !U.transformation);
+      if (choices.length === 0) break;
+      upgrades.push(randomItem(choices).id);
+    }
+    return upgrades;
   }
 
   startMatch() {
     for (const game of this.games) game.newMatch();
   }
 
-  // Sets a property on every game.
+  // Standard (the fighters below) or royale (a crowd of random fighters, see
+  // Simulation's `royale`). Royale hides the fighter pickers and shows a ball
+  // count and the weapon mix. `mix` is the starting mix: { weaponId: share }.
+  bindMode(royale, mix) {
+    const mode = byId('mode');
+    const count = byId('royale-count');
+    this.royale = royale != null;
+    this.royaleCount = clampCount(royale ?? Number(count.value));
+    mode.value = this.royale ? 'royale' : 'standard';
+    count.value = String(this.royaleCount);
+    this.bindWeaponMix(mix);
+
+    const show = () => {
+      byId('fighter-count').closest('label').hidden = this.royale;
+      byId('fighter-selects').hidden = this.royale;
+      count.closest('label').hidden = !this.royale;
+      byId('royale-mix').hidden = !this.royale;
+    };
+    show();
+    mode.addEventListener('change', () => {
+      mode.blur();
+      this.royale = mode.value === 'royale';
+      show();
+      this.startMatch();
+    });
+    // Like the arena count: applied on Enter or when the box loses focus.
+    count.addEventListener('change', () => {
+      this.royaleCount = count.value === '' ? this.royaleCount : clampCount(Number(count.value));
+      count.value = String(this.royaleCount);
+      this.showMixCounts();
+      if (this.royale) this.startMatch();
+    });
+    count.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') count.blur();
+    });
+  }
+
+  // One share box per weapon. Shares are relative (60/40 and 3/2 are the same
+  // mix) and 0 leaves a weapon out; all 0 counts as even. Each row shows the
+  // balls that works out to, live while typing; the match restarts on Enter
+  // or when the box loses focus, like the other number boxes.
+  bindWeaponMix(mix) {
+    const rows = byId('royale-mix-rows');
+    this.royaleShares = WEAPONS.map((W) => (mix ? (mix[W.id] ?? 0) : 1));
+    this.mixInputs = [];
+    this.mixCounts = [];
+    WEAPONS.forEach((W, i) => {
+      const label = el('label', 'field');
+      label.append(el('span', 'field-label', W.displayName));
+      const input = el('input');
+      Object.assign(input, { type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: String(this.royaleShares[i]) });
+      input.setAttribute('aria-label', `${W.displayName} share`);
+      const read = () => Math.max(0, Number(input.value) || 0);
+      input.addEventListener('input', () => {
+        this.royaleShares[i] = read();
+        this.showMixCounts();
+      });
+      input.addEventListener('change', () => {
+        this.royaleShares[i] = read();
+        input.value = String(this.royaleShares[i]);
+        this.showMixCounts();
+        if (this.royale) this.startMatch();
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') input.blur();
+      });
+      const counted = el('span', 'royale-mix-count');
+      label.append(input, counted);
+      rows.append(label);
+      this.mixInputs.push(input);
+      this.mixCounts.push(counted);
+    });
+    onClick('royale-mix-even', () => {
+      this.royaleShares = WEAPONS.map(() => 1);
+      this.mixInputs.forEach((input) => (input.value = '1'));
+      this.showMixCounts();
+      if (this.royale) this.startMatch();
+    });
+    this.showMixCounts();
+  }
+
+  showMixCounts() {
+    const counts = royaleCounts(this.royaleCount, this.royaleShares);
+    const total = counts.reduce((a, b) => a + b, 0);
+    counts.forEach((n, i) => {
+      const percent = total > 0 ? Math.round((n / total) * 100) : 0;
+      this.mixCounts[i].textContent = `${n} · ${percent}%`;
+    });
+  }
+
+  // Sets a property on every game, and on any arena added later.
   setAll(key, value) {
+    this.settings[key] = value;
     for (const game of this.games) game[key] = value;
   }
 
-  buildFighterSelects(fighters) {
-    const root = byId('fighter-selects');
+  // The number of arenas playing side by side. New ones take the current
+  // settings and start a match of their own; the rest keep playing.
+  // A typed number, applied on Enter or when the box loses focus (not on every
+  // keystroke, so typing "12" doesn't build one arena on the way). The arrows
+  // apply straight away. There's no upper limit; below 1 snaps to 1, and a cleared
+  // box goes back to the current count.
+  bindArenaCount() {
+    const input = byId('arena-count');
+    if (!this.arenas) {
+      input.closest('label').hidden = true;
+      return;
+    }
+    input.addEventListener('change', () => this.setArenaCount(input.value === '' ? this.games.length : Number(input.value)));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') input.blur(); // blurring fires 'change'
+    });
+    this.arenaInput = input;
+  }
+
+  setArenaCount(n) {
+    n = Math.max(1, Math.round(n) || 1);
+    this.arenaInput.value = String(n);
+    for (const game of this.arenas.setCount(n)) {
+      Object.assign(game, this.settings);
+      game.newMatch();
+      game.start();
+    }
+  }
+
+  // The fighter count and random upgrade selects. Changing either starts a new match.
+  bindFighterSettings(fighters) {
     // Upgrade ids per fighter, in the order added; a repeated id is a stack.
-    this.fighterUpgrades = Array.from({ length: fighters }, () => []);
+    this.fighterUpgrades = [];
+    this.fighterRows = [];
+    this.selects = [];
     this.upgradeLists = [];
     this.upgradeAdders = [];
+    this.randomUpgrades = 0;
 
-    this.selects = Array.from({ length: fighters }, (_, i) => {
-      const fighter = el('div', 'fighter');
-      const label = el('label', 'field');
-      label.append(el('span', 'field-label', `Fighter ${i + 1}`));
+    const count = byId('fighter-count');
+    for (let n = 2; n <= MAX_FIGHTERS; n++) count.append(new Option(String(n), String(n)));
+    count.value = String(fighters);
+    count.addEventListener('change', () => {
+      count.blur();
+      this.setFighterCount(Number(count.value));
+      this.startMatch();
+    });
+    this.setFighterCount(fighters);
 
-      const select = el('select');
-      select.append(new Option('Random', RANDOM));
-      for (const W of WEAPONS) select.append(new Option(W.displayName, W.id));
-      select.value = RANDOM;
-      select.addEventListener('change', () => {
-        select.blur();
-        this.pruneUpgrades(i);
-        this.renderUpgrades(i);
-        this.startMatch();
-      });
-      label.append(select);
+    const random = byId('random-upgrades');
+    for (let n = 0; n <= MAX_RANDOM_UPGRADES; n++) random.append(new Option(String(n), String(n)));
+    random.value = '0';
+    random.addEventListener('change', () => {
+      random.blur();
+      this.randomUpgrades = Number(random.value);
+      this.startMatch();
+    });
+  }
 
-      const list = el('ul', 'upgrade-list');
-      const adder = el('select', 'upgrade-add');
-      adder.addEventListener('change', () => {
-        const id = adder.value;
-        adder.blur();
-        if (!id) return;
-        this.changeUpgrade(i, id, +1);
-      });
+  // Adds or removes fighters at the end; the others keep their weapon and upgrades.
+  setFighterCount(n) {
+    while (this.selects.length < n) this.addFighter(this.selects.length);
+    while (this.selects.length > n) {
+      this.fighterRows.pop().remove();
+      this.selects.pop();
+      this.fighterUpgrades.pop();
+      this.upgradeLists.pop();
+      this.upgradeAdders.pop();
+    }
+  }
 
-      fighter.append(label, list, adder);
-      root.append(fighter);
-      this.upgradeLists.push(list);
-      this.upgradeAdders.push(adder);
-      return select;
+  addFighter(i) {
+    const fighter = el('div', 'fighter');
+    const label = el('label', 'field');
+    label.append(el('span', 'field-label', `Fighter ${i + 1}`));
+
+    const select = el('select');
+    select.append(new Option('Random', RANDOM));
+    for (const W of WEAPONS) select.append(new Option(W.displayName, W.id));
+    select.value = RANDOM;
+    select.addEventListener('change', () => {
+      select.blur();
+      this.pruneUpgrades(i);
+      this.renderUpgrades(i);
+      this.startMatch();
+    });
+    label.append(select);
+
+    const list = el('ul', 'upgrade-list');
+    const adder = el('select', 'upgrade-add');
+    adder.addEventListener('change', () => {
+      const id = adder.value;
+      adder.blur();
+      if (!id) return;
+      this.changeUpgrade(i, id, +1);
     });
 
-    for (let i = 0; i < fighters; i++) this.renderUpgrades(i);
+    fighter.append(label, list, adder);
+    byId('fighter-selects').append(fighter);
+    this.fighterRows.push(fighter);
+    this.selects.push(select);
+    this.fighterUpgrades.push([]);
+    this.upgradeLists.push(list);
+    this.upgradeAdders.push(adder);
+    this.renderUpgrades(i);
   }
 
   // Weapon id whose upgrades fighter `i` can take. For Random that's null,
@@ -165,6 +361,7 @@ export class Controls {
 
     onClick('restart', () => this.startMatch());
     onClick('pause', () => this.togglePause());
+    onClick('end-match', () => this.games.forEach((game) => game.endMatch()));
 
     const applySpeed = () => {
       this.setAll('timeScale', Number(speed.value));
@@ -219,7 +416,8 @@ export class Controls {
 
   bindKeyboard() {
     window.addEventListener('keydown', (e) => {
-      if (e.target instanceof HTMLSelectElement) return;
+      // Don't steal keys from a select or a box being typed in (Space, R, H...).
+      if (e.target instanceof HTMLSelectElement || (e.target instanceof HTMLInputElement && e.target.type === 'number')) return;
 
       switch (e.code) {
         case 'Space':
@@ -252,6 +450,30 @@ export class Controls {
     this.setAll('paused', this.paused);
     this.pauseButton.textContent = this.paused ? 'Resume' : 'Pause';
   }
+}
+
+// Splits `total` balls between the weapons in proportion to `shares` (one
+// per weapon in WEAPONS order), rounding so they still add up to `total`:
+// each gets its whole number, then the largest remainders get one more.
+// No shares at all counts as an even mix.
+export function royaleCounts(total, shares) {
+  const sum = shares.reduce((a, b) => a + b, 0);
+  const weights = sum > 0 ? shares : shares.map(() => 1);
+  const weightSum = sum > 0 ? sum : shares.length;
+  const exact = weights.map((w) => (total * w) / weightSum);
+  const counts = exact.map(Math.floor);
+  let left = total - counts.reduce((a, b) => a + b, 0);
+  const byRemainder = exact.map((x, i) => i).sort((a, b) => exact[b] - counts[b] - (exact[a] - counts[a]) || a - b);
+  for (const i of byRemainder) {
+    if (left <= 0) break;
+    counts[i] += 1;
+    left -= 1;
+  }
+  return counts;
+}
+
+function clampCount(n) {
+  return Math.min(MAX_ROYALE, Math.max(MIN_ROYALE, Math.round(n) || MIN_ROYALE));
 }
 
 function randomItem(items) {

@@ -10,7 +10,13 @@
     "preview": "vite preview",
     "start": "node server/index.js",
     "start:all": "node tools/run-all.js --built",
-    "balance": "node tools/balance.js"
+    "balance": "node tools/balance.js",
+    "sweep": "node tools/sweep.js",
+    "flawless": "node tools/flawless.js",
+    "flawless": "node tools/flawless.js",
+    "tournament": "node tournament/server/index.ts",
+    "tournament:test": "node --test tournament/formats/*.test.ts",
+    "display:headless": "node tools/headless-display.js"
   },
   "devDependencies": {
     "vite": "^8.3.1"

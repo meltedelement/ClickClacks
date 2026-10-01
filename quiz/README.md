@@ -1,6 +1,6 @@
 # The Quiz of Doom
 
-The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick. After every second round, the quiz stops for a battle break: before every second stage each team picks a transformation, and one stage of a double elimination plays through the game's match API (see [Battle](#battle)).
+The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick. After every second round, the quiz stops for a battle break: before every second stage each team picks a transformation, and one stage of the battle plays through the [tournament service](../tournament/README.md) (see [Battle](#battle)).
 
 ## Run
 
@@ -10,11 +10,12 @@ npm run dev     # API server (port 3001) + Vite client (port 5174), with reload
 npm run build && npm start   # one server on port 3001 that serves the built client
 ```
 
-From the repo root, `npm run dev:all` (or `npm run start:all`, which builds both
-first) runs the quiz and the game together and points the quiz at the match API
-for you. See the [main README](../README.md#running). You can also run the quiz
-alone from here. Then set `GAME_API` so that the battle finds the game
-(`GAME_API=http://localhost:5173/api npm run dev`, or the built `:3002`).
+From the repo root, `npm run dev:all` (or `npm run start:all`, which builds
+first) runs the quiz, the tournament service and the game together and points
+each at the next for you. See the [main README](../README.md#running). You can
+also run the quiz alone from here. Then set `TOURNAMENT_API` so that the battle
+finds the tournament service (default `http://127.0.0.1:3003/api`). The quiz
+never talks to the game itself.
 
 - Teams open `http://<your-ip>:5174/` (dev) or `http://<your-ip>:3001/` (start).
 - The host opens `/admin` and enters the admin key. The host runs the quiz from this page.
@@ -28,9 +29,9 @@ alone from here. Then set `GAME_API` so that the battle finds the game
 | File | Content |
 | --- | --- |
 | `../quiz-questions.json` | The questions, in rounds. `answerIndex` is the index of the correct option. |
-| `data/game.json` | Offline copy of the game's weapons, upgrades and transformations, plus the quiz's `upgradesPerCorrect`, `offerSize` and `exclude`. Generated from the game by `npm run sync-catalog`. At run time the quiz reads the real catalog from the game's `GET /api/catalog`. |
+| `data/game.json` | Offline copy of the game's weapons, upgrades and transformations, plus the quiz's `upgradesPerCorrect`, `offerSize` and `exclude`. Generated from the game by `npm run sync-catalog`. At run time the quiz reads the real catalog from the game, through the tournament service's `GET /api/game/catalog`. |
 | `data/admin-token.txt` | The generated admin key. Not in git. |
-| `data/state.json` | Live state: teams, answers, and upgrades. The server writes it after each change. Not in git. |
+| `data/state.json` | Live state: teams, answers, upgrades, and the id of the battle on the tournament service. The server writes it after each change. Not in git. |
 
 The server reads the questions one time into `state.json`. After you edit `quiz-questions.json`, click **Reload quiz-questions.json** on the admin page.
 
@@ -109,9 +110,17 @@ The quiz stores only upgrade ids and counts, and the transformation ids. The gam
 
 ## Battle
 
-The quiz server runs a double elimination through the game's match API. A team
-is out after its second loss. The battle is played in stages, one stage in each
-battle break.
+The battle runs on the [tournament service](../tournament/README.md), which
+sends every match to the game. The quiz sends it the teams as entrants (with a
+public id per team, never the device token) and their loadouts, starts each
+stage, and shows what it reports. The battle is played in stages, one stage in
+each battle break.
+
+The default format is a double elimination: a team is out after its second
+loss. Before the bracket is drawn, the Battle tab can pick single elimination
+(out after one loss) or round robin (everyone meets everyone, and the top of
+the table wins) instead. The rules below are the double elimination's; the
+tournament service's README has the others.
 
 ### Battle breaks
 
@@ -173,27 +182,30 @@ wait for them.
 
 ### Running it
 
-1. Start the game server (`npm run start:all` or `npm run dev:all` in the repo
-   root does it for you) and open `/screen` on the big screen. The big screen
+1. Start the game server and the tournament service (`npm run start:all` or
+   `npm run dev:all` in the repo root does it for you) and open `/screen` on
+   the big screen. The big screen
    loads the game's display page (`?display&embed`) as soon as the game
    answers and keeps it loaded, hidden, so it counts as a connected display.
    A match plays only while a display page is connected, so keep the big
    screen visible. The Battle tab shows how many are connected.
 2. At the first battle break, the quiz moves to the `battle` phase. This draws
    the bracket. You can also click **Draw the bracket** on the Battle tab.
-3. Start each stage with Next (**Start stage 1**) or on the Battle tab. The quiz
-   sends all winners bracket matches of the stage to the game at the same time.
-   The big screen switches to the arena, which plays up to four at once. When
-   they all have a winner, the quiz sends the losers bracket matches. A few
-   seconds after the stage ends, the big screen goes back to the stage's
-   results.
-4. When all the matches of a stage have a winner, the quiz draws the next stage
-   and waits. Nothing plays until you start it. The admin page can start a stage
-   at any time, also outside a battle break.
+3. Start each stage with Next (**Start stage 1**) or on the Battle tab. The
+   tournament service sends all winners bracket matches of the stage to the
+   game at the same time. The big screen switches to the arena, which plays up
+   to four at once. When they all have a winner, it sends the losers bracket
+   matches. A few seconds after the stage ends, the big screen goes back to the
+   stage's results.
+4. When all the matches of a stage have a winner, the tournament service draws
+   the next stage and waits. Nothing plays until you start it. The admin page
+   can start a stage at any time, also outside a battle break.
 
-Point the quiz at the game with `GAME_API` (default `http://localhost:3002/api`).
-The Battle tab shows whether the game answers and the number of display pages.
-**Arena alone** there opens the display page on its own, for a second screen.
+Point the quiz at the tournament service with `TOURNAMENT_API` (default
+`http://127.0.0.1:3003/api`), and the tournament service at the game with its
+`GAME_API`. The Battle tab shows whether each answers and the number of display
+pages. **Arena alone** there opens the display page on its own, for a second
+screen.
 
 ### Battle controls (Battle tab)
 
@@ -211,19 +223,28 @@ The Battle tab shows whether the game answers and the number of display pages.
 
 ### Loadouts, restarts and errors
 
-- The quiz copies each team's loadout when its stage starts. The losers bracket
-  matches get the loadouts when they are drawn. Thus, upgrades and
-  transformations picked between stages apply to the next stage.
-- A loadout that the game refuses fails only that match. Fix the loadout, then
-  replay the match or pick its winner.
-- The bracket and the results are kept in `state.json`. If the quiz server
-  restarts, a stage that was playing continues. The quiz picks up the matches
-  that it already sent to the game.
+- The quiz sends each team's name, colour and loadout to the tournament service
+  whenever they change, and again just before a stage starts. A stage copies
+  the loadouts when it starts; the losers bracket matches get them when they
+  are drawn. Thus, upgrades and transformations picked between stages apply to
+  the next stage.
+- The game checks every loadout (through the tournament service). A team's
+  **Edit** panel shows the game's reasons to refuse its loadout once the
+  bracket is drawn, and a stage with such a team does not start. A loadout
+  the game refuses mid-stage fails only that match: fix it, then replay the
+  match or pick its winner.
+- The bracket and the results are kept by the tournament service (in
+  `tournament/data/`); `state.json` keeps only the battle's id. If the quiz
+  server restarts, it picks the battle up again. If the tournament service
+  restarts, a stage that was playing continues.
 - The game keeps its matches in memory only. If the game server restarts, the
-  quiz sends the unfinished matches again with the same seeds: the same fights.
+  tournament service sends the unfinished matches again with the same seeds:
+  the same fights.
+- A `state.json` from before the tournament service had the bracket in it. The
+  quiz drops that bracket when it starts; draw a new one.
 
 The quiz takes its weapons, upgrades and transformations from the game's
-`GET /api/catalog`, so an offer can never name an upgrade the game does not know. If the game is not
-running the quiz uses `data/game.json` and switches to the live catalog as soon
-as the game answers. Run `npm run sync-catalog` after changing a weapon, upgrade
+catalog (through the tournament service), so an offer can never name an
+upgrade the game does not know. If the game is not running the quiz uses
+`data/game.json` and switches to the live catalog as soon as the game answers. Run `npm run sync-catalog` after changing a weapon, upgrade
 or stack limit in the game to refresh that offline copy.

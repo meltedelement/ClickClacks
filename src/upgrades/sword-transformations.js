@@ -355,8 +355,8 @@ export class Captain extends SwordTransformation {
 
   tryThrow(sim) {
     const shield = this.weapon.heldShields[0];
-    const enemy = this.nearestEnemy(sim);
-    if (!shield || !enemy || distance(enemy.pos, this.owner.pos) > this.triggerRange) return;
+    const enemy = this.enemyWithin(sim, this.triggerRange);
+    if (!shield || !enemy) return;
 
     const { a, b } = shield.getSegment();
     this.shield = shield;
@@ -546,8 +546,8 @@ export class Piercer extends SwordTransformation {
 
   onAbilityEnd(ability, sim) {
     if (!(ability instanceof SpinSwipe) || sim.over) return;
-    const enemy = this.nearestEnemy(sim);
-    if (!enemy || distance(enemy.pos, this.owner.pos) > this.triggerRange) return;
+    const enemy = this.enemyWithin(sim, this.triggerRange);
+    if (!enemy) return;
     this.target = enemy;
     this.phase = 'aim';
     this.timer = this.aimTime;
@@ -702,8 +702,8 @@ export class Gladiator extends SwordTransformation {
   }
 
   tryThrow(sim) {
-    const enemy = this.nearestEnemy(sim);
-    if (!enemy || distance(enemy.pos, this.owner.pos) > this.triggerRange) return;
+    const enemy = this.enemyWithin(sim, this.triggerRange);
+    if (!enemy) return;
     const dir = leadDirection(this.owner.pos, enemy, this.throwSpeed);
     this.net = {
       pos: add(this.owner.pos, scale(dir, this.owner.radius)),

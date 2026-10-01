@@ -29,6 +29,22 @@ export class Shield {
     this.style = 'wood'; // 'wood' | 'bronze' (Hoplite) | 'captain' (Captain); see LOOKS
   }
 
+  // Royale growth: see Weapon.scaleGeometry.
+  scaleGeometry(factor) {
+    this.distance *= factor;
+    this.width *= factor;
+    this.thickness *= factor;
+    this.spikeLength *= factor;
+  }
+
+  saveGeometry() {
+    return { distance: this.distance, width: this.width, thickness: this.thickness, spikeLength: this.spikeLength };
+  }
+
+  restoreGeometry(saved) {
+    Object.assign(this, saved);
+  }
+
   get angle() {
     return this.weapon.angle + this.offset;
   }
@@ -45,6 +61,12 @@ export class Shield {
     copy.spikeLength = this.spikeLength;
     copy.style = this.style;
     return copy;
+  }
+
+  // How far from the ball's centre the shield's hitbox can reach (thickness
+  // included, spikes not). Must match getSegment; see Weapon.bladeReach.
+  get reach() {
+    return Math.hypot(this.radius, this.width / 2) + this.thickness;
   }
 
   // Straight segment across the face of the shield, in arena coordinates.

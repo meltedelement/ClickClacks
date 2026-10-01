@@ -3,11 +3,12 @@
 // shows. Below it, tabs: Live (what is happening now), Teams, Answers, Battle
 // and Settings (manual control, data and resets).
 import { Fragment, useEffect, useState } from 'react';
-import type { AdminView, Phase, Team } from '../shared/types.ts';
+import type { AdminView, FormatId, Phase, Team } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
-import { currentRound, fitLoadout, fitsWeapon, validateLoadout } from '../shared/battle.ts';
+import { fitLoadout, fitsWeapon } from '../shared/loadout.ts';
+import { currentStage, isSent } from '../shared/tournament.ts';
 import { groupRounds, roundPosition, stagesAllowed } from '../shared/rounds.ts';
-import { Bracket } from './Bracket.tsx';
+import { Bracket, Standings } from './Bracket.tsx';
 import { AdminLogin, useAdmin } from './admin.tsx';
 import { backStep, idleReason, nextStep, screenLabel, type Step } from './flow.ts';
 import { Brand, LETTERS, Status, TeamDot, ThemeToggle, WeaponSwatch, battleViewUrl, useJoinAddress } from './ui.tsx';
@@ -127,9 +128,9 @@ function ControlBar({ view, act }: { view: AdminView; act: Act }) {
     where = 'Lobby';
     title = `${state.teams.length} team${state.teams.length === 1 ? '' : 's'} joined`;
   } else if (state.phase === 'battle') {
-    const r = state.battle && currentRound(state.battle);
+    const r = view.tournament && currentStage(view.tournament);
     where = 'Battle break';
-    title = state.battle?.champion ? 'The battle is over' : r ? `${r.name} · ${r.status === 'playing' ? 'playing' : r.status === 'waiting' ? 'ready to start' : 'done'}` : 'Bracket not drawn';
+    title = view.tournament?.champion ? 'The battle is over' : r ? `${r.name} · ${r.status === 'playing' ? 'playing' : r.status === 'waiting' ? 'ready to start' : 'done'}` : 'Bracket not drawn';
   } else {
     where = round ? `Round ${round.index + 1} of ${round.count} · Question ${round.position} of ${round.size}` : '';
     title = q?.text ?? '';
@@ -155,7 +156,11 @@ function ControlBar({ view, act }: { view: AdminView; act: Act }) {
               · {answered} of {state.teams.length} answered
             </span>
           )}
-          {arenaMissing && <span className="warn-text">· {!game.reachable ? 'the game server is not answering' : 'no arena connected: open the big screen'}</span>}
+          {arenaMissing && (
+            <span className="warn-text">
+              · {!game.tournamentReachable ? 'the tournament server is not answering' : !game.reachable ? 'the game server is not answering' : 'no arena connected: open the big screen'}
+            </span>
+          )}
         </p>
       </div>
       <div className="control-buttons">
@@ -398,7 +403,8 @@ function TeamEditor({ team, view, act }: { team: Team; view: AdminView; act: Act
   const atLimit = (id: string) => (team.upgrades[id] ?? 0) >= (catalog.upgrades.find((u) => u.id === id)?.maxStacks ?? Infinity);
   // The host may add any upgrade that fits the weapon, even one the phones would not offer.
   const addable = catalog.upgrades.filter((u) => fitsWeapon(u, team.weapon) && !atLimit(u.id));
-  const problems = validateLoadout(team, catalog);
+  // The game's own check, through the tournament service. Only known once the bracket is drawn.
+  const problems = view.tournament?.entrants.find((e) => e.id === team.entrantId)?.problems ?? [];
   // The server drops upgrades and transformations that do not fit the new weapon.
   const changeWeapon = (weapon: string) => {
     const fitted = fitLoadout({ ...team, weapon }, catalog);
@@ -600,37 +606,52 @@ function AnswersTab({ view, act }: { view: AdminView; act: Act }) {
 
 // ---- Battle -----------------------------------------------------------------
 
-// The double elimination: draw the bracket, start and stop each stage, and fix
-// a match the game could not finish. The quiz server queues matches on the
-// game's match API; the arena on the big screen plays them and reports the result.
+const FORMAT_HELP: Record<FormatId, string> = {
+  'double-elimination':
+    'Double elimination from a seeded random draw. A first loss drops a team to the losers bracket, and a second loss puts it out. An odd team out gets a bye. The last team of each bracket meet in the grand final, with a reset if the losers bracket team wins.',
+  'single-elimination': 'Single elimination from a seeded random draw. One loss and the team is out. An odd team out gets a bye and plays first in the next stage.',
+  'round-robin': 'Every team meets every other team once. Each stage is one round; a win is a point, and the top of the table wins.',
+};
+
+// The battle: draw it, start and stop each stage, and fix a match the game
+// could not finish. The tournament service sends the matches to the game; the
+// arena on the big screen plays them and reports the result.
 function BattlePanel({ view, act }: { view: AdminView; act: Act }) {
   const { state, game } = view;
-  const battle = state.battle;
-  const round = battle && currentRound(battle);
-  const teamName = (id: string) => state.teams.find((t) => t.id === id)?.name ?? '(deleted team)';
-  const teamColor = (id: string) => state.teams.find((t) => t.id === id)?.color ?? '';
+  const battle = view.tournament;
+  const round = battle && currentStage(battle);
+  const entrant = (id: string) => battle?.entrants.find((e) => e.id === id);
+  const teamName = (id: string) => state.teams.find((t) => t.entrantId === id)?.name ?? entrant(id)?.name ?? '(deleted team)';
+  const teamColor = (id: string) => state.teams.find((t) => t.entrantId === id)?.color ?? entrant(id)?.color ?? '';
   const allowed = stagesAllowed(state.questions, state.questionIndex);
   const picking = state.teams.filter((t) => (view.transformPicks[t.id] ?? 0) > 0);
+  const [format, setFormat] = useState<FormatId>('double-elimination');
 
   return (
     <section className="card stack">
       <div className="card-head" style={{ marginBottom: 0 }}>
         <h2>Battle</h2>
         <span className="muted num">
-          {battle ? `${battle.matches.filter((m) => m.status === 'done').length} / ${battle.matches.length} played · seed ${battle.seed}` : `${state.teams.length} teams`}
+          {battle
+            ? `${view.formats.find((f) => f.id === battle.format)?.name ?? battle.format} · ${battle.matches.filter((m) => m.status === 'done').length} / ${battle.matches.length} played · seed ${battle.seed}`
+            : `${state.teams.length} teams`}
         </span>
       </div>
 
       <div className="row wrap">
+        <span className={game.tournamentReachable ? 'pill good' : 'pill warn'}>{game.tournamentReachable ? 'Tournament server up' : 'Tournament server down'}</span>
         <span className={game.reachable ? 'pill good' : 'pill warn'}>{game.reachable ? 'Game server up' : 'Game server down'}</span>
         <span className={game.displays > 0 ? 'pill good' : 'pill warn'}>
           {game.displays === 0 ? 'No arena connected' : game.displays === 1 ? '1 arena connected' : `${game.displays} arenas connected`}
         </span>
-        <a className="small-link" href={battleViewUrl(game.url)} target="_blank" rel="noopener">
-          Arena alone ↗
-        </a>
+        {game.displayUrl && (
+          <a className="small-link" href={battleViewUrl(game.displayUrl)} target="_blank" rel="noopener">
+            Arena alone ↗
+          </a>
+        )}
       </div>
-      {!game.reachable && <p className="notice bad">The game server is not answering at {game.url}.</p>}
+      {!game.tournamentReachable && <p className="notice bad">The tournament server is not answering at {game.tournamentUrl}.</p>}
+      {game.tournamentReachable && !game.reachable && <p className="notice bad">The game server is not answering the tournament server{game.url ? ` at ${game.url}` : ''}.</p>}
       {game.reachable && game.displays === 0 && <p className="notice bad">Matches play only while an arena is open. Open the big screen and leave it visible.</p>}
 
       {!battle && (
@@ -639,14 +660,21 @@ function BattlePanel({ view, act }: { view: AdminView; act: Act }) {
           onSubmit={(e) => {
             e.preventDefault();
             const seed = String(new FormData(e.currentTarget).get('seed') ?? '').trim();
-            act({ type: 'battleCreate', ...(seed ? { seed: Number(seed) } : {}) });
+            act({ type: 'battleCreate', format, ...(seed ? { seed: Number(seed) } : {}) });
           }}
         >
+          <select value={format} onChange={(e) => setFormat(e.target.value as FormatId)} aria-label="Format">
+            {(view.formats.length ? view.formats : [{ id: 'double-elimination' as const, name: 'Double elimination' }]).map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
           <input name="seed" inputMode="numeric" placeholder="Seed (optional)" size={16} />
-          <button className="primary" disabled={state.teams.length < 2}>
+          <button className="primary" disabled={state.teams.length < 2 || !game.tournamentReachable}>
             Draw the bracket
           </button>
-          <span className="hint">Starting the first battle break draws it too.</span>
+          <span className="hint">Starting the first battle break draws it too (as a double elimination).</span>
         </form>
       )}
 
@@ -668,14 +696,16 @@ function BattlePanel({ view, act }: { view: AdminView; act: Act }) {
       )}
       {battle && round?.status === 'waiting' && picking.length > 0 && <p className="hint">Still picking a transformation: {picking.map((t) => t.name).join(', ')}</p>}
       {battle?.note && <p className="notice">{battle.note}</p>}
-      {game.restart && (
+      {battle?.restart && (
         <p className="notice bad">
-          The game server restarted at {new Date(game.restart.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} and lost its matches.{' '}
-          {game.restart.matches.join(', ')} went back on the game and {game.restart.matches.length === 1 ? 'starts' : 'start'} again with the same fights. In dev
+          The game server restarted at {new Date(battle.restart.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} and lost its matches.{' '}
+          {battle.restart.matches.join(', ')} went back on the game and {battle.restart.matches.length === 1 ? 'starts' : 'start'} again with the same fights. In dev
           mode a change to a game file restarts the game server: use <code>npm run start:all</code> for the event.
         </p>
       )}
       {battle?.champion && <p className="notice good">{teamName(battle.champion)} wins the battle.</p>}
+
+      {battle?.format === 'round-robin' && <Standings battle={battle} teamName={teamName} teamColor={teamColor} />}
 
       {battle && (
         <div className="scroll">
@@ -683,21 +713,22 @@ function BattlePanel({ view, act }: { view: AdminView; act: Act }) {
             battle={battle}
             teamName={teamName}
             teamColor={teamColor}
-            onScreen={game.reachable && game.displays > 0 ? game.onScreen : undefined}
+            screensKnown={game.reachable && game.displays > 0}
             actions={(match) => {
-              const roundOpen = battle.rounds[match.round]?.status !== 'done';
-              const isFinal = match.round === battle.rounds.length - 1;
-              if (match.status === 'queued') return null;
+              const roundOpen = battle.stages[match.stage]?.status !== 'done';
+              const isFinal = match.stage === battle.stages.length - 1;
+              if (isSent(match)) return null;
               if (match.status === 'done' && !(isFinal && battle.champion) && !roundOpen) return null;
+              const [a, b] = match.entrants;
               return (
                 <>
                   {match.status !== 'done' && roundOpen && (
                     <>
-                      <button className="small ghost" onClick={() => act({ type: 'battleSetWinner', matchId: match.id, winner: match.a })}>
-                        {teamName(match.a)} wins
+                      <button className="small ghost" onClick={() => act({ type: 'battleSetWinner', matchId: match.id, winner: a })}>
+                        {teamName(a)} wins
                       </button>
-                      <button className="small ghost" onClick={() => act({ type: 'battleSetWinner', matchId: match.id, winner: match.b })}>
-                        {teamName(match.b)} wins
+                      <button className="small ghost" onClick={() => act({ type: 'battleSetWinner', matchId: match.id, winner: b })}>
+                        {teamName(b)} wins
                       </button>
                     </>
                   )}
@@ -719,9 +750,8 @@ function BattlePanel({ view, act }: { view: AdminView; act: Act }) {
       <details>
         <summary>How the battle works</summary>
         <p className="hint" style={{ marginTop: '0.5rem' }}>
-          Double elimination from a seeded random draw. A first loss drops a team to the losers bracket, and a second loss puts it out. An odd team out gets a bye.
-          The last team of each bracket meet in the grand final, with a reset if the losers bracket team wins. At the time limit the team with more HP left wins.
-          Each battle break plays one stage, and the break after the last round plays the rest.
+          {FORMAT_HELP[battle?.format ?? format]} At the time limit the team with more HP left wins. Each battle break plays one stage, and the break after the last
+          round plays the rest. The tournament server runs the battle and sends each match to the game.
         </p>
       </details>
     </section>

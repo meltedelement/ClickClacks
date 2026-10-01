@@ -34,7 +34,6 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
-/* The arena is square, so it fills whichever screen dimension is smaller. */
 .stage {
   position: fixed;
   inset: 0;
@@ -42,15 +41,9 @@ body {
   place-items: center;
 }
 
-#arena {
-  --size: calc(min(100vw, 100vh) - var(--gutter) * 2);
-  display: block;
-  width: var(--size);
-  height: var(--size);
-  border-radius: var(--radius);
-}
-
-/* ---- Display mode: up to four square arenas ---- */
+/* ---- Square arenas in a grid: the display page's screens (up to four, by
+   data-count) and the main page's arenas (any number; Arenas.js sets
+   --cols and --rows for the window). Each fills its cell's smaller side. ---- */
 
 .screens {
   --cols: 1;
@@ -120,6 +113,25 @@ body {
   opacity: 1;
 }
 
+.screen-end {
+  position: absolute;
+  left: 3.5rem;
+  bottom: 0.625rem;
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  color: var(--muted);
+  background: var(--panel);
+  opacity: 0.7;
+}
+
+.screen-end[hidden] {
+  display: none;
+}
+
+.screen-end:hover {
+  opacity: 1;
+}
+
 /* ---- Menu ---- */
 
 .embedded .menu {
@@ -167,7 +179,10 @@ body {
 
 .menu-panel[hidden],
 .menu-section[hidden],
-.check[hidden] {
+.check[hidden],
+.field[hidden],
+.fighter-selects[hidden],
+.royale-mix[hidden] {
   display: none;
 }
 
@@ -190,6 +205,37 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 0.875rem;
+}
+
+/* Royale weapon mix: a share box per weapon, with the balls it works out to. */
+.royale-mix,
+.royale-mix-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.royale-mix-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.royale-mix-head .field-label {
+  flex: none;
+}
+
+.royale-mix-head button {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.875rem;
+}
+
+.royale-mix-count {
+  flex: 0 0 4.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .fighter {
@@ -262,7 +308,8 @@ h2 {
 }
 
 select,
-button {
+button,
+input[type='number'] {
   font: inherit;
   color: var(--text);
   background: var(--control);
@@ -272,12 +319,21 @@ button {
   cursor: pointer;
 }
 
-select {
+select,
+input[type='number'] {
   flex: 1;
+  min-width: 0;
+}
+
+input[type='number'] {
+  cursor: text;
+  outline: none;
 }
 
 select:hover,
-button:hover {
+button:hover,
+input[type='number']:hover,
+input[type='number']:focus {
   border-color: var(--accent);
 }
 

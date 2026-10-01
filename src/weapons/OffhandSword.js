@@ -17,6 +17,10 @@ export class OffhandSword extends Shield {
     this.contactColor = '#dfe6ee';
   }
 
+  get reach() {
+    return Math.max(Math.abs(this.radius), Math.abs(this.radius + this.width)) + this.thickness;
+  }
+
   // From hilt to tip, pointing straight out from the ball.
   getSegment() {
     const { pos } = this.weapon.owner;

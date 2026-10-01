@@ -149,6 +149,10 @@ export class Sound {
       case 'catch':
         this.clang([520, 790], 0.15, 0.12);
         break;
+      case 'stick':
+        this.tone({ type: 'sine', freq: 190, freqEnd: 70, dur: 0.18, gain: 0.5 });
+        this.noise({ filter: 'bandpass', freq: 1400, freqEnd: 500, q: 1.2, dur: 0.12, gain: 0.35 });
+        break;
       case 'wrap':
         this.whoosh(0.15, 1200, 2800, 0.3);
         break;
@@ -156,9 +160,9 @@ export class Sound {
         this.tone({ type: 'sine', freq: 260, freqEnd: 1100, dur: 0.3, gain: 0.3 });
         this.whoosh(0.3, 400, 1800, 0.35);
         break;
-      case 'saw':
-        this.tone({ type: 'sawtooth', freq: 220, freqEnd: 480, dur: 0.5, gain: 0.12, attack: 0.05, lowpass: 2400 });
-        this.whoosh(0.3, 800, 3000, 0.35);
+      case 'swarm':
+        this.tone({ type: 'sawtooth', freq: 220, freqEnd: 440, dur: 0.4, gain: 0.1, attack: 0.05, lowpass: 2200 });
+        this.whoosh(0.3, 1200, 3200, 0.3);
         break;
       case 'slam': {
         const power = Math.min(shake / 12, 1);
@@ -246,6 +250,25 @@ export class Sound {
         break;
       case 'slip':
         this.tone({ type: 'sine', freq: 300, freqEnd: 900, dur: 0.15, gain: 0.25 });
+        break;
+      case 'wrap':
+        this.whoosh(0.15, 1200, 2800, 0.3);
+        break;
+      case 'shoot':
+        this.tone({ type: 'square', freq: 1400, freqEnd: 500, dur: 0.06, gain: 0.05, lowpass: 3000 });
+        break;
+      case 'ricochet':
+        this.tone({ type: 'triangle', freq: 2400, freqEnd: 3600, dur: 0.07, gain: 0.06 });
+        break;
+      case 'latch':
+        this.noise({ filter: 'bandpass', freq: 2600, freqEnd: 1400, q: 2, dur: 0.12, gain: 0.3 });
+        break;
+      case 'shake-off':
+        this.tone({ type: 'triangle', freq: 700, freqEnd: 350, dur: 0.1, gain: 0.12 });
+        break;
+      case 'bump':
+        this.tone({ type: 'sine', freq: 170, freqEnd: 320, dur: 0.14, gain: 0.45 });
+        this.noise({ filter: 'lowpass', freq: 900, freqEnd: 300, dur: 0.1, gain: 0.3 });
         break;
     }
   }

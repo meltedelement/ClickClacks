@@ -61,12 +61,13 @@ export function Brand({ name = 'Weapon Balls', color }: { name?: string; color?:
   );
 }
 
-// The game's display page (?display), where the battles play. The quiz server
-// may reach the game at 127.0.0.1, which is wrong for a browser on another
-// device, so a loopback host becomes the host this page came from. `embed`
-// hides the game's menu, for the arena inside the big screen.
-export function battleViewUrl(gameApi: string, { embed = false } = {}): string {
-  const url = new URL(gameApi.replace(/\/api\/?$/, '/'), location.href);
+// The game's display page (?display), where the battles play, as the
+// tournament service reports it. The services may reach each other at
+// 127.0.0.1, which is wrong for a browser on another device, so a loopback host
+// becomes the host this page came from. `embed` hides the game's menu, for the
+// arena inside the big screen.
+export function battleViewUrl(displayUrl: string, { embed = false } = {}): string {
+  const url = new URL(displayUrl, location.href);
   if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) url.hostname = location.hostname;
   url.search = embed ? '?display&embed' : '?display';
   return url.href;

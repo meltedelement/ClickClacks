@@ -1,5 +1,7 @@
-// Types for programs calling the match API (see matches.js for the routes).
-// Copy this file into the calling project, or import it by path.
+// The Game API: types for programs that queue matches on the game (the routes
+// are in server/matches.js and the README's "Match API" section). The
+// tournament service (tournament/) is one such program. Copy this file into the
+// calling project, or import it by path.
 
 /** A fighter to put in a match. */
 export interface FighterInput {
@@ -18,7 +20,10 @@ export interface FighterInput {
 
 /** Body of POST /api/matches. */
 export interface MatchRequest {
-  fighters: [FighterInput, FighterInput];
+  /** Two fighters or more. More than two is a free-for-all. */
+  fighters: FighterInput[];
+  /** Any tag of yours, up to 200 characters, e.g. a tournament match id. Echoed on the match; GET /api/matches?ref= finds it. */
+  ref?: string | null;
   /** 0 to 2^32 - 1. The same seed and fighters give the same fight. Random if left out. */
   seed?: number;
   /** Sim seconds before the match is called a draw. Default 180, at most 600. */
@@ -29,6 +34,11 @@ export interface MatchRequest {
    * exact tie is a seeded coin flip. Default null: a draw is possible.
    */
   tiebreak?: 'hp' | null;
+  /**
+   * Sim seconds before sudden death: from then on both fighters lose HP every
+   * second, more each second, until one drops. Default 120; null turns it off.
+   */
+  suddenDeath?: number | null;
 }
 
 export interface Fighter {
@@ -43,24 +53,33 @@ export type MatchStatus = 'queued' | 'playing' | 'done' | 'cancelled';
 
 export interface MatchResult {
   /** Index into `fighters`, or null for a draw. */
-  winner: 0 | 1 | null;
+  winner: number | null;
   /** The winner's name, or its weapon id if it has no name. */
   winnerName: string | null;
   /** 'time' when a draw was called at the time limit, 'hp' when the hp tiebreak picked the winner. */
   reason: 'ko' | 'time' | 'hp';
   /** Sim seconds the match lasted. */
   time: number;
-  /** HP left per fighter. */
-  hp: [number, number];
+  /** HP left per fighter, in `fighters` order. */
+  hp: number[];
+  /**
+   * Fighter indices from first place to last: the winner, then fighters still
+   * standing (most HP share first), then the knocked out, last out first.
+   */
+  ranking: number[];
 }
 
 export interface Match {
   id: string;
+  /** The caller's tag from the request, or null. */
+  ref: string | null;
   status: MatchStatus;
-  fighters: [Fighter, Fighter];
+  fighters: Fighter[];
   seed: number;
   timeLimit: number;
   tiebreak: 'hp' | null;
+  /** Sim seconds before sudden death starts, or null for none. */
+  suddenDeath: number | null;
   /** The display screen (0 to screens - 1) it went on, or null while it waits for a free one. */
   screen: number | null;
   queuedAt: string;
@@ -82,6 +101,16 @@ export interface Status {
   current: Match | null;
   /** Matches not done yet, including the current one. */
   queued: number;
+}
+
+/** Body of POST /api/validate: the fighters to check. Nothing is queued. */
+export interface ValidateRequest {
+  fighters: FighterInput[];
+}
+
+/** POST /api/validate: one entry per fighter, in order. `error` is what POST /api/matches would say. */
+export interface ValidateResponse {
+  fighters: { valid: boolean; error: string | null }[];
 }
 
 /** One entry in `Catalog.upgrades` or `Catalog.transformations`. */

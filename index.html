@@ -6,9 +6,7 @@
     <title>Weapon Balls</title>
   </head>
   <body>
-    <main class="stage">
-      <canvas id="arena"></canvas>
-    </main>
+    <main class="stage"></main>
 
     <div class="menu">
       <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="menu-panel">
@@ -20,6 +18,36 @@
       <div id="menu-panel" class="menu-panel" hidden>
         <section id="matchup" class="menu-section">
           <h2>Matchup</h2>
+          <label class="field" title="Matches played side by side, each with its own roll of random fighters and upgrades">
+            <span class="field-label">Arenas</span>
+            <input id="arena-count" type="number" min="1" step="1" value="1" inputmode="numeric" />
+          </label>
+          <label class="field" title="Royale: a crowd of random fighters in one big arena; each kill grows the killer">
+            <span class="field-label">Mode</span>
+            <select id="mode">
+              <option value="standard">Standard</option>
+              <option value="royale">Royale</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">Fighters</span>
+            <select id="fighter-count"></select>
+          </label>
+          <label class="field" title="Balls in the royale, each a random weapon" hidden>
+            <span class="field-label">Balls</span>
+            <input id="royale-count" type="number" min="3" max="1000" step="1" value="100" inputmode="numeric" />
+          </label>
+          <div id="royale-mix" class="royale-mix" hidden>
+            <div class="royale-mix-head">
+              <span class="field-label" title="Each weapon's share of the balls, e.g. 60 and 40 (0 leaves it out)">Weapon mix</span>
+              <button id="royale-mix-even" type="button">Even</button>
+            </div>
+            <div id="royale-mix-rows" class="royale-mix-rows"></div>
+          </div>
+          <label class="field" title="Upgrades each fighter gets at random every match, on top of the ones picked below">
+            <span class="field-label">Random upgrades</span>
+            <select id="random-upgrades"></select>
+          </label>
           <div id="fighter-selects" class="fighter-selects"></div>
         </section>
 
@@ -28,6 +56,7 @@
           <div class="buttons">
             <button id="restart" type="button">Restart</button>
             <button id="pause" type="button">Pause</button>
+            <button id="end-match" type="button">End match</button>
           </div>
           <label class="field">
             <span class="field-label">Speed</span>

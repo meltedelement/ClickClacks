@@ -563,8 +563,8 @@ pre { margin: 0.625rem 0 0; padding: 0.75rem; border-radius: var(--radius-sm); b
   * { transition: none !important; }
 }
 
-/* ---- Double elimination bracket (admin page) ---- */
-/* Columns are stages (set inline). Row 1: stage names, row 2: winners bracket, row 3: losers bracket. */
+/* ---- Tournament bracket (admin page) ---- */
+/* Columns are stages (set inline). Row 1: stage names, row 2: winners bracket (or the only group), row 3: losers bracket. */
 .bracket { display: grid; grid-template-rows: auto auto auto; gap: 0.75rem 1rem; align-items: stretch; }
 .bracket-head.current { color: var(--accent-strong); }
 .bracket-group { display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.25rem; }
@@ -583,3 +583,6 @@ pre { margin: 0.625rem 0 0; padding: 0.75rem; border-radius: var(--radius-sm); b
 .bracket-team.lost { color: var(--faint); text-decoration: line-through; }
 .bracket-meta { padding: 0.375rem 0.75rem; border-top: 1px solid var(--border); background: var(--surface-2); font-size: 0.75rem; color: var(--muted); }
 .bracket-actions { display: flex; flex-wrap: wrap; gap: 0.375rem; padding: 0.5rem 0.75rem; border-top: 1px solid var(--border); }
+/* A round robin's table. */
+.standings { max-width: 36rem; }
+.standings tr.won td { font-weight: 650; color: var(--good-text); }
