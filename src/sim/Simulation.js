@@ -25,7 +25,8 @@ import { resolveUpgrades } from '../upgrades/index.js';
 //   'block' { attacker, defender, point }  (a weapon hit a shield)
 //   'death' { ball }
 //   'end'   { winner, decidedBy }  (winner is null on a draw; decidedBy is 'ko', 'hp' or null)
-//   'ability' { ball, ability, phase, shake?, burst? }  (see Ability.emit)
+//   'ability' { ball, ability, phase, shake?, burst? }  (see Ability.emit; `ability` is null for a
+//            weapon's own, like the Gun's 'gunshot', 'eject' and 'reload')
 //   'upgrade' { ball, upgrade, phase, shake?, burst?, text?, color?, pos? }  (see Upgrade.emit)
 //   'grow'  { ball, victim, factor }  (royale: `ball` knocked `victim` out and grew by `factor`)
 export class Simulation {

@@ -164,6 +164,19 @@ export class Sound {
         this.tone({ type: 'sawtooth', freq: 220, freqEnd: 440, dur: 0.4, gain: 0.1, attack: 0.05, lowpass: 2200 });
         this.whoosh(0.3, 1200, 3200, 0.3);
         break;
+      case 'gunshot':
+        this.noise({ filter: 'lowpass', freq: 2600, freqEnd: 300, dur: 0.16, gain: 0.7 });
+        this.tone({ type: 'sine', freq: 160, freqEnd: 50, dur: 0.12, gain: 0.5 });
+        this.noise({ filter: 'highpass', freq: 3500, dur: 0.03, gain: 0.35 });
+        break;
+      case 'eject':
+        this.noise({ filter: 'bandpass', freq: 2200, q: 2, dur: 0.04, gain: 0.25 });
+        this.tone({ type: 'triangle', freq: 3200, freqEnd: 2600, dur: 0.05, gain: 0.05, delay: 0.12 });
+        break;
+      case 'reload':
+        this.noise({ filter: 'bandpass', freq: 2800, q: 3, dur: 0.03, gain: 0.35 });
+        this.tone({ type: 'square', freq: 1800, freqEnd: 900, dur: 0.03, gain: 0.04, delay: 0.08, lowpass: 3500 });
+        break;
       case 'slam': {
         const power = Math.min(shake / 12, 1);
         this.tone({ type: 'sine', freq: 110, freqEnd: 30, dur: 0.4 + power * 0.3, gain: 0.8 + power * 0.2 });

@@ -150,12 +150,16 @@ export class Weapon {
   update(dt, sim) {
     this.ability?.update(dt, sim);
     for (const upgrade of this.upgrades) upgrade.onUpdate(dt, sim);
-    const spinMultiplier = this.multiplier('spinMultiplier');
-    this.angle += this.spinSpeed * spinMultiplier * this.spinDir * dt;
+    this.turn(dt, sim);
 
     const targetSpread = this.multiplier('bladeSpread');
     this.spread += (targetSpread - this.spread) * Math.min(1, SPREAD_RATE * dt);
     if (this.parryCooldown > 0) this.parryCooldown -= dt;
+  }
+
+  // Turns the weapon for one step: a steady spin. Override to aim instead (Gun).
+  turn(dt, sim) {
+    this.angle += this.spinSpeed * this.multiplier('spinMultiplier') * this.spinDir * dt;
   }
 
   registerHit(target, sim, damage, point) {

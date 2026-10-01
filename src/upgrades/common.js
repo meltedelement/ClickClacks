@@ -85,10 +85,12 @@ export class Swift extends Upgrade {
 export class Focus extends Upgrade {
   static id = 'cooldown';
   static displayName = 'Focus';
-  static description = 'Your ability cooldown is 25% shorter (each copy shortens what is left).';
+  static description = 'Your ability cooldown is 25% shorter, or a Gun\'s reload 15% (each copy shortens what is left).';
 
   apply() {
-    const { ability } = this;
+    const { ability, weapon } = this;
+    // The Gun's reload is most of its firing cycle, so it gets a smaller cut.
+    if (weapon.reloadTime) weapon.reloadTime *= 0.85;
     if (!ability) return;
     ability.cooldown *= 0.75;
     ability.cooldownLeft *= 0.75;

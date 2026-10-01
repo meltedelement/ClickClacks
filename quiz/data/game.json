@@ -22,6 +22,10 @@
     {
       "id": "drone",
       "name": "Drone"
+    },
+    {
+      "id": "gun",
+      "name": "Gun"
     }
   ],
   "upgrades": [
@@ -100,7 +104,7 @@
     {
       "id": "cooldown",
       "name": "Focus",
-      "description": "Your ability cooldown is 25% shorter (each copy shortens what is left).",
+      "description": "Your ability cooldown is 25% shorter, or a Gun's reload 15% (each copy shortens what is left).",
       "weapons": null,
       "requires": [],
       "excludedBy": [],
@@ -353,6 +357,63 @@
       "description": "Drop Slam homes in on the enemy 25% better as it falls.",
       "weapons": [
         "mace"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null
+    },
+    {
+      "id": "quick-repair",
+      "name": "Quick Repair",
+      "description": "Swatted drones tumble for 30% less time, and once back they can attack again 30% sooner (each copy cuts what is left).",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null
+    },
+    {
+      "id": "quick-production",
+      "name": "Quick Production",
+      "description": "Start with 1 more drone (and build up to 1 more).",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 3
+    },
+    {
+      "id": "defense-matrix",
+      "name": "Defense Matrix",
+      "description": "Each guarding drone takes twice as much off a hit, and the guard can take off 10% more of it in all.",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [
+        "ace"
+      ],
+      "maxStacks": 3
+    },
+    {
+      "id": "boosters",
+      "name": "Boosters",
+      "description": "Your drones fly 40% faster, attacking and catching up with the formation.",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null
+    },
+    {
+      "id": "spiked-drones",
+      "name": "Spiked Drones",
+      "description": "Whoever swats one of your drones takes 0.25 damage.",
+      "weapons": [
+        "drone"
       ],
       "requires": [],
       "excludedBy": [],
@@ -707,6 +768,98 @@
       "description": "When Drop Slam hits the floor, a pillar of fire erupts under your mace for 2.5 s. Enemies in it burn for 1 damage every 0.5 s, and keep burning for 2 s after they leave.",
       "weapons": [
         "mace"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "non-euclidean",
+      "name": "Non-Euclidean",
+      "description": "Attacking drones fly out through a wall and back in through the opposite one instead of turning back, and go through the walls to reach the enemy when that way is shorter. A drone that came through a wall lands a critical hit.",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "ace",
+      "name": "Ace",
+      "description": "Instead of guarding when an enemy comes within reach, your drones in formation turn their thrusters on it and pull you away. They no longer take anything off hits.",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "legion",
+      "name": "Legion",
+      "description": "Twice as many drones, built twice as fast up to twice as many, but each one is smaller and deals and guards only 60% as much.",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "fighters",
+      "name": "Fighters",
+      "description": "Launched drones no longer ram: they circle the enemy, shooting it (each shot deals 60% of a hit) until an enemy blade or drone swats them or 3 s pass. Blades, shields and enemy drones stop the shots.",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [
+        "slicers"
+      ],
+      "maxStacks": 1
+    },
+    {
+      "id": "daredevils",
+      "name": "Daredevils",
+      "description": "Your drones boost at the enemy and back to you 50% faster, leaving short fire trails that set enemies burning (0.5 damage every 0.5 s for 1 s).",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "slicers",
+      "name": "Slicers",
+      "description": "A drone that hits an enemy latches on and grinds, dealing 40% of its damage every 0.25 s. The enemy shakes it off by bouncing off a wall, clashing its weapon with anything, or hitting you.",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [
+        "fighters"
+      ],
+      "maxStacks": 1
+    },
+    {
+      "id": "fortress",
+      "name": "Fortress",
+      "description": "Your drones are 30% bigger and armored: it takes two swats to knock one away (the first only deflects it), and each guarding drone takes twice as much off a hit. They fly 10% slower and deal 10% less damage.",
+      "weapons": [
+        "drone"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "wingmen",
+      "name": "Wingmen",
+      "description": "Two bumper drones fly on your wings. They never attack or guard: when an enemy closes in on you, one rams it, bouncing it away from you and knocking its weapon into spinning the other way. Enemy blades swat them like your other drones.",
+      "weapons": [
+        "drone"
       ],
       "requires": [],
       "excludedBy": [],

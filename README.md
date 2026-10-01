@@ -113,7 +113,7 @@ src/
     random.js          Seeded Math.random replacement for reproducible matches
   weapons/
     Weapon.js          Base class every weapon extends
-    Sword.js, Spear.js, Mace.js, Daggers.js, Drone.js
+    Sword.js, Spear.js, Mace.js, Daggers.js, Drone.js, Gun.js
                        One file per weapon: stats, scaling, and how it's drawn
     Shield.js          Off-hand shield that blocks enemy weapons
     OffhandSword.js    A shield shaped like a short sword (Dual Wielder)
