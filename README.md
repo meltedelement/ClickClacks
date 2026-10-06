@@ -130,7 +130,7 @@ src/
   upgrades/
     Upgrade.js         Base class for roguelike upgrades applied from a loadout
     common.js          Small upgrades any weapon can take
-    sword.js, spear.js, daggers.js, mace.js
+    sword.js, spear.js, daggers.js, mace.js, drone.js, gun.js
                        Small upgrades for one weapon
     sword-transformations.js
                        Big upgrades that reshape the Sword (Stalwart, Captain...)
@@ -140,6 +140,10 @@ src/
                        Big upgrades that reshape the Mace (Portaler, Devil...)
     daggers-transformations.js
                        Big upgrades that reshape the Daggers (Rogue, Trickster...)
+    drone-transformations.js
+                       Big upgrades that reshape the Drone (Ace, Legion...)
+    gun-transformations.js
+                       Big upgrades that reshape the Gun (Shotgun, Grenadier...)
     index.js           Registry of upgrades (menu order), plus loadout validation
   game/                Browser-only
     Game.js            Fixed-timestep loop, pause/speed/hitstop, sim events -> effects
@@ -675,6 +679,12 @@ to the ceiling, `wraps` (Portaler) sends it through the floor, `phase === 'drop'
 that hits, and `landing` (`{ pos, dir, fallen, tips }`, set when it reaches the floor or
 ceiling, until the next slam starts) lets `onAbilityEnd` react to where it came down (Kamikaze,
 Devil).
+
+The Gun's upgrades work through its stats (`volley` for Shotgun, `ricochets` and `bankShots`
+for Six-Shooter, `bayonet`, `nearMiss` for High-Ex, `magazine`, `fireInterval`...) and the bullet
+hooks it asks its upgrades, where they have them: `onShot`, `onBulletMove`, `onBulletBounce`,
+`onBulletBlocked` and `onBulletNearMiss` (see `Gun.js`). While a bullet is being dealt with,
+`weapon.striking` is that bullet, so a per-hit modifier can tell shots from bayonet stabs.
 
 A weapon can hold several shields (`weapon.shields`). Code that adds or replaces shields
 should keep that in mind, and a thrown shield sets `shield.away` so it can't block while

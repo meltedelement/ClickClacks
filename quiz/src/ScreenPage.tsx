@@ -243,7 +243,7 @@ function BattleScene({ view }: { view: View }) {
   const round = currentStage(battle);
   const stages = stageCount(battle);
   const picking = state.teams.filter((t) => (view.transformPicks[t.id] ?? 0) > 0);
-  const lastBreak = stagesAllowed(state.questions, state.questionIndex) === Infinity;
+  const lastBreak = stagesAllowed(state, state.questionIndex) === Infinity;
 
   return (
     <section className="stack loose battle-scene">

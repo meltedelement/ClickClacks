@@ -418,6 +418,61 @@
       "requires": [],
       "excludedBy": [],
       "maxStacks": null
+    },
+    {
+      "id": "fire-rate",
+      "name": "Fire Rate",
+      "description": "You fire 20% faster, reloading included.",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null
+    },
+    {
+      "id": "accurate",
+      "name": "Accurate",
+      "description": "Your shots stray 40% less from where you aim (each copy cuts what is left).",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 3
+    },
+    {
+      "id": "motivated-bullets",
+      "name": "Motivated Bullets",
+      "description": "Your bullets fly 35% faster.",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null
+    },
+    {
+      "id": "anti-materiel",
+      "name": "Anti-materiel",
+      "description": "A bullet that hits an enemy's weapon or shield breaks their guard for 1 s: their weapon and shields can't block.",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 3
+    },
+    {
+      "id": "pop-pop",
+      "name": "Pop Pop",
+      "description": "Each round you fire has a 10% chance to fire a second bullet with it, for free.",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 5
     }
   ],
   "transformations": [
@@ -860,6 +915,83 @@
       "description": "Two bumper drones fly on your wings. They never attack or guard: when an enemy closes in on you, one rams it, bouncing it away from you and knocking its weapon into spinning the other way. Enemy blades swat them like your other drones.",
       "weapons": [
         "drone"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "six-shooter",
+      "name": "Six-Shooter",
+      "description": "Trick shots: your bullets ricochet off walls up to twice, but only hurt anyone once they have bounced. You aim off the walls, and every bullet that hits is a critical hit.",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "shotgun",
+      "name": "Shotgun",
+      "description": "Fire your whole magazine at once, as a very wide spray of pellets, then reload.",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "smg",
+      "name": "SMG",
+      "description": "A submachine gun: five times the magazine, fired 3.5 times as fast, but each bullet deals a quarter of the damage and barely pushes.",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "high-ex",
+      "name": "High-Ex",
+      "description": "Explosive rounds: a bullet that passes within 30 px of an enemy, or hits its weapon or shield, explodes, dealing half the bullet's damage to every enemy within 40 px.",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "grenadier",
+      "name": "Grenadier",
+      "description": "Carry 3 grenades, lobbed at enemies within 300 px. Each one blows up 1 s after it is thrown, dealing 6 damage to enemies within 60 px and blowing them back. Once all 3 are gone, restocking takes 7 s.",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "bayonet",
+      "name": "Bayonet",
+      "description": "A bayonet on the end of the barrel: a short blade that stabs enemies who come close for your bullet damage +2, and blocks and parries like any other blade.",
+      "weapons": [
+        "gun"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1
+    },
+    {
+      "id": "hotshot",
+      "name": "Hotshot",
+      "description": "Incendiary rounds: your bullets leave a trail of fire for 0.5 s that sets enemies who touch it burning for 1 damage every 0.5 s for 2 s, and deal 40% more damage to burning enemies.",
+      "weapons": [
+        "gun"
       ],
       "requires": [],
       "excludedBy": [],

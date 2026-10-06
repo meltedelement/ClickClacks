@@ -755,8 +755,9 @@ const WRAP_FX = { burst: { color: TRAIL_FIRE, count: 10, speed: 160, life: 0.3 }
 
 // The Runner's burning ground: straight pieces that each burn for a while. It
 // lives on the weapon (`weapon.fireTrail`) so whichever ability lays it, Flame
-// Lap or Olympian's Spear Throw, doesn't need to know about the Runner.
-class FireTrail {
+// Lap or Olympian's Spear Throw, doesn't need to know about the Runner. The
+// Gun's Hotshot lays one too, a piece per bullet.
+export class FireTrail {
   constructor() {
     // Stats. Upgrades may change these.
     this.duration = 4; // s each bit of trail burns for
@@ -766,16 +767,19 @@ class FireTrail {
     this.time = 0; // for the flicker
   }
 
-  // Adds burning ground from `a` to `b`, extending the last piece while it's short.
-  lay(a, b) {
-    if (distance(a, b) < 1e-9) return;
-    const last = this.pieces.at(-1);
-    if (last && distance(last.b, a) < 1e-6 && distance(last.a, last.b) < TRAIL_PIECE) {
+  // Adds burning ground from `a` to `b`, extending `last` (by default the
+  // newest piece) while it's short. Returns the piece it laid or extended,
+  // to pass back in as `last` when several things lay the trail at once.
+  lay(a, b, last = this.pieces.at(-1)) {
+    if (distance(a, b) < 1e-9) return last;
+    if (last && last.timeLeft > 0 && distance(last.b, a) < 1e-6 && distance(last.a, last.b) < TRAIL_PIECE) {
       last.b = { ...b };
       last.timeLeft = this.duration;
-      return;
+      return last;
     }
-    this.pieces.push({ a: { ...a }, b: { ...b }, timeLeft: this.duration });
+    const piece = { a: { ...a }, b: { ...b }, timeLeft: this.duration };
+    this.pieces.push(piece);
+    return piece;
   }
 
   update(dt) {

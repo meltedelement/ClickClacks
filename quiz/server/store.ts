@@ -3,9 +3,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
-import type { AdminView, Loadout, Phase, Question, State, Team, TeamView, Tournament, Upgrade } from '../shared/types.ts';
+import type { AdminView, Loadout, Phase, Question, RoundBreak, State, Team, TeamView, Tournament, Upgrade } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
-import { roundPosition } from '../shared/rounds.ts';
+import { MAX_BREAK_STAGES, fitSchedule, groupRounds, nextBreak, roundPosition, transformationsOpen } from '../shared/rounds.ts';
 import { TEAM_COLORS } from '../shared/colors.ts';
 import { eligibleTransformations, fitLoadout, fitsWeapon } from '../shared/loadout.ts';
 import { currentStage } from '../shared/tournament.ts';
@@ -14,9 +14,6 @@ import * as tournament from './tournament.ts';
 
 // How many random transformations a team sees when it has a pick.
 const TRANSFORM_OFFER_SIZE = 3;
-// Teams get a transformation pick before every TRANSFORM_EVERY-th stage,
-// starting with the first (stages 1, 3, 5, ...).
-const TRANSFORM_EVERY = 2;
 
 const DATA_DIR = path.join(import.meta.dirname, '..', 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
@@ -52,7 +49,8 @@ export function loadQuestions(): Question[] {
   return questions;
 }
 
-function freshState(questions: Question[], teams: Team[] = []): State {
+// The schedule is the host's set-up, not quiz data: a reset keeps it.
+function freshState(questions: Question[], teams: Team[] = [], schedule?: RoundBreak[]): State {
   return {
     phase: 'lobby',
     questionIndex: 0,
@@ -64,6 +62,7 @@ function freshState(questions: Question[], teams: Team[] = []): State {
     weaponsLocked: false,
     tournamentId: null,
     intro: null,
+    schedule: fitSchedule(schedule, groupRounds(questions).length),
   };
 }
 
@@ -78,6 +77,8 @@ delete (state as State & { battle?: unknown }).battle;
 state.tournamentId ??= null;
 // A state.json from before the round title moved to the server.
 state.intro ??= null;
+// A state.json from before the battle schedule: the default is the old fixed rule.
+state.schedule = fitSchedule(state.schedule, groupRounds(state.questions).length);
 // A state.json from before transformations were kept apart from upgrades: move them over.
 for (const team of state.teams) {
   team.entrantId ??= randomUUID(); // from before the tournament service
@@ -184,26 +185,28 @@ function rollOffer(team: Team): string[] {
   return randomSample(eligibleUpgrades(team).map((u) => u.id), getCatalog().offerSize);
 }
 
-// A team still in the battle gets one transformation pick for every
-// TRANSFORM_EVERY-th stage: those already on the game, plus the next one while
-// the quiz is in a battle break. Picks it did not use carry over. Zero when
-// nothing fits its weapon.
+// A team still in the battle gets one transformation pick for each battle
+// break the schedule marks, as soon as the quiz is past the break before it
+// (see transformationsOpen in shared/rounds.ts). Before the bracket is drawn,
+// every team is in. Picks it did not use carry over. Zero when nothing fits
+// its weapon.
 export function transformPicks(team: Team): number {
-  const t = battle();
-  const stage = t && currentStage(t);
-  const entrant = t?.entrants.find((e) => e.id === team.entrantId);
-  if (!t || !stage || !entrant || t.champion || entrant.progress.state === 'out') return 0;
-  if (eligibleTransformations(team, getCatalog()).length === 0) return 0;
-  const givesPick = (index: number) => index % TRANSFORM_EVERY === 0;
-  const started = t.stages.filter((s) => s.status !== 'waiting' && givesPick(s.index)).length;
-  const earned = started + (state.phase === 'battle' && stage.status === 'waiting' && givesPick(stage.index) ? 1 : 0);
-  return Math.max(0, earned - team.transformations.length);
+  if (state.phase === 'lobby' || eligibleTransformations(team, getCatalog()).length === 0) return 0;
+  if (state.tournamentId) {
+    const t = battle();
+    const entrant = t?.entrants.find((e) => e.id === team.entrantId);
+    // No mirror yet (the tournament service is not answering), or a team that joined after the draw.
+    if (!t || !entrant || t.champion || entrant.progress.state === 'out') return 0;
+  }
+  return Math.max(0, transformationsOpen(state, state.questionIndex) - team.transformations.length);
 }
 
 // Give every team with picks left an offer, and remove offers from teams without picks.
 // An offer is rolled again when it names one the team can no longer take (a
 // new weapon, a stack limit reached by a host edit, a transformation that makes
-// it useless, a new catalog).
+// it useless, a new catalog). A transformation offer stays while the team has
+// no pick (the host went back a question, the tournament service blinked), so
+// a team that is reading it does not see it change; a pick clears it.
 function reconcile() {
   for (const team of state.teams) {
     const eligibleUpgradeIds = eligibleUpgrades(team).map((u) => u.id);
@@ -211,8 +214,7 @@ function reconcile() {
     else if (!team.offer?.length || !team.offer.every((id) => eligibleUpgradeIds.includes(id))) team.offer = rollOffer(team);
 
     const eligible = eligibleTransformations(team, getCatalog());
-    if (transformPicks(team) <= 0) team.transformOffer = null;
-    else if (!team.transformOffer?.length || !team.transformOffer.every((id) => eligible.includes(id))) {
+    if (transformPicks(team) > 0 && (!team.transformOffer?.length || !team.transformOffer.every((id) => eligible.includes(id)))) {
       team.transformOffer = randomSample(eligible, TRANSFORM_OFFER_SIZE);
     }
   }
@@ -251,7 +253,15 @@ export function teamView(team: Team): TeamView {
       transformOffer: transformPicks(team) > 0 ? (team.transformOffer ?? []) : [],
     },
     battle: battleForTeam(team),
+    nextBattle: nextBattle(),
   };
+}
+
+// The break the quiz is heading for, once the quiz has started and while the battle is not over.
+function nextBattle(): TeamView['nextBattle'] {
+  if (state.phase === 'lobby' || battle()?.champion) return null;
+  const next = nextBreak(state, state.questionIndex);
+  return next ? { round: next.round + 1 } : null;
 }
 
 // Where one team is in the battle. Null until the host draws the bracket.
@@ -547,14 +557,35 @@ export function adminAction(a: Action) {
         state.questions = questions;
         state.questionIndex = Math.min(state.questionIndex, Math.max(0, questions.length - 1));
         state.intro = null;
+        state.schedule = fitSchedule(state.schedule, groupRounds(questions).length);
       });
     }
+    case 'setBreak': {
+      // One round's entry: `stages` and/or `transformation`. The last round always plays the rest.
+      const round = Number(a.round);
+      if (!(Number.isInteger(round) && round >= 0 && round < state.schedule.length)) throw new UserError('No such round');
+      const entry = { ...state.schedule[round] };
+      if (a.stages !== undefined) {
+        const stages = a.stages === 'rest' ? 'rest' : Number(a.stages);
+        if (stages !== 'rest' && !(Number.isInteger(stages) && stages >= 0 && stages <= MAX_BREAK_STAGES)) {
+          throw new UserError(`A break plays from 0 to ${MAX_BREAK_STAGES} stages, or the rest`);
+        }
+        entry.stages = stages;
+      }
+      if (a.transformation !== undefined) entry.transformation = Boolean(a.transformation);
+      return mutate(() => {
+        state.schedule[round] = entry;
+        state.schedule = fitSchedule(state.schedule, state.schedule.length);
+      });
+    }
+    case 'resetSchedule':
+      return mutate(() => (state.schedule = fitSchedule(undefined, groupRounds(state.questions).length)));
     case 'reset': {
       const questions = loadQuestions();
       const teams = a.keepTeams
         ? state.teams.map((t) => ({ ...t, upgrades: {}, transformations: [], picksUsed: 0, bonusPicks: 0, offer: null, transformOffer: null }))
         : [];
-      return mutate(() => (state = freshState(questions, teams)));
+      return mutate(() => (state = freshState(questions, teams, state.schedule)));
     }
     default:
       throw new UserError(`Unknown action: ${a.type}`);

@@ -22,6 +22,8 @@ import { GreatMace, HeavyImpact, HighBounce, Meteor, QuickDrop } from './mace.js
 import { Crusher, Devil, Kamikaze, Metalworker, Pilot, Portaler, RubberMace, Valkyrie } from './mace-transformations.js';
 import { Boosters, DefenseMatrix, QuickProduction, QuickRepair, SpikedDrones } from './drone.js';
 import { Ace, Daredevils, Fighters, Fortress, Legion, NonEuclidean, Slicers, Wingmen } from './drone-transformations.js';
+import { Accurate, AntiMateriel, FireRate, MotivatedBullets, PopPop } from './gun.js';
+import { Bayonet, Grenadier, HighEx, Hotshot, Shotgun, SixShooter, Smg } from './gun-transformations.js';
 
 // Every upgrade that can go into a loadout, in the order the menu lists them.
 // Add new ones here (after writing them in common.js for any weapon, or in the
@@ -116,6 +118,20 @@ export const UPGRADES = [
   Slicers,
   Fortress,
   Wingmen,
+  // Gun
+  FireRate,
+  Accurate,
+  MotivatedBullets,
+  AntiMateriel,
+  PopPop,
+  // Gun transformations
+  SixShooter,
+  Shotgun,
+  Smg,
+  HighEx,
+  Grenadier,
+  Bayonet,
+  Hotshot,
 ];
 
 export function getUpgradeById(id) {

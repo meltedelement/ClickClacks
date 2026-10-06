@@ -1,6 +1,6 @@
 # The Quiz of Doom
 
-The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick. After every second round, the quiz stops for a battle break: before every second stage each team picks a transformation, and one stage of the battle plays through the [tournament service](../tournament/README.md) (see [Battle](#battle)).
+The quiz side of Weapon Balls. Teams answer multiple choice questions on their phones. Each correct answer gives the team one upgrade pick, which waits on the phone's Upgrades tab until the team takes it. After the rounds the host's [schedule](#battle-breaks) marks, the quiz stops for a battle break, and stages of the battle play through the [tournament service](../tournament/README.md) (see [Battle](#battle)). Breaks can come with a transformation pick.
 
 ## Run
 
@@ -46,8 +46,8 @@ The host moves through these phases with the Next button on the admin page:
 Each team has its own colour from a fixed palette of 16 (`shared/colors.ts`). A colour that another team has cannot be picked: the server rejects it, and the join form and lobby show it crossed out. The game draws the team's ball in that colour.
 2. **question**: Teams answer. A team can change its answer until the host closes answers.
 3. **locked**: Answers are closed.
-4. **reveal**: Teams see the correct answer. Each team that got it right sees `offerSize` random upgrades and picks one immediately.
-5. **battle**: A battle break. Before every second stage, teams pick a transformation. Then one stage of the bracket plays. It comes after every second round and after the last round.
+4. **reveal**: Teams see the correct answer. Each team that got it right earns a pick: its Upgrades tab shows `offerSize` random upgrades. The pick waits, so the team can take it during the next questions.
+5. **battle**: A battle break. It plays the stages the [schedule](#battle-breaks) gives it.
 
 Picks are calculated again from the answers each time. Picks left = correct revealed answers × `upgradesPerCorrect` + bonus picks − picks used. Thus, if you change an answer or a "revealed" box on the admin page, the pick count is correct immediately.
 
@@ -62,13 +62,13 @@ The server pushes the full state to each device with server-sent events (`/api/e
 
 ## The three screens
 
-- **Phones** (`/`): join, answer, pick upgrades and transformations.
+- **Phones** (`/`): join, then two tabs. **Quiz** has the question and the battle status. **Upgrades** has the offers and the loadout. The tab bar counts the picks that wait, and marks the Quiz tab while a question is open that the team has not answered, so a team can read the offers at its own pace without missing a question. Neither tab opens by itself.
 - **Big screen** (`/screen`): what the room sees. It has no controls. It shows the join address and the teams in the lobby, a title card before each round, the question, and after the reveal the correct option and the percentage of votes for each option. It never shows which team answered or what a team chose, only how many teams answered. In a battle break it shows the matches of the current stage, and while a stage plays it switches to the arena by itself (see [Battle](#battle)). Beside the arena a panel follows the stage: each match, its result as soon as it is decided, and for a match that is playing, a small map of the arena grid that marks which arena it is on. It follows the theme chosen on the admin page.
 - **Admin** (`/admin`): the host's page, made for a laptop. See below.
 
 ## Admin page
 
-The control bar at the top shows where the quiz is and what the big screen shows now. **Next** moves the quiz one step: round title → question → locked → reveal → next question. After the last question of every second round, and of the last round, it starts the battle break. In the break it starts the stage, and when the stage is done, **Back to the quiz** shows the next round title. **Back** hides the round title, or goes to the previous question.
+The control bar at the top shows where the quiz is and what the big screen shows now. **Next** moves the quiz one step: round title → question → locked → reveal → next question. After the last question of a round that the schedule gives a break, it starts the battle break. In the break it starts the stage, and when the stage is done, **Back to the quiz** shows the next round title. **Back** hides the round title, or goes to the previous question.
 
 - Before the first question of a round, Next shows the round title on the big screen: the round number, the round name, and the number of questions. The next press opens the first question. The phones do not change.
 - A round is a group of consecutive questions with the same round in `quiz-questions.json`. The phones, the big screen, and the admin page show the round and the question number in the round.
@@ -79,7 +79,7 @@ Below the control bar are tabs:
 - **Live**: the lobby, the current question with each team's answer, or in a battle break the bracket. On the side: which teams are online and which still have picks to use.
 - **Teams**: every team's loadout. **Edit** opens a team's name, colour, weapon, bonus picks, upgrades, transformations and offer.
 - **Answers**: every team's answer to every question.
-- **Battle**: the bracket and its controls.
+- **Battle**: the bracket and its controls, and the schedule.
 - **Settings**: the message banner, the lobby lock, jumping to a phase or question, reloading the questions and the catalog, data, and resets.
 
 ### Host controls
@@ -124,11 +124,21 @@ tournament service's README has the others.
 
 ### Battle breaks
 
-- The quiz stops for a battle after every second round (`BATTLE_EVERY` in
-  `shared/rounds.ts`) and after the last round.
-- Each break plays one stage. The break after the last round plays the stages
-  that are left, until there is a champion.
+The **Schedule** card on the Battle tab has one row per round. For each round
+the host picks what follows it: no break, a break that plays 1 to 10 stages,
+or a break that plays all the stages left. Each break can also give a
+transformation pick. Changes apply at once and are kept in `state.json`; a
+reset keeps them, and reloading questions with another number of rounds goes
+back to the default.
+
+- The last round always ends with a break that plays the stages left, until
+  there is a champion. A break that plays the rest earlier ends the battle
+  there, and the rounds after it have no break.
+- The default is a one-stage break after every second round, and the rest
+  after the last round. **Restore the default** on the card goes back to it.
+- Once the bracket is drawn, the card shows which stages each break plays.
 - If the battle ends before the quiz, Next skips the breaks that are left.
+- The host can start a stage on the Battle tab at any time, also outside a break.
 
 | Teams | Stages |
 | --- | --- |
@@ -137,21 +147,23 @@ tournament service's README has the others.
 | 6 | 5 (+1) |
 | 4 | 3 (+1) |
 
-With 7 rounds and 8 teams, stages 1 to 3 play after rounds 2, 4 and 6, and
-stages 4 and 5 after round 7.
+With the default schedule, 7 rounds and 8 teams, stages 1 to 3 play after
+rounds 2, 4 and 6, and stages 4 and 5 after round 7.
 
 ### Transformations
 
 Transformations are the big upgrades that reshape a weapon. The quiz never
-offers them for correct answers. Instead, before every second stage (stages 1,
-3, 5 and so on, `TRANSFORM_EVERY` in `server/store.ts`), each team that is
-still in the battle picks one transformation on its phone. The phone shows 3
-random transformations from the ones that fit the team's weapon. The offer stays
-the same until the team picks. The team keeps every
-transformation it picks. A pick that the team does not use carries over. A
-weapon with no transformations gets no pick. The big screen and
-the admin page show the teams that still have to pick. The host does not have to
-wait for them.
+offers them for correct answers. Instead, each break that the schedule marks
+gives every team that is still in the battle one transformation pick. The pick
+shows on the Upgrades tab as soon as the quiz is past the break before it (for
+the first break, from the first question), so teams can choose during the
+questions that lead up to it. By default the first break, every other break
+after it, and the last break give one. The phone shows 3 random
+transformations from the ones that fit the team's weapon. The offer stays the
+same until the team picks. The team keeps every transformation it picks. A
+pick that the team does not use carries over. A weapon with no
+transformations gets no pick. The big screen (in a break) and the admin page
+show the teams that still have to pick. The host does not have to wait for them.
 
 ### The bracket
 

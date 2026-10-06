@@ -279,6 +279,16 @@ export class Sound {
       case 'shake-off':
         this.tone({ type: 'triangle', freq: 700, freqEnd: 350, dur: 0.1, gain: 0.12 });
         break;
+      case 'pop':
+        this.noise({ filter: 'bandpass', freq: 1800, freqEnd: 600, q: 1.2, dur: 0.07, gain: 0.35 });
+        break;
+      case 'blast':
+        this.tone({ type: 'sine', freq: 120, freqEnd: 40, dur: 0.25, gain: 0.45 });
+        this.noise({ filter: 'lowpass', freq: 1800, freqEnd: 200, dur: 0.22, gain: 0.45 });
+        break;
+      case 'restock':
+        this.clang([1200, 1800], 0.12, 0.08);
+        break;
       case 'bump':
         this.tone({ type: 'sine', freq: 170, freqEnd: 320, dur: 0.14, gain: 0.45 });
         this.noise({ filter: 'lowpass', freq: 900, freqEnd: 300, dur: 0.1, gain: 0.3 });

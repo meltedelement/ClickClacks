@@ -1,7 +1,7 @@
 // The admin page's Next button: what it does in each phase. It moves the quiz
 // one step: question → locked → reveal → next question, with a round title on
 // the big screen before the first question of each round, and a battle break
-// after every second round (see shared/rounds.ts).
+// after the rounds the schedule marks (see shared/rounds.ts).
 import type { AdminView } from '../shared/types.ts';
 import { currentStage } from '../shared/tournament.ts';
 import { breakAfter, startsRound, stagesAllowed } from '../shared/rounds.ts';
@@ -26,18 +26,18 @@ export function nextStep({ state, tournament }: AdminView): Step | null {
     case 'locked':
       return { label: 'Reveal answer', action: { type: 'setPhase', phase: 'reveal' } };
     case 'reveal': {
-      // A battle break after every second round and after the last one, until there is a champion.
+      // A battle break after the rounds the schedule marks, until there is a champion.
       const battleLeft = state.teams.length >= 2 && !tournament?.champion;
-      if (battleLeft && breakAfter(state.questions, state.questionIndex)) return { label: 'Start battle break', action: { type: 'setPhase', phase: 'battle' } };
+      if (battleLeft && breakAfter(state, state.questionIndex)) return { label: 'Start battle break', action: { type: 'setPhase', phase: 'battle' } };
       return hasNext ? goTo(state.questionIndex + 1) : null;
     }
     case 'battle': {
-      // A break plays one stage; the break after the last round plays every stage that is left.
+      // A break plays the stages the schedule gives it; the break after the last round plays every stage that is left.
       const battle = tournament;
       const round = battle && currentStage(battle);
       if (!battle) return state.teams.length >= 2 ? { label: 'Draw the bracket', action: { type: 'battleCreate' } } : null;
       if (round?.status === 'playing') return null;
-      if (round && !battle.champion && round.status === 'waiting' && round.index < stagesAllowed(state.questions, state.questionIndex)) {
+      if (round && !battle.champion && round.status === 'waiting' && round.index < stagesAllowed(state, state.questionIndex)) {
         return { label: `Start ${round.name.toLowerCase()}`, action: { type: 'battleStartRound' } };
       }
       return hasNext ? { ...goTo(state.questionIndex + 1), label: 'Back to the quiz' } : null;

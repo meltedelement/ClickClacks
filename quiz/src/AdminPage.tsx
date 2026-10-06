@@ -6,8 +6,8 @@ import { Fragment, useEffect, useState } from 'react';
 import type { AdminView, FormatId, Phase, Team } from '../shared/types.ts';
 import { PHASES } from '../shared/types.ts';
 import { fitLoadout, fitsWeapon } from '../shared/loadout.ts';
-import { currentStage, isSent } from '../shared/tournament.ts';
-import { groupRounds, roundPosition, stagesAllowed } from '../shared/rounds.ts';
+import { currentStage, isSent, stageCount } from '../shared/tournament.ts';
+import { MAX_BREAK_STAGES, battleBreaks, groupRounds, roundPosition, stagesAllowed } from '../shared/rounds.ts';
 import { Bracket, Standings } from './Bracket.tsx';
 import { AdminLogin, useAdmin } from './admin.tsx';
 import { backStep, idleReason, nextStep, screenLabel, type Step } from './flow.ts';
@@ -62,7 +62,12 @@ export function AdminPage() {
         {tab === 'live' && <LiveTab view={view} act={act} />}
         {tab === 'teams' && <TeamsTab view={view} act={act} />}
         {tab === 'answers' && <AnswersTab view={view} act={act} />}
-        {tab === 'battle' && <BattlePanel view={view} act={act} />}
+        {tab === 'battle' && (
+          <>
+            <BattlePanel view={view} act={act} />
+            <ScheduleCard view={view} act={act} />
+          </>
+        )}
         {tab === 'settings' && <SettingsTab view={view} act={act} />}
       </main>
     </>
@@ -623,7 +628,7 @@ function BattlePanel({ view, act }: { view: AdminView; act: Act }) {
   const entrant = (id: string) => battle?.entrants.find((e) => e.id === id);
   const teamName = (id: string) => state.teams.find((t) => t.entrantId === id)?.name ?? entrant(id)?.name ?? '(deleted team)';
   const teamColor = (id: string) => state.teams.find((t) => t.entrantId === id)?.color ?? entrant(id)?.color ?? '';
-  const allowed = stagesAllowed(state.questions, state.questionIndex);
+  const allowed = stagesAllowed(state, state.questionIndex);
   const picking = state.teams.filter((t) => (view.transformPicks[t.id] ?? 0) > 0);
   const [format, setFormat] = useState<FormatId>('double-elimination');
 
@@ -750,10 +755,118 @@ function BattlePanel({ view, act }: { view: AdminView; act: Act }) {
       <details>
         <summary>How the battle works</summary>
         <p className="hint" style={{ marginTop: '0.5rem' }}>
-          {FORMAT_HELP[battle?.format ?? format]} At the time limit the team with more HP left wins. Each battle break plays one stage, and the break after the last
-          round plays the rest. The tournament server runs the battle and sends each match to the game.
+          {FORMAT_HELP[battle?.format ?? format]} At the time limit the team with more HP left wins. Each battle break plays the stages the schedule below gives it, and
+          the break after the last round plays the rest. The tournament server runs the battle and sends each match to the game.
         </p>
       </details>
+    </section>
+  );
+}
+
+// When the quiz stops for a battle: one row per round, with the stages the
+// break after it plays and whether teams get a transformation pick for it.
+function ScheduleCard({ view, act }: { view: AdminView; act: Act }) {
+  const { state } = view;
+  const battle = view.tournament;
+  const rounds = groupRounds(state.questions);
+  const breaks = battleBreaks(state);
+  const current = state.phase === 'lobby' ? -1 : (roundPosition(state.questions, state.questionIndex)?.index ?? -1);
+  // A break that plays the rest before the last round ends the battle: the rounds after it have none.
+  const end = breaks[breaks.length - 1]?.round ?? rounds.length - 1;
+  const total = battle ? stageCount(battle) : null;
+
+  // What each break plays: a stage count, or the stage numbers once the bracket is drawn.
+  const plays = new Map<number, string>();
+  let played = 0;
+  for (const b of breaks) {
+    if (total === null) {
+      plays.set(b.round, b.stages === 'rest' ? 'The rest' : `${b.stages} stage${b.stages === 1 ? '' : 's'}`);
+      continue;
+    }
+    const first = played + 1;
+    const last = b.stages === 'rest' ? total : Math.min(total, played + b.stages);
+    plays.set(b.round, first > total ? 'Battle over by then' : first === last ? `Stage ${first}` : `Stages ${first}–${last}`);
+    played = last;
+  }
+
+  return (
+    <section className="card stack">
+      <div className="card-head" style={{ marginBottom: 0 }}>
+        <h2>Schedule</h2>
+        <span className="muted num">
+          {breaks.length} break{breaks.length === 1 ? '' : 's'} · {breaks.filter((b) => b.transformation).length} transformation pick
+          {breaks.filter((b) => b.transformation).length === 1 ? '' : 's'}
+          {total !== null && ` · ${total} stages in the bracket`}
+        </span>
+      </div>
+      {rounds.length === 0 ? (
+        <p className="muted">No questions loaded.</p>
+      ) : (
+        <div className="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Round</th>
+                <th>Battle break after it</th>
+                <th>Transformation pick</th>
+                <th>Plays</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rounds.map((r, round) => {
+                const entry = state.schedule[round] ?? { stages: 0, transformation: false };
+                const last = round === rounds.length - 1;
+                const over = round > end;
+                return (
+                  <tr key={r.label} className={round === current ? 'current' : undefined}>
+                    <td>
+                      <span className="num">{round + 1}.</span> {r.name} <span className="faint num">({r.items.length})</span>
+                    </td>
+                    <td>
+                      <select
+                        value={String(entry.stages)}
+                        disabled={last || over}
+                        aria-label={`Battle break after round ${round + 1}`}
+                        onChange={(e) => act({ type: 'setBreak', round, stages: e.target.value })}
+                      >
+                        <option value="0">No break</option>
+                        {Array.from({ length: MAX_BREAK_STAGES }, (_, i) => (
+                          <option key={i} value={String(i + 1)}>
+                            {i + 1} stage{i === 0 ? '' : 's'}
+                          </option>
+                        ))}
+                        <option value="rest">All the stages left</option>
+                      </select>
+                    </td>
+                    <td>
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={entry.transformation && entry.stages !== 0}
+                          disabled={entry.stages === 0 || over}
+                          onChange={(e) => act({ type: 'setBreak', round, transformation: e.target.checked })}
+                        />
+                        <span className="hint">{entry.stages === 0 ? '' : 'Teams pick one'}</span>
+                      </label>
+                    </td>
+                    <td className={over ? 'faint' : 'muted'}>{over ? 'The battle is over' : (plays.get(round) ?? '')}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="hint">
+        The last round always plays the stages left, so the battle ends with a champion. A break's transformation pick shows on the phones as soon as the break
+        before it is over, so teams can choose it during the questions. Picks a team does not use carry over. Upgrades and transformations picked before a
+        stage starts fight in it. Changes apply at once.
+      </p>
+      <div className="row start">
+        <button className="ghost" onClick={() => confirm('Go back to a break after every second round and after the last round?') && act({ type: 'resetSchedule' })}>
+          Restore the default
+        </button>
+      </div>
     </section>
   );
 }

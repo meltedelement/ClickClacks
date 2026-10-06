@@ -134,7 +134,7 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
       <main className="page">
         <div className="stack">
           <h1 className="title">Join the Quiz of Doom</h1>
-          <p className="lead">Every correct answer earns your team an upgrade. After every second round, your ball fights in the arena.</p>
+          <p className="lead">Every correct answer earns your team an upgrade. Between rounds, your ball fights in the arena.</p>
         </div>
         {rejoin ? (
           <form onSubmit={submit} className="card stack loose">
@@ -173,16 +173,24 @@ function JoinForm({ onJoin }: { onJoin: (token: string) => void }) {
   );
 }
 
+// After the lobby the phone has two tabs: the quiz, and the upgrades with the
+// loadout. Picks wait for the team, so it can read and pick on the Upgrades tab
+// while the questions go on. Neither tab opens by itself: the tab bar shows
+// what is waiting on the other one.
+type TeamTab = 'quiz' | 'upgrades';
+
 function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token: string; connected: boolean; onLeave: () => void }) {
   const [error, setError] = useState('');
   // True while a POST is in flight, so a slow connection cannot send the same action twice.
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<TeamTab>('quiz');
   const { team } = view;
-  const upgradeName = (id: string) => view.upgrades.find((u) => u.id === id)?.name ?? id;
-  const transformation = (id: string) => view.transformations.find((t) => t.id === id);
-  const weaponName = view.weapons.find((w) => w.id === team.weapon)?.name ?? team.weapon;
   const canChangeWeapon = view.phase === 'lobby' && !view.weaponsLocked;
-  const upgrades = Object.entries(team.upgrades).filter(([, n]) => n > 0);
+  const tabs = view.phase !== 'lobby';
+  const upgradePicks = team.offer?.length ? team.picks : 0;
+  const transformPicks = team.transformOffer.length > 0 ? team.transformPicks : 0;
+  const toPick = upgradePicks + transformPicks;
+  const unanswered = view.phase === 'question' && view.question !== null && view.correct === null && view.myAnswer === null;
 
   async function act(path: string, body: unknown) {
     setError('');
@@ -196,6 +204,11 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
     }
   }
 
+  function show(next: TeamTab) {
+    setTab(next);
+    window.scrollTo({ top: 0 });
+  }
+
   return (
     <>
       <TopBar name={team.name} color={team.color}>
@@ -207,172 +220,253 @@ function TeamScreen({ view, token, connected, onLeave }: { view: TeamView; token
         </div>
       </TopBar>
 
-      <main className="page">
+      <main className={tabs ? 'page with-tabs' : 'page'}>
         {view.message && <p className="banner">{view.message}</p>}
         {error && <p className="error">{error}</p>}
 
         {view.phase === 'lobby' && (
-          <section className="card stack loose">
-            <div className="stack">
-              <h2>Waiting for the host</h2>
-              <p className="muted">
-                {canChangeWeapon ? 'You can change your colour and weapon until the quiz starts.' : 'Colours and weapons are locked. The quiz starts soon.'}
-              </p>
-            </div>
-            {canChangeWeapon && (
-              <>
-                <ColorPicker value={team.color} taken={view.takenColors} disabled={busy} onChange={(hex) => act('/api/color', { color: hex })} />
-                <WeaponPicker weapons={view.weapons} value={team.weapon} disabled={busy} onChange={(id) => act('/api/weapon', { weapon: id })} />
-              </>
-            )}
-          </section>
-        )}
-
-        {view.question && (
-          <section className="stack loose">
-            {view.round ? (
+          <>
+            <section className="card stack loose">
               <div className="stack">
-                <div className="row">
-                  <span className="eyebrow">
-                    Round {view.round.index + 1} of {view.round.count}
-                  </span>
-                  <span className="muted num">
-                    Question {view.round.position} of {view.round.size}
-                  </span>
-                </div>
-                <RoundProgress sizes={view.round.sizes} round={view.round.index} position={view.round.position} />
-                <h2 className="round-name">{view.round.name}</h2>
+                <h2>Waiting for the host</h2>
+                <p className="muted">
+                  {canChangeWeapon ? 'You can change your colour and weapon until the quiz starts.' : 'Colours and weapons are locked. The quiz starts soon.'}
+                </p>
               </div>
-            ) : (
-              <span className="eyebrow">{view.question.round}</span>
-            )}
-            <p className="question-text">{view.question.text}</p>
-            <div className="stack">
-              {view.question.options.map((option, i) => {
-                const classes = ['option'];
-                let mark = '';
-                if (view.correct === i) {
-                  classes.push('correct');
-                  mark = 'Correct';
-                } else if (view.correct !== null && view.myAnswer === i) {
-                  classes.push('wrong');
-                  mark = 'Your answer';
-                } else if (view.correct === null && view.myAnswer === i) classes.push('selected');
-                else if (view.correct !== null) classes.push('dim');
-                return (
-                  <button key={i} className={classes.join(' ')} disabled={busy || view.phase !== 'question' || view.correct !== null} onClick={() => act('/api/answer', { choice: i })}>
-                    <span className="letter">{LETTERS[i]}</span>
-                    <span className="text">{option}</span>
-                    {mark && <span className="mark">{mark}</span>}
-                  </button>
-                );
-              })}
-            </div>
-            {view.phase === 'question' && (
-              <p className="notice">{view.myAnswer === null ? 'Pick an answer.' : 'Answer saved. You can change it until the host closes answers.'}</p>
-            )}
-            {view.phase === 'locked' && <p className="notice">Answers are closed. Wait for the reveal.</p>}
-            {view.correct !== null &&
-              (view.myAnswer === view.correct ? (
-                <p className="notice good">Correct. Pick an upgrade below.</p>
-              ) : (
-                <p className="notice bad">{view.myAnswer === null ? 'No answer this time.' : 'Not this time.'}</p>
-              ))}
-          </section>
-        )}
-
-        {team.picks > 0 && team.offer && (
-          <section className="card stack">
-            <div className="card-head" style={{ marginBottom: 0 }}>
-              <h2>Pick an upgrade</h2>
-              {team.picks > 1 && <span className="pill accent">{team.picks} to pick</span>}
-            </div>
-            {team.offer.map((id) => {
-              const upgrade = view.upgrades.find((u) => u.id === id);
-              return (
-                <button key={id} className="upgrade" disabled={busy} onClick={() => act('/api/pick', { upgradeId: id, picksUsed: team.picksUsed })}>
-                  <strong>{upgrade?.name ?? id}</strong>
-                  <span>{upgrade?.description}</span>
-                </button>
-              );
-            })}
-          </section>
-        )}
-
-        {team.transformPicks > 0 && team.transformOffer.length > 0 && (
-          <section className="card stack">
-            <div className="card-head" style={{ marginBottom: 0 }}>
-              <h2>Pick a transformation</h2>
-              {team.transformPicks > 1 && <span className="pill accent">{team.transformPicks} to pick</span>}
-            </div>
-            <p className="muted">A transformation reshapes your weapon for the rest of the battle. Pick one before the next stage starts.</p>
-            {team.transformOffer.map((id) => (
-              <button key={id} className="upgrade" disabled={busy} onClick={() => act('/api/transform', { transformationId: id, count: team.transformations.length })}>
-                <strong>{transformation(id)?.name ?? id}</strong>
-                <span>{transformation(id)?.description}</span>
-              </button>
-            ))}
-          </section>
-        )}
-
-        {view.phase === 'battle' && (
-          <section className="card stack">
-            <h2>Battle time</h2>
-            {view.battle ? <BattleStatus battle={view.battle} /> : <p className="muted">The bracket is not drawn yet.</p>}
-            <p className="muted">Watch the arena on the big screen.</p>
-          </section>
-        )}
-
-        <section className="card">
-          <div className="card-head">
-            <h2>Your loadout</h2>
-          </div>
-          <dl className="loadout">
-            <dt>Colour</dt>
-            <dd className="row start">
-              <TeamDot color={team.color} /> {team.color ? colorName(team.color) : 'None'}
-            </dd>
-            <dt>Weapon</dt>
-            <dd className="row start">
-              <WeaponSwatch id={team.weapon} /> {weaponName}
-            </dd>
-            {team.transformations.length > 0 && (
-              <>
-                <dt>Transformations</dt>
-                <dd>
-                  <div className="chips">
-                    {team.transformations.map((id) => (
-                      <span key={id} className="chip">
-                        {transformation(id)?.name ?? id}
-                      </span>
-                    ))}
-                  </div>
-                </dd>
-              </>
-            )}
-            <dt>Upgrades</dt>
-            <dd>
-              {upgrades.length === 0 ? (
-                <span className="muted">None yet</span>
-              ) : (
-                <div className="chips">
-                  {upgrades.map(([id, n]) => (
-                    <span key={id} className="chip">
-                      {upgradeName(id)}
-                      {n > 1 && <span className="count">×{n}</span>}
-                    </span>
-                  ))}
-                </div>
+              {canChangeWeapon && (
+                <>
+                  <ColorPicker value={team.color} taken={view.takenColors} disabled={busy} onChange={(hex) => act('/api/color', { color: hex })} />
+                  <WeaponPicker weapons={view.weapons} value={team.weapon} disabled={busy} onChange={(id) => act('/api/weapon', { weapon: id })} />
+                </>
               )}
-            </dd>
-          </dl>
-        </section>
+            </section>
+            <Loadout view={view} />
+          </>
+        )}
 
-        <button className="ghost leave" onClick={() => confirm('Leave this team on this device? You can rejoin with the team name and code.') && onLeave()}>
-          Leave team
-        </button>
+        {tabs && tab === 'quiz' && (
+          <>
+            <QuestionSection view={view} busy={busy} act={act} />
+            {toPick > 0 && (
+              <button className="upgrade waiting" onClick={() => show('upgrades')}>
+                <strong>{waitingText(upgradePicks, transformPicks)}</strong>
+                <span>Open the Upgrades tab when you have a moment. Picks wait for you, also during the next questions.</span>
+              </button>
+            )}
+            {view.phase === 'battle' && (
+              <section className="card stack">
+                <h2>Battle time</h2>
+                {view.battle ? <BattleStatus battle={view.battle} /> : <p className="muted">The bracket is not drawn yet.</p>}
+                <p className="muted">Watch the arena on the big screen.</p>
+              </section>
+            )}
+          </>
+        )}
+
+        {tabs && tab === 'upgrades' && (
+          <>
+            {unanswered && (
+              <div className="notice attention">
+                <span>
+                  Question {view.round ? view.round.position : view.questionNumber} is open and you have not answered yet.
+                </span>
+                <button className="primary small" onClick={() => show('quiz')}>
+                  Answer
+                </button>
+              </div>
+            )}
+
+            {transformPicks > 0 && (
+              <section className="card stack">
+                <div className="card-head" style={{ marginBottom: 0 }}>
+                  <h2>Pick a transformation</h2>
+                  {transformPicks > 1 && <span className="pill accent">{transformPicks} to pick</span>}
+                </div>
+                <p className="muted">
+                  A transformation reshapes your weapon for the rest of the battle.{' '}
+                  {view.phase === 'battle' ? 'Pick one before the next stage starts.' : view.nextBattle ? `Pick one before the battle after round ${view.nextBattle.round}.` : ''}
+                </p>
+                {team.transformOffer.map((id) => (
+                  <button key={id} className="upgrade" disabled={busy} onClick={() => act('/api/transform', { transformationId: id, count: team.transformations.length })}>
+                    <strong>{transformationOf(view, id)?.name ?? id}</strong>
+                    <span>{transformationOf(view, id)?.description}</span>
+                  </button>
+                ))}
+              </section>
+            )}
+
+            {upgradePicks > 0 && team.offer && (
+              <section className="card stack">
+                <div className="card-head" style={{ marginBottom: 0 }}>
+                  <h2>Pick an upgrade</h2>
+                  {upgradePicks > 1 && <span className="pill accent">{upgradePicks} to pick</span>}
+                </div>
+                {team.offer.map((id) => {
+                  const upgrade = view.upgrades.find((u) => u.id === id);
+                  return (
+                    <button key={id} className="upgrade" disabled={busy} onClick={() => act('/api/pick', { upgradeId: id, picksUsed: team.picksUsed })}>
+                      <strong>{upgrade?.name ?? id}</strong>
+                      <span>{upgrade?.description}</span>
+                    </button>
+                  );
+                })}
+              </section>
+            )}
+
+            {toPick === 0 && (
+              <section className="card stack">
+                <h2>Nothing to pick</h2>
+                <p className="muted">Every correct answer earns an upgrade. It waits here until you pick it, so you can take your time.</p>
+              </section>
+            )}
+            {toPick > 0 && view.nextBattle && view.phase !== 'battle' && (
+              <p className="hint">Upgrades and transformations you pick before the battle after round {view.nextBattle.round} fight in it.</p>
+            )}
+
+            <Loadout view={view} />
+          </>
+        )}
+
+        {(!tabs || tab === 'upgrades') && (
+          <button className="ghost leave" onClick={() => confirm('Leave this team on this device? You can rejoin with the team name and code.') && onLeave()}>
+            Leave team
+          </button>
+        )}
       </main>
+
+      {tabs && (
+        <nav className="team-tabs" aria-label="Sections">
+          <button className={tab === 'quiz' ? 'selected' : ''} aria-current={tab === 'quiz' ? 'page' : undefined} onClick={() => show('quiz')}>
+            Quiz
+            {unanswered && tab !== 'quiz' && <span className="badge warn" aria-label="Question open" />}
+          </button>
+          <button className={tab === 'upgrades' ? 'selected' : ''} aria-current={tab === 'upgrades' ? 'page' : undefined} onClick={() => show('upgrades')}>
+            Upgrades
+            {toPick > 0 && <span className="badge num">{toPick}</span>}
+          </button>
+        </nav>
+      )}
     </>
+  );
+}
+
+// "1 upgrade and 1 transformation to pick"
+function waitingText(upgrades: number, transformations: number): string {
+  const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const parts = [upgrades > 0 && count(upgrades, 'upgrade'), transformations > 0 && count(transformations, 'transformation')].filter(Boolean);
+  return `${parts.join(' and ')} to pick`;
+}
+
+function transformationOf(view: TeamView, id: string) {
+  return view.transformations.find((t) => t.id === id);
+}
+
+function QuestionSection({ view, busy, act }: { view: TeamView; busy: boolean; act: (path: string, body: unknown) => void }) {
+  if (!view.question) return null;
+  return (
+    <section className="stack loose">
+      {view.round ? (
+        <div className="stack">
+          <div className="row">
+            <span className="eyebrow">
+              Round {view.round.index + 1} of {view.round.count}
+            </span>
+            <span className="muted num">
+              Question {view.round.position} of {view.round.size}
+            </span>
+          </div>
+          <RoundProgress sizes={view.round.sizes} round={view.round.index} position={view.round.position} />
+          <h2 className="round-name">{view.round.name}</h2>
+        </div>
+      ) : (
+        <span className="eyebrow">{view.question.round}</span>
+      )}
+      <p className="question-text">{view.question.text}</p>
+      <div className="stack">
+        {view.question.options.map((option, i) => {
+          const classes = ['option'];
+          let mark = '';
+          if (view.correct === i) {
+            classes.push('correct');
+            mark = 'Correct';
+          } else if (view.correct !== null && view.myAnswer === i) {
+            classes.push('wrong');
+            mark = 'Your answer';
+          } else if (view.correct === null && view.myAnswer === i) classes.push('selected');
+          else if (view.correct !== null) classes.push('dim');
+          return (
+            <button key={i} className={classes.join(' ')} disabled={busy || view.phase !== 'question' || view.correct !== null} onClick={() => act('/api/answer', { choice: i })}>
+              <span className="letter">{LETTERS[i]}</span>
+              <span className="text">{option}</span>
+              {mark && <span className="mark">{mark}</span>}
+            </button>
+          );
+        })}
+      </div>
+      {view.phase === 'question' && (
+        <p className="notice">{view.myAnswer === null ? 'Pick an answer.' : 'Answer saved. You can change it until the host closes answers.'}</p>
+      )}
+      {view.phase === 'locked' && <p className="notice">Answers are closed. Wait for the reveal.</p>}
+      {view.correct !== null &&
+        (view.myAnswer === view.correct ? (
+          <p className="notice good">Correct. You earned an upgrade.</p>
+        ) : (
+          <p className="notice bad">{view.myAnswer === null ? 'No answer this time.' : 'Not this time.'}</p>
+        ))}
+    </section>
+  );
+}
+
+function Loadout({ view }: { view: TeamView }) {
+  const { team } = view;
+  const upgradeName = (id: string) => view.upgrades.find((u) => u.id === id)?.name ?? id;
+  const weaponName = view.weapons.find((w) => w.id === team.weapon)?.name ?? team.weapon;
+  const upgrades = Object.entries(team.upgrades).filter(([, n]) => n > 0);
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2>Your loadout</h2>
+      </div>
+      <dl className="loadout">
+        <dt>Colour</dt>
+        <dd className="row start">
+          <TeamDot color={team.color} /> {team.color ? colorName(team.color) : 'None'}
+        </dd>
+        <dt>Weapon</dt>
+        <dd className="row start">
+          <WeaponSwatch id={team.weapon} /> {weaponName}
+        </dd>
+        {team.transformations.length > 0 && (
+          <>
+            <dt>Transformations</dt>
+            <dd>
+              <div className="chips">
+                {team.transformations.map((id, i) => (
+                  <span key={`${id}-${i}`} className="chip" title={transformationOf(view, id)?.description}>
+                    {transformationOf(view, id)?.name ?? id}
+                  </span>
+                ))}
+              </div>
+            </dd>
+          </>
+        )}
+        <dt>Upgrades</dt>
+        <dd>
+          {upgrades.length === 0 ? (
+            <span className="muted">None yet</span>
+          ) : (
+            <div className="chips">
+              {upgrades.map(([id, n]) => (
+                <span key={id} className="chip" title={view.upgrades.find((u) => u.id === id)?.description}>
+                  {upgradeName(id)}
+                  {n > 1 && <span className="count">×{n}</span>}
+                </span>
+              ))}
+            </div>
+          )}
+        </dd>
+      </dl>
+    </section>
   );
 }
 

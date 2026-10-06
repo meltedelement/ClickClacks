@@ -32,7 +32,7 @@ export interface Upgrade {
 export interface Catalog {
   weapons: WeaponInfo[];
   upgrades: Upgrade[]; // earned with correct answers
-  transformations: Upgrade[]; // big upgrades: one pick before every second battle stage
+  transformations: Upgrade[]; // big upgrades: one pick for each battle break the schedule marks
   upgradesPerCorrect: number;
   offerSize: number;
   // Where this catalog came from. 'game' = live from GET /api/catalog,
@@ -56,6 +56,12 @@ export interface Team {
   transformOffer?: string[] | null; // transformation ids the team can pick from now
 }
 
+// What follows one round of questions. `state.schedule` has one per round; see shared/rounds.ts.
+export interface RoundBreak {
+  stages: number | 'rest'; // bracket stages the battle break after the round plays: 0 = no break, 'rest' = every stage left
+  transformation: boolean; // teams get a transformation pick for this break
+}
+
 export interface State {
   phase: Phase;
   questionIndex: number;
@@ -69,6 +75,7 @@ export interface State {
   // The big screen shows the title of the round that starts at this question
   // index. The phones do not change. Any phase or question change clears it.
   intro: number | null;
+  schedule: RoundBreak[]; // one per round: the battle break after it (the last round always plays the rest)
 }
 
 // What the game receives for one team.
@@ -151,6 +158,9 @@ export interface TeamView {
     transformPicks: number; // transformations the team can pick now
     transformOffer: string[]; // transformation ids the team can pick from now (empty with no picks)
   };
+  // The next battle break (1-based number of the round it follows), or null
+  // when no break is left. Picks made before its stage starts fight in it.
+  nextBattle: { round: number } | null;
   // Set once the bracket is drawn. Null before that.
   battle: {
     format: FormatId;

@@ -1,6 +1,6 @@
 // Rounds are runs of consecutive questions with the same `round` label.
 // Used by the server (team view) and by the admin and presenter pages.
-import type { Question, RoundPosition } from './types.ts';
+import type { Question, RoundBreak, RoundPosition } from './types.ts';
 
 type Labelled = Pick<Question, 'round'>;
 
@@ -37,27 +37,100 @@ export function roundPosition(questions: Labelled[], index: number): RoundPositi
   };
 }
 
-// The quiz stops for a battle break after every BATTLE_EVERY question rounds,
-// and after the last round. Each break plays one stage of the bracket. The
-// break after the last round plays the stages that are left, until there is a
-// champion.
-export const BATTLE_EVERY = 2;
+// ---- The battle schedule ------------------------------------------------------
+// `state.schedule` has one entry per round: how many bracket stages the battle
+// break after it plays (0 = no break, 'rest' = every stage left, until there
+// is a champion), and whether teams get a transformation pick for that break.
+// The last round always ends with a break that plays the rest. The host edits
+// the schedule on the admin page's Battle tab.
+
+// The most stages one break can play, other than one that plays the rest.
+export const MAX_BREAK_STAGES = 10;
+
+export interface Schedule {
+  questions: Labelled[];
+  schedule: RoundBreak[];
+}
+
+// A one-stage break after every second round and the rest after the last
+// round, with a transformation pick for every other break from the first, and
+// for the last break (it plays several stages).
+export function defaultSchedule(rounds: number): RoundBreak[] {
+  let breaks = 0;
+  return Array.from({ length: rounds }, (_, round): RoundBreak => {
+    const last = round === rounds - 1;
+    if (!last && (round + 1) % 2 !== 0) return { stages: 0, transformation: false };
+    return { stages: last ? 'rest' : 1, transformation: breaks++ % 2 === 0 || last };
+  });
+}
+
+// One entry per round, the last one playing the rest. A schedule made for
+// another number of rounds (the questions were reloaded) is replaced by the default.
+export function fitSchedule(schedule: RoundBreak[] | undefined, rounds: number): RoundBreak[] {
+  if (!Array.isArray(schedule) || schedule.length !== rounds) return defaultSchedule(rounds);
+  return schedule.map((entry, round) => (round === rounds - 1 ? { ...entry, stages: 'rest' } : entry));
+}
+
+// The breaks in order, with the 0-based round each one follows. None after a
+// break that plays the rest: the battle is over by then.
+export function battleBreaks({ questions, schedule }: Schedule): ({ round: number } & RoundBreak)[] {
+  const rounds = groupRounds(questions).length;
+  const breaks: ({ round: number } & RoundBreak)[] = [];
+  for (const [round, entry] of fitSchedule(schedule, rounds).entries()) {
+    if (entry.stages === 0) continue;
+    breaks.push({ round, ...entry });
+    if (entry.stages === 'rest') break;
+  }
+  return breaks;
+}
+
+// Rounds finished once the quiz is at question `index` (the battle phase keeps
+// the index of the last question before the break).
+function roundsDone(position: RoundPosition): number {
+  return position.position === position.size ? position.index + 1 : position.index;
+}
 
 // True when the question at `index` ends a round that a battle break follows.
-export function breakAfter(questions: Labelled[], index: number): boolean {
-  const position = roundPosition(questions, index);
+export function breakAfter(quiz: Schedule, index: number): boolean {
+  const position = roundPosition(quiz.questions, index);
   if (!position || position.position !== position.size) return false;
-  const done = position.index + 1;
-  return done % BATTLE_EVERY === 0 || done === position.count;
+  return battleBreaks(quiz).some((b) => b.round === position.index);
 }
 
 // How many bracket stages may be played once the quiz has reached question
-// `index` (the battle phase keeps the index of the last question before the
-// break). Infinity after the last round: the rest of the bracket plays then.
-export function stagesAllowed(questions: Labelled[], index: number): number {
-  const position = roundPosition(questions, index);
+// `index`. Infinity once a break that plays the rest is reached.
+export function stagesAllowed(quiz: Schedule, index: number): number {
+  const position = roundPosition(quiz.questions, index);
   if (!position) return Infinity; // no questions: the battle is all there is
-  const done = position.position === position.size ? position.index + 1 : position.index;
-  if (done >= position.count) return Infinity;
-  return Math.floor(done / BATTLE_EVERY);
+  const done = roundsDone(position);
+  let stages = 0;
+  for (const b of battleBreaks(quiz)) {
+    if (b.round >= done) break;
+    if (b.stages === 'rest') return Infinity;
+    stages += b.stages;
+  }
+  return stages;
+}
+
+// How many transformation picks teams have been given once the quiz has
+// reached question `index`. A break's pick opens as soon as the quiz is past
+// the break before it, so teams can pick during the questions that lead up to it.
+export function transformationsOpen(quiz: Schedule, index: number): number {
+  const position = roundPosition(quiz.questions, index);
+  if (!position) return 0;
+  let open = 0;
+  let previous = -1; // the round the last break followed
+  for (const b of battleBreaks(quiz)) {
+    if (position.index <= previous) break;
+    if (b.transformation) open++;
+    previous = b.round;
+  }
+  return open;
+}
+
+// The break the quiz is heading for (or is in) at question `index`, or null when none is left.
+export function nextBreak(quiz: Schedule, index: number): ({ round: number } & RoundBreak) | null {
+  const position = roundPosition(quiz.questions, index);
+  if (!position) return null;
+  return battleBreaks(quiz).find((b) => b.round >= position.index) ?? null;
 }
