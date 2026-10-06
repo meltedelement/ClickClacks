@@ -1,5 +1,5 @@
 // Plays tournaments on the game. When a stage starts, every match of it is sent
-// to the Game API at once, in match order (so match 1 goes on screen 1). The
+// to the Match Host API at once, in match order (so match 1 goes on screen 1). The
 // runner waits for the display page's official result for each match and
 // records it. A format may draw more matches inside the stage once results are
 // in (the double elimination's losers bracket); those go to the game as soon as
@@ -12,11 +12,15 @@
 // was sent is queued again with the same seed: the same fight. Each match is
 // sent with `ref: "<tournament id>/<match id>"`, so after this service restarts
 // it finds a match it sent but had not saved yet, instead of sending it twice.
+//
+// Every match is sent with `decisive: true`: a tournament needs a winner, and
+// the game breaks ties its own way. A draw (from a game that can't) is left for
+// the caller to replay or decide.
 import { randomInt } from 'node:crypto';
-import type { Entrant, EntrantPatch, GameLink, Tournament, TournamentRequest } from '../../api/tournament.d.ts';
+import type { Entrant, EntrantPatch, HostLink, Tournament, TournamentRequest } from '../../contracts/tournament.d.ts';
 import { currentStage, stageComplete, stageMatches } from '../formats/common.ts';
 import { getFormat } from '../formats/index.ts';
-import * as game from './game.ts';
+import * as host from './host.ts';
 import * as store from './store.ts';
 import { ApiError } from './store.ts';
 
@@ -45,16 +49,21 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 // ---- The game ------------------------------------------------------------------
 
-export const link: GameLink = { url: game.GAME_API, displayUrl: game.DISPLAY_URL, reachable: false, displays: 0, screens: 0 };
+export const link: HostLink = { url: host.HOST_API, displayUrl: '', reachable: false, displays: 0, screens: 0 };
 const linkListeners = new Set<() => void>();
 
 export function onLinkChange(fn: () => void) {
   linkListeners.add(fn);
 }
 
-function setLink(status: Awaited<ReturnType<typeof game.status>> | null) {
-  const next = { reachable: status !== null, displays: status?.displays ?? 0, screens: status?.screens ?? 0 };
-  const changed = next.reachable !== link.reachable || next.displays !== link.displays || next.screens !== link.screens;
+function setLink(status: Awaited<ReturnType<typeof host.status>> | null) {
+  const next = {
+    reachable: status !== null,
+    displays: status?.displays ?? 0,
+    screens: status?.screens ?? 0,
+    displayUrl: status ? host.displayUrl(status) : link.displayUrl, // the last known one while the game is down
+  };
+  const changed = next.reachable !== link.reachable || next.displays !== link.displays || next.screens !== link.screens || next.displayUrl !== link.displayUrl;
   Object.assign(link, next);
   if (changed) for (const fn of linkListeners) fn();
   if (!status) return;
@@ -65,21 +74,24 @@ function setLink(status: Awaited<ReturnType<typeof game.status>> | null) {
 // Keeps `link` and the screen of each match up to date. Called on a timer.
 export async function pingGame() {
   try {
-    setLink(await game.status());
+    setLink(await host.status());
   } catch {
     setLink(null);
   }
 }
 
-// The game's problems with each entrant's loadout, or null when the game could not be asked.
-async function checkEntrants(entrants: Entrant[]): Promise<Map<string, string[]> | null> {
+// The game's problems with each entrant's character, or null when the game could
+// not be asked. Settings the game refuses are a 400: only the caller can fix them.
+async function checkEntrants(t: Tournament, entrants: Entrant[]): Promise<Map<string, string[]> | null> {
+  let checked;
   try {
-    const errors = await game.validate(entrants.map(store.fighter));
-    return new Map(entrants.map((e, i) => [e.id, errors[i] ? [errors[i] as string] : []]));
+    checked = await host.validate(entrants.map(store.character), t.match);
   } catch (err) {
-    if (err instanceof game.GameApiError) return null;
+    if (err instanceof host.HostApiError) return null;
     throw err;
   }
+  if (checked.settings) throw new ApiError(400, `The game refuses the match settings: ${checked.settings}`);
+  return new Map(entrants.map((e, i) => [e.id, checked.characters[i] ? [checked.characters[i] as string] : []]));
 }
 
 function problemsOf(entrants: Entrant[]): Record<string, string[]> | null {
@@ -95,35 +107,35 @@ function describe(problems: Record<string, string[]>, t: { entrants: Entrant[] }
 
 // ---- Caller actions ------------------------------------------------------------
 
-// Draws the tournament after the game has checked every loadout. A loadout the
+// Draws the tournament after the game has checked every character. A character the
 // game refuses is a 400. If the game can't be reached the tournament is still
-// drawn, and the loadouts are checked again when each stage starts.
+// drawn, and the characters are checked again when each stage starts.
 export async function create(body: TournamentRequest): Promise<Tournament> {
   const t = store.build(body);
-  const problems = await checkEntrants(t.entrants);
+  const problems = await checkEntrants(t, t.entrants);
   if (problems) {
     for (const e of t.entrants) e.problems = problems.get(e.id) ?? [];
     const bad = problemsOf(t.entrants);
-    if (bad) throw new ApiError(400, `The game refuses these loadouts: ${describe(bad, t)}`, bad);
+    if (bad) throw new ApiError(400, `The game refuses these characters: ${describe(bad, t)}`, bad);
   } else {
-    t.note = 'The game could not check the loadouts (it is not reachable). They are checked again when a stage starts.';
+    t.note = 'The game could not check the characters (it is not reachable). They are checked again when a stage starts.';
   }
   store.add(t);
   if (t.autoStart) await startStage(t);
   return t;
 }
 
-// Changes entrants. The game checks the changed loadouts; a refused one is kept
+// Changes entrants. The game checks the changed characters; a refused one is kept
 // with its `problems`, and its stage can't start until it is fixed.
 export async function patchEntrants(t: Tournament, patches: EntrantPatch[]): Promise<Tournament> {
   const changed = store.patchEntrants(t, patches);
-  const problems = await checkEntrants(changed);
+  const problems = await checkEntrants(t, changed);
   if (problems) store.setProblems(t, problems);
   return t;
 }
 
 // Sends every unplayed match of the current stage to the game, with the
-// entrants' loadouts as they are now.
+// entrants' characters as they are now.
 export async function startStage(t: Tournament) {
   const ready = () => {
     const stage = currentStage(t);
@@ -136,10 +148,10 @@ export async function startStage(t: Tournament) {
   // Also the entrants of a group not drawn yet: they play later in the stage.
   const ids = new Set(stage.groups.flatMap((g) => g.entrants));
   const entrants = t.entrants.filter((e) => ids.has(e.id));
-  const problems = await checkEntrants(entrants);
+  const problems = await checkEntrants(t, entrants);
   if (problems) store.setProblems(t, problems);
   const bad = problemsOf(entrants);
-  if (bad) throw new ApiError(400, `Fix these loadouts first: ${describe(bad, t)}`, bad);
+  if (bad) throw new ApiError(400, `Fix these characters first: ${describe(bad, t)}`, bad);
   ready(); // another request may have started it while the game was checking
   store.startStage(t);
   run(t);
@@ -153,7 +165,7 @@ export function stopStage(t: Tournament) {
   if (!stage || stage.status !== 'playing') throw new ApiError(409, 'No stage is playing.');
   bump(t);
   for (const match of stageMatches(t, stage.index)) {
-    if ((match.status === 'queued' || match.status === 'playing') && match.gameMatchId) void cancelQuietly(match.gameMatchId);
+    if ((match.status === 'queued' || match.status === 'playing') && match.hostMatchId) void cancelQuietly(match.hostMatchId);
   }
   store.stopStage(t);
   store.setNote(t, `${stage.name} stopped. Start it again to replay the unfinished matches.`);
@@ -177,7 +189,7 @@ export function setWinner(t: Tournament, matchId: string, winner: string) {
 export function remove(t: Tournament) {
   bump(t);
   for (const match of t.matches) {
-    if ((match.status === 'queued' || match.status === 'playing') && match.gameMatchId) void cancelQuietly(match.gameMatchId);
+    if ((match.status === 'queued' || match.status === 'playing') && match.hostMatchId) void cancelQuietly(match.hostMatchId);
   }
   store.remove(t);
 }
@@ -264,32 +276,32 @@ async function runMatch(t: Tournament, id: string, gen: number) {
     const match = t.matches.find((m) => m.id === id);
     if (!match) return;
     // Sent before: wait for the result on the game.
-    if ((match.status === 'queued' || match.status === 'playing') && match.gameMatchId) {
-      if ((await awaitResult(t, id, match.gameMatchId, gen)) !== 'requeue') return;
+    if ((match.status === 'queued' || match.status === 'playing') && match.hostMatchId) {
+      if ((await awaitResult(t, id, match.hostMatchId, gen)) !== 'requeue') return;
       store.noteRestart(t, id);
-      store.setMatchGame(t, id, null, 'pending');
+      store.setHostMatch(t, id, null, 'pending');
       continue;
     }
     if (match.status !== 'pending') return;
-    if (!match.fighters) {
-      store.endMatch(t, id, 'failed', 'No loadouts were copied for this match.');
+    if (!match.characters) {
+      store.endMatch(t, id, 'failed', 'No characters were copied for this match.');
       return;
     }
-    const { fighters, seed } = match;
+    const { characters, seed } = match;
     const ref = key(t, id);
 
-    let queued: Awaited<ReturnType<typeof game.queueMatch>> | null;
+    let queued: Awaited<ReturnType<typeof host.queueMatch>> | null;
     try {
       queued = await inOrder(async () => {
         if (!(await waitForDisplay(t, gen))) return null;
         // Sent just before this service stopped, and not saved: take that one.
-        const sent = (await game.findMatches(ref)).find((m) => m.seed === seed && (m.status === 'queued' || m.status === 'playing'));
-        return sent ?? game.queueMatch({ fighters, seed, tiebreak: 'hp', ref, ...t.match });
+        const sent = (await host.findMatches(ref)).find((m) => m.seed === seed && (m.status === 'queued' || m.status === 'playing'));
+        return sent ?? host.queueMatch({ characters, seed, ref, decisive: true, settings: t.match });
       });
     } catch (err) {
-      if (!(err instanceof game.GameApiError)) throw err;
+      if (!(err instanceof host.HostApiError)) throw err;
       if (gen !== generation(t)) return;
-      // A loadout the game refuses fails just this match. Anything else is
+      // A character the game refuses fails just this match. Anything else is
       // usually the game server not being there: wait and try again.
       if (err.status > 0) {
         store.endMatch(t, id, 'failed', err.message);
@@ -305,13 +317,13 @@ async function runMatch(t: Tournament, id: string, gen: number) {
       return;
     }
 
-    store.setMatchGame(t, id, queued.id, 'queued');
+    store.setHostMatch(t, id, queued.id, 'queued');
     store.setNote(t, '');
     void pingGame(); // show its screen now, not at the next ping
     const outcome = await awaitResult(t, id, queued.id, gen);
     if (outcome !== 'requeue') return;
     store.noteRestart(t, id);
-    store.setMatchGame(t, id, null, 'pending');
+    store.setHostMatch(t, id, null, 'pending');
   }
 }
 
@@ -320,27 +332,27 @@ async function waitForDisplay(t: Tournament, gen: number): Promise<boolean> {
   for (;;) {
     if (gen !== generation(t)) return false;
     try {
-      const status = await game.status();
+      const status = await host.status();
       setLink(status);
       if (status.displays > 0) return true;
-      store.setNote(t, `Open the game display page (${game.DISPLAY_URL}). Matches do not play without one.`);
+      store.setNote(t, `Open the game's display page${link.displayUrl ? ` (${link.displayUrl})` : ''}. Matches do not play without one.`);
     } catch (err) {
       setLink(null);
-      store.setNote(t, err instanceof game.GameApiError ? err.message : String(err));
+      store.setNote(t, err instanceof host.HostApiError ? err.message : String(err));
     }
     await delay(DISPLAY_WAIT_MS);
   }
 }
 
 // Waits for the display page to play the match.
-async function awaitResult(t: Tournament, id: string, gameId: string, gen: number): Promise<'next' | 'requeue' | 'stopped'> {
+async function awaitResult(t: Tournament, id: string, hostId: string, gen: number): Promise<'next' | 'requeue' | 'stopped'> {
   for (;;) {
     if (gen !== generation(t)) return 'stopped';
     let played;
     try {
-      played = await game.getMatch(gameId, true);
+      played = await host.getMatch(hostId, true);
     } catch (err) {
-      if (!(err instanceof game.GameApiError)) throw err;
+      if (!(err instanceof host.HostApiError)) throw err;
       if (gen !== generation(t)) return 'stopped';
       // 404: the game restarted and forgot the match. Queue it again, same seed.
       if (err.status === 404) return 'requeue';
@@ -359,14 +371,14 @@ async function awaitResult(t: Tournament, id: string, gameId: string, gen: numbe
     if (played.status === 'done' && played.result) {
       const match = t.matches.find((m) => m.id === id);
       if (!match) return 'next';
-      const { winner, reason, hp, time } = played.result;
-      // The tiebreak means the game always names a winner. A game from before
-      // the tiebreak can still report a draw; the caller decides that one.
+      const { winner, reason } = played.result;
+      // Matches are sent as decisive, so the game should always name a winner.
+      // A game that can't break a tie reports a draw; the caller decides that one.
       if (winner === null) {
         store.endMatch(t, id, 'cancelled', 'Draw. Replay it or pick the winner.');
         return 'next';
       }
-      store.recordResult(t, id, { winner: match.entrants[winner], decidedBy: reason === 'hp' ? 'hp' : 'ko', hp, time });
+      store.recordResult(t, id, { winner: match.entrants[winner], decidedBy: reason, result: played.result });
       return 'next';
     }
     await delay(POLL_MS); // still queued or playing: ask again
@@ -374,9 +386,9 @@ async function awaitResult(t: Tournament, id: string, gameId: string, gen: numbe
 }
 
 // The game may already be gone; there is nothing to cancel then.
-async function cancelQuietly(gameId: string) {
+async function cancelQuietly(hostId: string) {
   try {
-    await game.cancelMatch(gameId);
+    await host.cancelMatch(hostId);
   } catch {
     // Ignored on purpose.
   }

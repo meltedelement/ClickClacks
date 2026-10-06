@@ -1,6 +1,6 @@
 // The Tournament API over HTTP, with server-sent events. No dependencies: run
 // with `node server/index.ts`. Routes are documented in ../README.md and typed
-// in ../../api/tournament.d.ts.
+// in ../../contracts/tournament.d.ts.
 //
 //   GET    /api/formats                           the formats and their options
 //   GET    /api/formats/:id/plan?entrants=8       the stages a tournament of that size has
@@ -9,22 +9,21 @@
 //   GET    /api/tournaments/:id                   one; ?wait=<version> holds until it is newer
 //   DELETE /api/tournaments/:id                   delete it, taking its matches off the game
 //   GET    /api/tournaments/:id/events            server-sent events: the tournament on every change
-//   PATCH  /api/tournaments/:id/entrants          change names, colours and loadouts
+//   PATCH  /api/tournaments/:id/entrants          change names, colours and characters
 //   POST   /api/tournaments/:id/start             start the current stage
 //   POST   /api/tournaments/:id/stop              stop the current stage
 //   POST   /api/tournaments/:id/matches/:m/replay play a match again
 //   POST   /api/tournaments/:id/matches/:m/winner decide a match
-//   GET    /api/game                              the game this service plays on
-//   GET    /api/game/catalog                      the game's weapons, upgrades and transformations
+//   GET    /api/host                              the game (match host) this service plays on
+//   GET    /api/host/catalog                      the game's catalog, as the game gives it
 //
 // It listens on 127.0.0.1 unless HOST says otherwise: callers are other
 // programs on this machine (the quiz server), and nothing here checks who asks.
 import http from 'node:http';
-import type { Catalog } from '../../api/game.d.ts';
-import type { Tournament } from '../../api/tournament.d.ts';
+import type { Tournament } from '../../contracts/tournament.d.ts';
 import { plan } from '../formats/common.ts';
 import { FORMATS, formatInfo, getFormat, resolveOptions } from '../formats/index.ts';
-import * as game from './game.ts';
+import * as host from './host.ts';
 import * as runner from './runner.ts';
 import * as store from './store.ts';
 import { ApiError } from './store.ts';
@@ -53,15 +52,17 @@ setInterval(() => {
   for (const set of streams.values()) for (const res of set) res.write(': ping\n\n');
 }, PING_MS).unref();
 
-let catalog: Catalog | null = null;
+// The game's catalog, passed through without reading it. The last good copy
+// is kept for while the game is down.
+let catalog: unknown = null;
 
-async function readCatalog(): Promise<Catalog> {
+async function readCatalog(): Promise<unknown> {
   try {
-    catalog = await game.catalog();
+    catalog = await host.catalog();
   } catch (err) {
-    if (!catalog) throw new ApiError(502, (err as Error).message);
+    if (catalog === null) throw new ApiError(502, (err as Error).message);
   }
-  return catalog!;
+  return catalog;
 }
 
 async function route(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
@@ -83,8 +84,8 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse, url: U
     if (!Number.isInteger(size) || size < 0 || size > 1024) throw new ApiError(400, '"entrants" must be a whole number from 0 to 1024');
     return json(res, 200, plan(format, size, options));
   }
-  if (is('GET', 'game')) return json(res, 200, runner.link);
-  if (is('GET', 'game', 'catalog')) return json(res, 200, await readCatalog());
+  if (is('GET', 'host')) return json(res, 200, runner.link);
+  if (is('GET', 'host', 'catalog')) return json(res, 200, await readCatalog());
 
   if (is('GET', 'tournaments')) return json(res, 200, store.list());
   if (is('POST', 'tournaments')) return json(res, 201, await runner.create(await readBody(req)));
@@ -188,7 +189,7 @@ http
   })
   .listen(PORT, HOST, () => {
     console.log(`Tournament API on http://${HOST}:${PORT}/api`);
-    console.log(`  Game API: ${game.GAME_API}`);
+    console.log(`  Match Host API (the game): ${host.HOST_API}`);
   });
 
 void runner.pingGame();

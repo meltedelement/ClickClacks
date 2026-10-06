@@ -18,7 +18,7 @@
 //   - When each bracket has one entrant left, they meet in the grand final. The
 //     winners bracket champion has not lost yet, so if it loses the grand
 //     final, a grand final reset decides the champion.
-import type { EntrantProgress, Group, Stage, TournamentMatch } from '../../api/tournament.d.ts';
+import type { EntrantProgress, Group, Stage, TournamentMatch } from '../../contracts/tournament.d.ts';
 import { shuffled } from '../lib/random.ts';
 import { currentStage, decided, knockoutStandings, loser, newStage, opponent, pairGroup, record, stageComplete, stageMatches } from './common.ts';
 import type { Format, FormatState } from './Format.ts';

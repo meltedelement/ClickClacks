@@ -3,21 +3,20 @@
 // version, saves to data/tournaments.json and tells the listeners (the SSE
 // streams and long polls in index.ts).
 //
-// Nothing here talks to the game; runner.ts does that and calls these.
+// Nothing here talks to the game; runner.ts does that and calls these. Nothing
+// here looks inside a character or the match settings either: they are the
+// game's, and only the game checks them.
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
-import type { FighterInput } from '../../api/game.d.ts';
-import type { DecidedBy, Entrant, EntrantInput, EntrantPatch, Tournament, TournamentMatch, TournamentMatchStatus, TournamentRequest } from '../../api/tournament.d.ts';
+import type { HostResult } from '../../contracts/match-host.d.ts';
+import type { DecidedBy, Entrant, EntrantInput, EntrantPatch, Tournament, TournamentMatch, TournamentMatchStatus, TournamentRequest } from '../../contracts/tournament.d.ts';
 import { currentStage, plan } from '../formats/common.ts';
 import { getFormat, resolveOptions } from '../formats/index.ts';
 
 const DATA_DIR = path.join(import.meta.dirname, '..', 'data');
 const DATA_FILE = path.join(DATA_DIR, 'tournaments.json');
-const DEFAULT_TIME_LIMIT = 180;
-const MAX_TIME_LIMIT = 600;
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
-const MAX_COUNT = 100; // copies of one upgrade in the { id: count } form
 
 // An error for the caller, with the HTTP status to send.
 export class ApiError extends Error {
@@ -94,7 +93,7 @@ export function findMatch(t: Tournament, id: string): TournamentMatch {
 // ---- Reading requests ----------------------------------------------------------
 
 // Checks a TournamentRequest and builds the tournament. Nothing is stored yet:
-// the caller validates the loadouts with the game first, then calls `add`.
+// the caller validates the characters with the game first, then calls `add`.
 export function build(body: TournamentRequest): Tournament {
   let format;
   let options;
@@ -159,15 +158,13 @@ function parseEntrant(input: EntrantInput, where: string): Entrant {
     id: input.id,
     name: '',
     color: null,
-    weapon: '',
-    upgrades: [],
-    transformations: [],
+    character: null,
     problems: [],
     progress: { state: 'waiting', opponent: null, side: null, bracket: null, wins: 0, losses: 0 },
   };
   applyPatch(entrant, input, where);
   if (!entrant.name) throw new ApiError(400, `${where}.name must be a non-empty string`);
-  if (!entrant.weapon) throw new ApiError(400, `${where}.weapon must be a weapon id`);
+  if (input.character === undefined) throw new ApiError(400, `${where}.character is missing: what the game gets for this entrant`);
   return entrant;
 }
 
@@ -183,27 +180,8 @@ function applyPatch(entrant: Entrant, patch: Partial<EntrantInput>, where: strin
     }
     entrant.color = patch.color;
   }
-  if (patch.weapon !== undefined) {
-    if (typeof patch.weapon !== 'string' || !patch.weapon) throw new ApiError(400, `${where}.weapon must be a weapon id`);
-    entrant.weapon = patch.weapon;
-  }
-  if (patch.upgrades !== undefined) entrant.upgrades = parseIds(patch.upgrades, `${where}.upgrades`);
-  if (patch.transformations !== undefined) entrant.transformations = parseIds(patch.transformations, `${where}.transformations`);
-}
-
-// A list of ids (repeat one to stack it) or { id: count }, as a flat list.
-function parseIds(value: unknown, where: string): string[] {
-  if (Array.isArray(value)) {
-    if (!value.every((id) => typeof id === 'string')) throw new ApiError(400, `${where} must be ids`);
-    return [...value];
-  }
-  if (!value || typeof value !== 'object') throw new ApiError(400, `${where} must be a list or an { id: count } object`);
-  return Object.entries(value).flatMap(([id, count]) => {
-    if (!Number.isInteger(count) || (count as number) < 0 || (count as number) > MAX_COUNT) {
-      throw new ApiError(400, `${where}.${id} must be a whole number from 0 to ${MAX_COUNT}`);
-    }
-    return Array(count as number).fill(id);
-  });
+  // The game's to check (runner.ts asks it). A copy, so the caller's object is not shared.
+  if (patch.character !== undefined) entrant.character = structuredClone(patch.character);
 }
 
 export function parseSeed(seed: unknown): number {
@@ -211,31 +189,18 @@ export function parseSeed(seed: unknown): number {
   return seed as number;
 }
 
+// The game's settings for every match. Only the game checks what is in them.
 function parseMatchSettings(match: TournamentRequest['match']): Tournament['match'] {
-  if (match !== undefined && (match === null || typeof match !== 'object')) throw new ApiError(400, '"match" must be an object');
-  const timeLimit = match?.timeLimit ?? DEFAULT_TIME_LIMIT;
-  if (typeof timeLimit !== 'number' || !(timeLimit > 0 && timeLimit <= MAX_TIME_LIMIT)) {
-    throw new ApiError(400, `"match.timeLimit" must be a number of seconds above 0 and at most ${MAX_TIME_LIMIT}`);
-  }
-  // Left out: the game's default.
-  const suddenDeath = match?.suddenDeath;
-  if (suddenDeath !== undefined && suddenDeath !== null && (typeof suddenDeath !== 'number' || !(suddenDeath >= 0 && suddenDeath <= MAX_TIME_LIMIT))) {
-    throw new ApiError(400, `"match.suddenDeath" must be null or a number of seconds from 0 to ${MAX_TIME_LIMIT}`);
-  }
-  return { timeLimit, ...(suddenDeath === undefined ? {} : { suddenDeath }) };
+  if (match === undefined || match === null) return {};
+  if (typeof match !== 'object' || Array.isArray(match)) throw new ApiError(400, '"match" must be an object');
+  return structuredClone(match);
 }
 
 // ---- Entrants ------------------------------------------------------------------
 
-// The fighter the game gets for this entrant.
-export function fighter(entrant: Entrant): FighterInput {
-  return {
-    name: entrant.name,
-    ...(entrant.color ? { color: entrant.color } : {}),
-    weapon: entrant.weapon,
-    upgrades: [...entrant.upgrades],
-    transformations: [...entrant.transformations],
-  };
+// The character the game gets for this entrant, as the caller gave it.
+export function character(entrant: Entrant): unknown {
+  return structuredClone(entrant.character);
 }
 
 export function entrant(t: Tournament, id: string): Entrant {
@@ -269,12 +234,12 @@ export function setProblems(t: Tournament, problems: Map<string, string[]>) {
 
 // ---- Stages and matches ----------------------------------------------------------
 
-// The fighters for a match, as the entrants are now.
+// The characters for a match, as the entrants are now.
 function snapshot(t: Tournament, match: TournamentMatch) {
-  match.fighters = match.entrants.map((id) => fighter(entrant(t, id)));
+  match.characters = match.entrants.map((id) => character(entrant(t, id)));
 }
 
-// The current stage goes on the game. Its unplayed matches get the entrants' loadouts as they are now.
+// The current stage goes on the game. Its unplayed matches get the entrants' characters as they are now.
 export function startStage(t: Tournament) {
   mutate(t, () => {
     const stage = currentStage(t)!;
@@ -286,7 +251,7 @@ export function startStage(t: Tournament) {
 }
 
 // Draws what the format can draw inside the current stage. Matches drawn into
-// a stage that is playing get their loadouts now. Returns true if anything was drawn.
+// a stage that is playing get their characters now. Returns true if anything was drawn.
 export function update(t: Tournament): boolean {
   const stage = currentStage(t);
   const drawn = stage ? getFormat(t.format).update(t) : [];
@@ -305,7 +270,7 @@ export function stopStage(t: Tournament) {
     stage.status = 'waiting';
     for (const match of t.matches) {
       if (match.stage === stage.index && (match.status === 'queued' || match.status === 'playing')) {
-        Object.assign(match, { status: 'pending', gameMatchId: null, screen: null });
+        Object.assign(match, { status: 'pending', hostMatchId: null, screen: null });
       }
     }
   });
@@ -327,18 +292,18 @@ export function finishStage(t: Tournament) {
   });
 }
 
-export function setMatchGame(t: Tournament, id: string, gameMatchId: string | null, status: TournamentMatchStatus) {
+export function setHostMatch(t: Tournament, id: string, hostMatchId: string | null, status: TournamentMatchStatus) {
   mutate(t, () => {
     const match = findMatch(t, id);
-    Object.assign(match, { gameMatchId, status, screen: null });
+    Object.assign(match, { hostMatchId, status, screen: null });
   });
 }
 
-// Where the game has the tournament's matches on its display: { gameMatchId: { screen, playing } }.
+// Where the game has the tournament's matches on its display: { hostMatchId: { screen, playing } }.
 export function setScreens(t: Tournament, onScreen: Map<string, { screen: number; playing: boolean }>) {
-  const live = t.matches.filter((m) => m.gameMatchId && (m.status === 'queued' || m.status === 'playing'));
+  const live = t.matches.filter((m) => m.hostMatchId && (m.status === 'queued' || m.status === 'playing'));
   const next = live.map((m) => {
-    const where = onScreen.get(m.gameMatchId!);
+    const where = onScreen.get(m.hostMatchId!);
     return { match: m, screen: where?.screen ?? null, status: (where?.playing ? 'playing' : 'queued') as TournamentMatchStatus };
   });
   if (next.every(({ match, screen, status }) => match.screen === screen && match.status === status)) return;
@@ -348,11 +313,11 @@ export function setScreens(t: Tournament, onScreen: Map<string, { screen: number
 }
 
 // A duplicate result (two displays, or a retry) does nothing.
-export function recordResult(t: Tournament, id: string, result: { winner: string; decidedBy: DecidedBy; hp: number[]; time: number }) {
+export function recordResult(t: Tournament, id: string, outcome: { winner: string; decidedBy: DecidedBy; result: HostResult }) {
   const match = findMatch(t, id);
   if (match.status === 'done') return;
   mutate(t, () => {
-    Object.assign(match, { status: 'done', screen: null, ...result });
+    Object.assign(match, { status: 'done', screen: null, ...outcome });
     delete match.error;
   });
 }
@@ -365,7 +330,7 @@ export function setWinner(t: Tournament, id: string, winner: string) {
   if (t.stages[match.stage]?.status === 'done') throw new ApiError(409, 'That stage is finished.');
   mutate(t, () => {
     getFormat(t.format).undo(t, match);
-    Object.assign(match, { status: 'done', winner, decidedBy: 'host', gameMatchId: null, screen: null, hp: null, time: null });
+    Object.assign(match, { status: 'done', winner, decidedBy: 'manual', hostMatchId: null, screen: null, result: null });
     delete match.error;
   });
 }
@@ -378,7 +343,7 @@ export function replayMatch(t: Tournament, id: string, seed: number) {
   if (!stage || stage !== currentStage(t)) throw new ApiError(409, 'Only a match in the current stage can be played again.');
   mutate(t, () => {
     getFormat(t.format).undo(t, match);
-    Object.assign(match, { status: 'pending', seed, gameMatchId: null, screen: null, winner: null, decidedBy: null, hp: null, time: null });
+    Object.assign(match, { status: 'pending', seed, hostMatchId: null, screen: null, winner: null, decidedBy: null, result: null });
     delete match.error;
     // Only the last stage can be replayed after it is done: that undoes the champion.
     if (stage.status === 'done') {

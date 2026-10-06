@@ -12,7 +12,7 @@
 // Formats are pure: they change the state they are given and never do I/O.
 // Every random choice comes from the tournament seed, so a tournament drawn
 // again from the same seed and entrants is the same tournament.
-import type { EntrantProgress, FormatId, FormatInfo, FormatOptions, PlannedGroup, Stage, Standing, TournamentMatch } from '../../api/tournament.d.ts';
+import type { EntrantProgress, FormatId, FormatInfo, FormatOptions, PlannedGroup, Stage, Standing, TournamentMatch } from '../../contracts/tournament.d.ts';
 
 // The part of a tournament a format reads and changes.
 export interface FormatState {

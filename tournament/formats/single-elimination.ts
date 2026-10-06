@@ -2,7 +2,7 @@
 // draw; each stage pairs the entrants still in, in order (1 v 2, 3 v 4, ...).
 // With an odd count the last one gets a bye, and the next stage lists it first,
 // so nobody gets two byes in a row.
-import type { EntrantProgress, Stage, TournamentMatch } from '../../api/tournament.d.ts';
+import type { EntrantProgress, Stage, TournamentMatch } from '../../contracts/tournament.d.ts';
 import { shuffled } from '../lib/random.ts';
 import { currentStage, decided, knockoutStandings, newStage, opponent, pairGroup, record, stageComplete, stageMatches } from './common.ts';
 import type { Format, FormatState } from './Format.ts';

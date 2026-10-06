@@ -3,8 +3,9 @@
 // method from a seeded random order, so nobody plays twice in a stage; with an
 // odd count one entrant sits each round out. A win is a point. The table is
 // sorted by points, then by wins against the entrants on the same points, then
-// by HP margin (HP left minus the opponent's, over every match the game played).
-import type { EntrantProgress, Stage, TournamentMatch } from '../../api/tournament.d.ts';
+// by score margin (the game's score minus the opponent's, over every match the
+// game played and scored; for Weapon Balls the score is HP left).
+import type { EntrantProgress, Stage, TournamentMatch } from '../../contracts/tournament.d.ts';
 import { shuffled } from '../lib/random.ts';
 import { currentStage, decided, newStage, opponent, pairGroup, rank, record, stageComplete, stageMatches } from './common.ts';
 import type { Format, FormatState } from './Format.ts';
@@ -87,8 +88,9 @@ export const roundRobin: Format = {
     const points = new Map(t.entrants.map(({ id }) => [id, record(t, id).wins]));
     const margin = new Map<string, number>();
     for (const match of t.matches) {
-      if (!decided(match) || !match.hp) continue;
-      match.entrants.forEach((id, i) => margin.set(id, (margin.get(id) ?? 0) + match.hp![i] - match.hp![1 - i]));
+      const scores = match.result?.scores;
+      if (!decided(match) || !scores) continue;
+      match.entrants.forEach((id, i) => margin.set(id, (margin.get(id) ?? 0) + scores[i] - scores[1 - i]));
     }
     // Wins against the entrants on the same points.
     const headToHead = (id: string) =>

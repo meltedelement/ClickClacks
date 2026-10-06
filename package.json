@@ -1,24 +1,14 @@
 {
-  "name": "weapon-balls",
+  "name": "weapon-balls-workspace",
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "description": "Runs the modules together. Each folder (games/weapon-balls, tournament, party, apps/quiz-of-doom) is its own project with its own package.json.",
   "scripts": {
-    "dev": "vite",
     "dev:all": "node tools/run-all.js",
-    "build": "vite build",
-    "preview": "vite preview",
-    "start": "node server/index.js",
     "start:all": "node tools/run-all.js --built",
-    "balance": "node tools/balance.js",
-    "sweep": "node tools/sweep.js",
-    "flawless": "node tools/flawless.js",
-    "flawless": "node tools/flawless.js",
-    "tournament": "node tournament/server/index.ts",
-    "tournament:test": "node --test tournament/formats/*.test.ts",
-    "display:headless": "node tools/headless-display.js"
-  },
-  "devDependencies": {
-    "vite": "^8.3.1"
+    "install:all": "node tools/install-all.js",
+    "test": "node --test tournament/formats/*.test.ts party/server/*.test.ts apps/quiz-of-doom/shared/*.test.ts",
+    "typecheck": "cd tournament && npm run typecheck && cd ../party && npm run typecheck && cd ../apps/quiz-of-doom && npm run typecheck"
   }
 }

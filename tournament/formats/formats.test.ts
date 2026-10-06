@@ -2,7 +2,7 @@
 // `npm test` in tournament/). No server or game needed.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { TournamentMatch } from '../../api/tournament.d.ts';
+import type { TournamentMatch } from '../../contracts/tournament.d.ts';
 import { mulberry32 } from '../lib/random.ts';
 import { currentStage, plan, stageComplete, stageMatches } from './common.ts';
 import { doubleElimination } from './double-elimination.ts';
@@ -299,7 +299,7 @@ test('round robin: the second leg swaps sides', () => {
   assert.deepEqual([...secondLeg].sort(), [...firstLeg].sort());
 });
 
-test('round robin: the table is points, then head to head, then HP margin', () => {
+test('round robin: the table is points, then head to head, then score margin', () => {
   const t = start(rr, 4, 7);
   // t1 beats everyone. t2 beats t3, t3 beats t4, t4 beats t2: level on one point each.
   const beats = new Set(['t1>t2', 't1>t3', 't1>t4', 't2>t3', 't3>t4', 't4>t2']);
@@ -307,10 +307,13 @@ test('round robin: the table is points, then head to head, then HP margin', () =
   const standings = rr.standings(t);
   assert.equal(t.champion, 't1');
   assert.deepEqual(standings[0], { entrant: 't1', rank: 1, wins: 3, losses: 0, points: 3 });
-  // Nothing tells the three apart: no HP recorded, and one head-to-head win each.
+  // Nothing tells the three apart: no scores recorded, and one head-to-head win each.
   assert.deepEqual(standings.slice(1).map((s) => s.rank), [2, 2, 2]);
-  // HP margin breaks it.
-  for (const m of t.matches) m.hp = m.entrants.map((id) => (id !== m.winner ? 0 : id === 't3' ? 50 : 10));
+  // Score margin breaks it.
+  for (const m of t.matches) {
+    const scores = m.entrants.map((id) => (id !== m.winner ? 0 : id === 't3' ? 50 : 10));
+    m.result = { winner: m.entrants.indexOf(m.winner!), reason: 'ko', ranking: [0, 1], scores };
+  }
   assert.equal(rr.standings(t)[1].entrant, 't3');
   assert.equal(rr.standings(t)[1].rank, 2);
   assert.equal(rr.standings(t)[2].rank, 3);

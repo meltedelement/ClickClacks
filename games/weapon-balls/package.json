@@ -1,0 +1,19 @@
+{
+  "name": "weapon-balls",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server/index.js",
+    "balance": "node tools/balance.js",
+    "sweep": "node tools/sweep.js",
+    "flawless": "node tools/flawless.js",
+    "display:headless": "node tools/headless-display.js"
+  },
+  "devDependencies": {
+    "vite": "^8.3.1"
+  }
+}

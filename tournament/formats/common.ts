@@ -1,6 +1,6 @@
 // Helpers every format uses: pairing a group, reading the current stage,
 // counting wins and losses, and planning a tournament's shape.
-import type { FormatOptions, Group, PlannedGroup, Stage, Standing, TournamentMatch } from '../../api/tournament.d.ts';
+import type { FormatOptions, Group, PlannedGroup, Stage, Standing, TournamentMatch } from '../../contracts/tournament.d.ts';
 import { mulberry32 } from '../lib/random.ts';
 import type { Format, FormatState } from './Format.ts';
 
@@ -19,13 +19,12 @@ export function newMatch(id: string, stage: number, side: string, a: string, b: 
     entrants: [a, b],
     seed,
     status: 'pending',
-    gameMatchId: null,
+    hostMatchId: null,
     screen: null,
-    fighters: null,
+    characters: null,
     winner: null,
     decidedBy: null,
-    hp: null,
-    time: null,
+    result: null,
   };
 }
 

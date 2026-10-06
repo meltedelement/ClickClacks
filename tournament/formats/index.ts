@@ -1,5 +1,5 @@
 // Every tournament format, by id. Add a new one here.
-import type { FormatId, FormatInfo, FormatOptions } from '../../api/tournament.d.ts';
+import type { FormatId, FormatInfo, FormatOptions } from '../../contracts/tournament.d.ts';
 import { doubleElimination } from './double-elimination.ts';
 import type { Format } from './Format.ts';
 import { roundRobin } from './round-robin.ts';

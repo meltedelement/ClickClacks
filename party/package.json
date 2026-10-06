@@ -1,0 +1,11 @@
+{
+  "name": "party",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Jackbox-style party plumbing for any game: players on phones, an admin page, a big screen. No runtime dependencies.",
+  "scripts": {
+    "test": "node --test server/*.test.ts",
+    "typecheck": "../apps/quiz-of-doom/node_modules/.bin/tsc --noEmit -p ."
+  }
+}
