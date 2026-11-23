@@ -25,13 +25,15 @@ import { nearestEnemy, withinRange } from '../sim/targeting.js';
 export class Upgrade {
   static id = 'upgrade'; // unique key used by the registry and loadouts
   static displayName = 'Upgrade';
-  static description = '';
   // Weapon ids this upgrade can go on, or null for any weapon.
   static weapons = null;
+  // Weapon ids this upgrade can't go on, for an upgrade that's otherwise for
+  // any weapon but does nothing useful on these (Long Blade on the Gun).
+  static notWeapons = [];
   // Upgrade ids that must also be in the loadout for this one to be taken.
   static requires = [];
   // Upgrade ids that stop this one being offered, because with them it would
-  // do nothing (e.g. Long Dash once Olympian has replaced the dash). A loadout
+  // do nothing (e.g. an upgrade for an ability a transformation has replaced). A loadout
   // may still hold both; the upgrade just has no effect.
   static excludedBy = [];
   // Most copies of this upgrade one fighter can have.
@@ -44,8 +46,21 @@ export class Upgrade {
   // upgrade's preventHit is asked first). Ties keep loadout order.
   static order = 0;
 
+  // What it does, for one copy. An upgrade with no numbers that grow with
+  // copies sets this as a plain string (which hides this getter); the rest
+  // write describe(n) and get this from it.
+  static get description() {
+    return this.describe === Upgrade.describe ? '' : this.describe(1);
+  }
+
+  // What `n` copies do together, worked out from the same constants the
+  // upgrade itself uses. The default reads the same however many there are.
+  static describe(n) {
+    return this.description;
+  }
+
   static canApplyTo(weaponId) {
-    return this.weapons === null || this.weapons.includes(weaponId);
+    return (this.weapons === null || this.weapons.includes(weaponId)) && !this.notWeapons.includes(weaponId);
   }
 
   constructor(weapon) {
@@ -82,6 +97,11 @@ export class Upgrade {
 
   // Flat damage added to the weapon's own, before any multiplier.
   get bonusDamage() {
+    return 0;
+  }
+
+  // Flat damage added to a critical hit, after the crit multiplier.
+  get critBonusDamage() {
     return 0;
   }
 
@@ -127,12 +147,18 @@ export class Upgrade {
   // the state after this hit's scaling has been applied.
 
   onUpdate(dt, sim) {} // every physics step
-  onHit(target, sim, damage, point) {} // this weapon landed a hit at `point`
+  // This weapon landed a hit at `point`. `hit` is { secondary: true, reason }
+  // for a hit from something other than the blade (spikes, an off-hand sword,
+  // Shield Bash, a thrown shield, an explosion: see
+  // Simulation.applySecondaryHit), else empty. A secondary hit's `upgradeScale`
+  // (Pyromancer's ring) is how much damage upgrades should count on it.
+  onHit(target, sim, damage, point, hit = {}) {}
   onParry(otherWeapon, sim) {} // this weapon clashed with another
   onOwnerHit(attackerWeapon, sim, damage) {} // this ball got hit
   onBlock(attackerWeapon, sim) {} // this weapon's shield stopped an enemy weapon
   preventHit(attackerWeapon, sim) { return false; } // return true to cancel a weapon hit on this ball
   onWallBounce(sim) {} // this ball bounced off a wall
+  onOtherWallBounce(ball, sim) {} // another ball bounced off a wall (Puppeteer); see Simulation.wallWatchers
   onBump(otherBall, sim) {} // this ball's body touched another ball (every step they touch)
   onGrow(factor) {} // royale: this ball grew by `factor`; scale any px you're holding on to (see Ball.grow)
   allowsAbilityStart(ability, sim) { return true; } // return false to hold an ability of this weapon back from starting

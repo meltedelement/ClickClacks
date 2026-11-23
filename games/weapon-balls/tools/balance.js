@@ -16,7 +16,7 @@
 //   -d, --sudden-death S  simulated seconds before sudden death starts, or "off"
 //                         (default: CONFIG.suddenDeath.after)
 //   -s, --seed N          base seed; the same seed and options give the same results
-//   -j, --jobs N          worker threads (default: CPU cores - 1)
+//   -j, --jobs N          worker threads (default: one per physical core, see workers.js)
 //       --json FILE       write the full summary as JSON
 //       --csv FILE        write one row per match as CSV
 //   -h, --help
@@ -27,12 +27,12 @@
 //   npm run balance -- -g 5000 -w sword,mace --csv matches.csv
 //   npm run balance -- -g 1000 --seed 42 --json before.json
 //   npm run balance -- -g 2000 -w sword,sword+lifesteal,spear,mace,daggers
-//   npm run balance -- -g 1000 -w spear,spear+crit:2+crit-damage,mace
+//   npm run balance -- -g 1000 -w spear,spear+crit:2+rapid-growth,mace
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { availableParallelism } from 'node:os';
 import { parseArgs } from 'node:util';
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
+import { defaultJobs } from './workers.js';
 import { CONFIG } from '../src/config.js';
 import { Simulation } from '../src/sim/Simulation.js';
 import { mulberry32 } from '../src/sim/random.js';
@@ -106,6 +106,7 @@ function runMatch(lineup, seed, timeLimit, suddenDeath) {
       const t = slot(e.target);
       fighters[s].damageDealt += e.dealt;
       fighters[s].otherDamage += e.dealt;
+      if (e.crit) fighters[s].crits++;
       fighters[t].worstDeficit = Math.max(fighters[t].worstDeficit, e.source.hp - e.target.hp);
     } else if (type === 'dodge') {
       fighters[slot(e.target)].dodges++;
@@ -121,11 +122,12 @@ function runMatch(lineup, seed, timeLimit, suddenDeath) {
   const abilityWasActive = sim.balls.map(() => false);
   while (!sim.over && sim.time < timeLimit) {
     sim.step(DT);
-    sim.balls.forEach((ball, i) => {
-      const active = ball.weapon.ability?.active ?? false;
+    // A plain loop: this runs after every step.
+    for (let i = 0; i < sim.balls.length; i++) {
+      const active = sim.balls[i].weapon.ability?.active ?? false;
       if (active && !abilityWasActive[i]) fighters[i].abilityUses++;
       abilityWasActive[i] = active;
-    });
+    }
   }
 
   return {
@@ -227,7 +229,7 @@ function readOptions() {
     timeLimit: positiveNumber(values['time-limit'], 'time-limit'),
     suddenDeath: readSuddenDeath(values['sudden-death']),
     seed: values.seed !== undefined ? toUint32(values.seed) : (Math.random() * 2 ** 32) >>> 0,
-    jobs: values.jobs ? positiveInt(values.jobs, 'jobs') : Math.max(1, availableParallelism() - 1),
+    jobs: values.jobs ? positiveInt(values.jobs, 'jobs') : defaultJobs(),
     json: values.json,
     csv: values.csv,
   };

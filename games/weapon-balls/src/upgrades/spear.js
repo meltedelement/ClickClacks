@@ -1,35 +1,27 @@
 import { Upgrade } from './Upgrade.js';
 import { ChargeDash } from '../abilities/ChargeDash.js';
 import { TAU } from '../sim/math.js';
+import { percent } from '../utils/format.js';
 
-// Small upgrades for the Spear: its Charge Dash, its growth, and crits.
+// Small upgrades for the Spear: its Charge Dash and its growth.
 
-export class LongDash extends Upgrade {
-  static id = 'long-dash';
-  static displayName = 'Long Dash';
-  static description = 'Charge Dash travels 40% further.';
-  static weapons = ['spear'];
-  // Spear Throw and Flame Lap go wall to wall, so the dash length never matters.
-  static excludedBy = ['olympian', 'runner'];
+const PATIENT_CHARGE = 0.5; // longer windup, per copy (linear from the base windup)
 
-  apply() {
-    if (!(this.ability instanceof ChargeDash)) return;
-    this.base ??= this.ability.dashDuration;
-    this.ability.dashDuration += this.base * 0.4;
+// The windup is the Spear's best moment: it stands still with the spear levelled
+// at the enemy, which tends to run onto the point, and those hits don't cancel
+// the charge. So waiting longer is the upgrade (a shorter windup lost matches).
+export class PatientCharge extends Upgrade {
+  static id = 'patient-charge';
+  static displayName = 'Patient Charge';
+  static describe(n) {
+    return `Charge Dash holds still and aims ${percent(PATIENT_CHARGE * n)} longer before it lunges.`;
   }
-}
-
-export class QuickCharge extends Upgrade {
-  static id = 'quick-charge';
-  static displayName = 'Quick Charge';
-  static description = 'Charge Dash winds up twice as fast (each copy halves what is left).';
   static weapons = ['spear'];
 
-  // The aim turns faster to match, or a shorter windup would release before the spear faces the target.
   apply() {
     if (!(this.ability instanceof ChargeDash)) return;
-    this.ability.windup *= 0.5;
-    this.ability.aimTurnRate *= 2;
+    this.base ??= this.ability.windup;
+    this.ability.windup += this.base * PATIENT_CHARGE;
   }
 
   // A yellow pennant just behind the spear head.
@@ -47,14 +39,18 @@ export class QuickCharge extends Upgrade {
   }
 }
 
+const BRACED = 0.4; // damage taken while dashing is multiplied by this, per copy
+
 export class DashGuard extends Upgrade {
   static id = 'dash-guard';
   static displayName = 'Braced';
-  static description = 'Take 60% less damage while charging and dashing (each copy cuts what is left).';
+  static describe(n) {
+    return `Take ${percent(1 - BRACED ** n)} less damage while charging and dashing.`;
+  }
   static weapons = ['spear'];
 
   get damageTakenMultiplier() {
-    return this.ability?.active ? 0.4 ** this.stacks : 1;
+    return this.ability?.active ? Math.pow(BRACED, this.stacks) : 1;
   }
 
   // A pale bubble around the ball while the guard is up.
@@ -72,26 +68,18 @@ export class DashGuard extends Upgrade {
   }
 }
 
+const RAPID_GROWTH = 0.5; // more growth per hit, per copy
+
 export class RapidGrowth extends Upgrade {
   static id = 'rapid-growth';
   static displayName = 'Rapid Growth';
-  static description = 'Your spear grows 50% more with every hit.';
+  static describe(n) {
+    return `Your spear grows ${percent(RAPID_GROWTH * n)} more with each hit.`;
+  }
   static weapons = ['spear'];
 
   apply() {
     this.base ??= this.weapon.reachPerHit;
-    this.weapon.reachPerHit += this.base * 0.5;
-  }
-}
-
-export class DeadlyCrits extends Upgrade {
-  static id = 'crit-damage';
-  static displayName = 'Deadly Crits';
-  static description = 'Critical hits deal +100% damage (triple instead of double).';
-  static weapons = ['spear'];
-  static requires = ['crit'];
-
-  apply() {
-    this.weapon.critMultiplier += 1;
+    this.weapon.reachPerHit += this.base * RAPID_GROWTH;
   }
 }

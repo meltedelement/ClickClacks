@@ -1,4 +1,4 @@
-import { TAU, add, fromAngle, sub } from '../sim/math.js';
+import { TAU, add, fromAngle, hypot, sub } from '../sim/math.js';
 
 const SPIKES = 3;
 
@@ -66,7 +66,7 @@ export class Shield {
   // How far from the ball's centre the shield's hitbox can reach (thickness
   // included, spikes not). Must match getSegment; see Weapon.bladeReach.
   get reach() {
-    return Math.hypot(this.radius, this.width / 2) + this.thickness;
+    return hypot(this.radius, this.width / 2) + this.thickness;
   }
 
   // Straight segment across the face of the shield, in arena coordinates.

@@ -1,58 +1,77 @@
 import { Upgrade } from './Upgrade.js';
+import { percent } from '../utils/format.js';
 
 // Small upgrades for the Drone: more drones, faster ones, a sturdier guard.
+
+const QUICK_REPAIR = 0.7; // recovery times are multiplied by this, per copy
 
 export class QuickRepair extends Upgrade {
   static id = 'quick-repair';
   static displayName = 'Quick Repair';
-  static description = 'Swatted drones tumble for 30% less time, and once back they can attack again 30% sooner (each copy cuts what is left).';
+  static describe(n) {
+    return `Knocked-away drones recover ${percent(1 - QUICK_REPAIR ** n)} faster.`;
+  }
   static weapons = ['drone'];
 
   apply() {
-    this.weapon.tumbleTime *= 0.7;
-    this.weapon.recoverTime *= 0.7;
+    this.weapon.tumbleTime *= QUICK_REPAIR;
+    this.weapon.recoverTime *= QUICK_REPAIR;
   }
 }
+
+const QUICK_PRODUCTION = 1; // more drones to start with and at most, per copy
 
 export class QuickProduction extends Upgrade {
   static id = 'quick-production';
   static displayName = 'Quick Production';
-  static description = 'Start with 1 more drone (and build up to 1 more).';
+  static describe(n) {
+    const more = QUICK_PRODUCTION * n;
+    return `Start with ${more} more drone${more === 1 ? '' : 's'}, and build up to ${more} more.`;
+  }
   static weapons = ['drone'];
-  static maxStacks = 3;
 
   apply() {
-    this.weapon.blades += 1;
-    this.weapon.maxDrones += 1;
+    this.weapon.blades += QUICK_PRODUCTION;
+    this.weapon.maxDrones += QUICK_PRODUCTION;
   }
 }
+
+const DEFENSE_MATRIX_BLOCK = 1; // more damage blocked per guarding drone (1 = double), per copy
+const DEFENSE_MATRIX_GUARD = 0.1; // more the guard can block in total, per copy
 
 export class DefenseMatrix extends Upgrade {
   static id = 'defense-matrix';
   static displayName = 'Defense Matrix';
-  static description = 'Each guarding drone takes twice as much off a hit, and the guard can take off 10% more of it in all.';
+  static maxStacks = 3; // at 5 the guard could block whole hits
+  static describe(n) {
+    const times = 1 + DEFENSE_MATRIX_BLOCK * n;
+    return `Guarding drones block ${times === 2 ? 'twice' : `${times} times`} as much damage, and the guard can block ${percent(DEFENSE_MATRIX_GUARD * n)} more in total.`;
+  }
   static weapons = ['drone'];
-  static maxStacks = 3;
   // Ace's drones tow instead of guarding.
   static excludedBy = ['ace'];
 
   apply() {
     this.base ??= this.weapon.guardPerDrone;
-    this.weapon.guardPerDrone += this.base;
-    this.weapon.maxGuard += 0.1;
+    this.weapon.guardPerDrone += this.base * DEFENSE_MATRIX_BLOCK;
+    this.weapon.maxGuard += DEFENSE_MATRIX_GUARD;
   }
 }
+
+const BOOSTERS = 0.4; // more speed, per copy
 
 export class Boosters extends Upgrade {
   static id = 'boosters';
   static displayName = 'Boosters';
-  static description = 'Your drones fly 40% faster, attacking and catching up with the formation.';
+  static describe(n) {
+    return `Your drones fly ${percent(BOOSTERS * n)} faster.`;
+  }
   static weapons = ['drone'];
 
   apply() {
     const { weapon } = this;
     this.base ??= { flySpeed: weapon.flySpeed, dashSpeed: weapon.dashSpeed, grip: weapon.grip, attackGrip: weapon.attackGrip, acceleration: weapon.acceleration };
-    for (const key of Object.keys(this.base)) weapon[key] += this.base[key] * 0.4;
+    for (const key of Object.keys(this.base)) weapon[key] += this.base[key] * BOOSTERS;
   }
 
   // A glowing exhaust at the tail of each drone.
@@ -72,20 +91,18 @@ export class Boosters extends Upgrade {
 }
 
 const SPIKE_COLOR = '#c7ccd3';
+const SPIKED_DRONES = 0.25; // damage, per copy
 
 export class SpikedDrones extends Upgrade {
   static id = 'spiked-drones';
   static displayName = 'Spiked Drones';
-  static description = 'Whoever swats one of your drones takes 0.25 damage.';
+  static describe(n) {
+    return `Enemies take ${SPIKED_DRONES * n} damage when they knock one of your drones away.`;
+  }
   static weapons = ['drone'];
 
-  constructor(weapon) {
-    super(weapon);
-    this.damage = 0.25;
-  }
-
   onDroneSwat(drone, enemy, point, sim) {
-    sim.dealDamage(this.owner, enemy, this.damage * this.stacks, { reason: 'spikes', color: SPIKE_COLOR });
+    sim.dealDamage(this.owner, enemy, SPIKED_DRONES * this.stacks, { reason: 'spikes', color: SPIKE_COLOR });
   }
 
   // Spikes off the back of each wing.

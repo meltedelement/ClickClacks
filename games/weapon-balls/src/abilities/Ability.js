@@ -1,4 +1,5 @@
 import { nearestEnemy, withinRange } from '../sim/targeting.js';
+import { jitter } from '../sim/timing.js';
 
 // Base class for a weapon's special move. Abilities fire automatically once
 // they're off cooldown and shouldActivate() says it's a good moment.
@@ -14,7 +15,7 @@ export class Ability {
   constructor(weapon, { cooldown, initialCooldown = cooldown / 2 }) {
     this.weapon = weapon;
     this.cooldown = cooldown; // seconds
-    this.cooldownLeft = initialCooldown;
+    this.cooldownLeft = jitter(initialCooldown);
     this.active = false;
   }
 
@@ -70,6 +71,16 @@ export class Ability {
     return false;
   }
 
+  // True while the ability's next hit is a guaranteed crit.
+  get guaranteesCrit() {
+    return false;
+  }
+
+  // px beyond the ball's surface within which bullets are sent back at their shooter (0 = none).
+  get reflectRadius() {
+    return 0;
+  }
+
   // Only matters for multi-blade weapons: 1 = evenly spaced, 0 = gathered at the front.
   get bladeSpread() {
     return 1;
@@ -87,6 +98,8 @@ export class Ability {
   onHit(target, sim) {} // this weapon landed a hit
   onParry(otherWeapon, sim) {} // this weapon clashed with another
   onOwnerHit(attackerWeapon, sim) {} // this ball got hit
+  // `damage` was about to hit this ball, from `source` (a ball). Return true to stop it.
+  absorbDamage(source, damage, sim) { return false; }
   draw(ctx) {} // drawn underneath the balls
   drawOver(ctx) {} // drawn on top of the balls and weapons
 
@@ -125,20 +138,21 @@ export class Ability {
   // False while an upgrade is holding this ability back (e.g. Dancer, so its
   // spin and the weapon's ability never run at the same time).
   allowedToStart(sim) {
-    return this.weapon.upgrades.every((upgrade) => upgrade.allowsAbilityStart(this, sim));
+    for (const upgrade of this.weapon.upgradesWith('allowsAbilityStart')) if (!upgrade.allowsAbilityStart(this, sim)) return false;
+    return true;
   }
 
   start(sim) {
     this.active = true;
     this.onStart(sim);
-    for (const upgrade of this.weapon.upgrades) upgrade.onAbilityStart(this, sim);
+    for (const upgrade of this.weapon.upgradesWith('onAbilityStart')) upgrade.onAbilityStart(this, sim);
   }
 
   end(sim) {
     if (!this.active) return;
     this.active = false;
-    this.cooldownLeft = this.cooldown;
+    this.cooldownLeft = jitter(this.cooldown);
     this.onEnd(sim);
-    for (const upgrade of this.weapon.upgrades) upgrade.onAbilityEnd(this, sim);
+    for (const upgrade of this.weapon.upgradesWith('onAbilityEnd')) upgrade.onAbilityEnd(this, sim);
   }
 }

@@ -16,6 +16,18 @@ export interface FighterInput {
   team?: string;
   /** Ball colour as "#rrggbb". Optional: without it the ball takes its weapon's colour. */
   color?: string;
+  /** Draws a ring in the ball's colour around it, to pick it out of a crowd. Display only. Default false. */
+  highlight?: boolean;
+  /** How the ball is drawn (see `Skin`). Display only. Default null: a plain disc in its colour. */
+  skin?: Skin | null;
+  /** Up to 12 characters shown before the name ("DEV · Ana"), in the skin's colour. Display only. Default null. */
+  tag?: string | null;
+  /**
+   * Starting size in a royale, 0.25 to 4. Default 1; ignored outside a royale.
+   * Radius, blades, max HP and damage scale as if the ball had grown or shrunk to
+   * it, and a kill hands over the mass that goes with it.
+   */
+  size?: number;
   /** Weapon id, e.g. "sword". See GET /api/catalog. */
   weapon: string;
   /** Upgrade ids (repeat an id to stack it), or { id: count }. No transformations here. */
@@ -23,6 +35,14 @@ export interface FighterInput {
   /** Transformation ids from `GET /api/catalog`, in the same forms. Applied before the upgrades. */
   transformations?: string[] | Record<string, number>;
 }
+
+/**
+ * How a ball can be drawn. 'gold': the shiny gold dev orb. 'birthday': its own
+ * colour with sprinkles, a party hat and confetti. 'rainbow': every colour, turning.
+ * 'galaxy': deep space with twinkling stars. 'diamond': pale blue facets.
+ * 'fire': a hot core with flames.
+ */
+export type Skin = 'gold' | 'birthday' | 'rainbow' | 'galaxy' | 'diamond' | 'fire';
 
 /** The game's settings for one match: `MatchRequest.settings`. */
 export interface MatchSettings {
@@ -36,9 +56,32 @@ export interface MatchSettings {
   tiebreak?: 'hp' | null;
   /**
    * Sim seconds before sudden death: from then on both fighters lose HP every
-   * second, more each second, until one drops. Default 120; null turns it off.
+   * second, more each second, until one drops. Default 120 (in a royale, it grows
+   * with the crowd); null turns it off.
    */
   suddenDeath?: number | null;
+  /**
+   * A battle royale: the arena grows to fit the crowd, balls spawn spread over
+   * it, and a kill hands the victim's mass to the killer. It plays to the server's
+   * clock and the same in every browser, so any number of display pages can show
+   * it together. Default false.
+   */
+  royale?: boolean;
+  /**
+   * Plays to the server's clock and the same in every browser, like a royale,
+   * so any number of display pages show it at the same moment (a phone that
+   * reloads catches up). No hitstop, and no End button. Always true for a
+   * royale. Default false.
+   */
+  shared?: boolean;
+  /**
+   * Shared matches only: seconds between a display putting the match up and its
+   * clock starting, counted down on every display, so they all start it together
+   * (one still loading, or whose arena was hidden, doesn't join late and skip
+   * ahead). `startedAt` is that moment. 0 to 30, default 3; always 0 for a match
+   * that isn't shared.
+   */
+  startDelay?: number;
 }
 
 /**
@@ -50,6 +93,10 @@ export type MatchRequest = HostMatchRequest<FighterInput, MatchSettings>;
 export interface Fighter {
   name: string | null;
   color: string | null;
+  highlight: boolean;
+  skin: Skin | null;
+  tag: string | null;
+  size: number;
   weapon: string;
   upgrades: string[];
   transformations: string[];
@@ -85,6 +132,12 @@ export interface Match extends HostMatch<Fighter, MatchResult> {
   tiebreak: 'hp' | null;
   /** Sim seconds before sudden death starts, or null for none. */
   suddenDeath: number | null;
+  /** Whether it's a battle royale (see MatchSettings). */
+  royale: boolean;
+  /** Whether it plays to the server's clock on every display (see MatchSettings). */
+  shared: boolean;
+  /** Seconds a shared match counts down before its clock starts (see MatchSettings); 0 if not shared. */
+  startDelay: number;
   /** The display screen (0 to screens - 1) it went on, or null while it waits for a free one. */
   screen: number | null;
   queuedAt: string;
@@ -127,6 +180,8 @@ export interface CatalogUpgrade {
   excludedBy: string[];
   /** null means no limit. */
   maxStacks: number | null;
+  /** What several copies do together: entry i is for i + 2 copies (`description` is for one), up to `maxStacks` or 30. Empty when it can't stack. */
+  stacked?: string[];
 }
 
 /** GET /api/catalog */

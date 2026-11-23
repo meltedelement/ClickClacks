@@ -25,24 +25,40 @@
 // display plays the same matches on the same screens; they all show the same
 // fights because the matches are seeded. The first result in counts. If the
 // last display disconnects, the matches on screen go back to queued and restart
-// from the beginning (same seed, same fight) when a display comes back.
+// from the beginning (same seed, same fight) when a display comes back. A shared
+// match (a royale always is) doesn't: it runs to a clock from when it started, so
+// it stays on that clock and the next display to connect catches up with it.
 //
-// State lives in memory only: restarting the server forgets every match.
+// State lives in memory only: restarting the server forgets every match. Each
+// finished match is also appended to data/records/ (server/records.js), which
+// tools/stats.js turns into win rates.
 import { randomUUID } from 'node:crypto';
 import { CONFIG } from '../src/config.js';
+import { royaleSuddenDeath } from '../src/sim/Simulation.js';
+import { SKIN_IDS } from '../src/game/skins.js';
 import { WEAPONS, getWeaponById } from '../src/weapons/index.js';
-import { UPGRADES, getUpgradeById, resolveUpgrades } from '../src/upgrades/index.js';
+import { UPGRADES, getUpgradeById, resolveUpgrades, stackedDescriptions, weaponsFor } from '../src/upgrades/index.js';
+import { recordMatch } from './records.js';
 
 const DEFAULT_TIME_LIMIT = 180; // sim seconds before a match is called a draw (same as the balance tool)
 const MAX_TIME_LIMIT = 600;
+// Seconds between a display putting a shared match up and its clock starting,
+// so every display (one still loading, one whose arena was hidden) starts it
+// together instead of joining late and skipping ahead. They count it down.
+const DEFAULT_START_DELAY = 3;
+const MAX_START_DELAY = 30;
 const MAX_BODY = 64 * 1024;
 const MAX_COUNT = 100; // copies of one upgrade in the { id: count } form, whatever its maxStacks
 const HEX_COLOR = /^#[0-9a-f]{6}$/i; // a fighter's ball colour, e.g. a quiz team's colour
+const MIN_SIZE = 0.25; // a fighter's starting size in a royale, 1 being normal
+const MAX_SIZE = 4;
 const MAX_REF = 200; // characters in a caller's `ref` tag
-const PING_INTERVAL = 20_000; // keeps display connections open through proxies
+const PING_INTERVAL = 15_000; // keeps display connections open through proxies, and lets a display see a dead one
 const MAX_SCREENS = 4; // the display lays out at most a 2×2 grid
 const SCREENS = Math.min(MAX_SCREENS, Math.max(1, Math.floor(Number(process.env.SCREENS ?? MAX_SCREENS)) || 1));
 const TIEBREAKS = new Set(['hp']);
+const SKINS = new Set(SKIN_IDS); // how a ball is drawn; never changes the fight
+const MAX_TAG = 12; // characters in a tag before the name
 
 const matches = new Map(); // id -> match, in the order they were queued
 const queue = []; // matches not yet done, in the order they were queued
@@ -51,7 +67,10 @@ const displays = new Set(); // open /api/display responses
 const waiters = new Map(); // match id -> callbacks for ?wait=1 requests
 
 setInterval(() => {
-  for (const res of displays) res.write(': ping\n\n');
+  // A named event, not a comment: EventSource hides comments from the page, and
+  // the page watches for these to notice a stream that died without closing.
+  // It carries `now` too, so a display's clock keeps being corrected mid-match.
+  for (const res of displays) res.write(`event: clock\ndata: ${JSON.stringify({ now: Date.now() })}\n\n`);
 }, PING_INTERVAL).unref();
 
 class ApiError extends Error {
@@ -135,10 +154,11 @@ function catalog() {
     id: U.id,
     name: U.displayName,
     description: U.description,
-    weapons: U.weapons,
+    weapons: weaponsFor(U),
     requires: U.requires,
     excludedBy: U.excludedBy,
     maxStacks: Number.isFinite(U.maxStacks) ? U.maxStacks : null,
+    stacked: stackedDescriptions(U),
   });
   return {
     weapons: WEAPONS.map((W) => ({ id: W.id, name: W.displayName })),
@@ -228,7 +248,7 @@ function fillScreens() {
   return changed;
 }
 
-// The match settings: `settings` { timeLimit?, tiebreak?, suddenDeath? }.
+// The match settings: `settings` { timeLimit?, tiebreak?, suddenDeath?, royale?, shared?, startDelay? }.
 // `decisive: true` asks for a winner, which is the hp tiebreak.
 function parseSettings(body) {
   if (body.settings !== undefined && (body.settings === null || typeof body.settings !== 'object' || Array.isArray(body.settings))) {
@@ -236,14 +256,25 @@ function parseSettings(body) {
   }
   if (body.decisive !== undefined && typeof body.decisive !== 'boolean') throw new ApiError(400, '"decisive" must be true or false');
   const settings = body.settings ?? {};
+  if (settings.royale !== undefined && typeof settings.royale !== 'boolean') throw new ApiError(400, '"royale" must be true or false');
+  const royale = settings.royale ?? false;
+  if (settings.shared !== undefined && typeof settings.shared !== 'boolean') throw new ApiError(400, '"shared" must be true or false');
+  const defaultSuddenDeath = royale ? royaleSuddenDeath(body.characters.length) : CONFIG.suddenDeath.after;
+  const shared = royale || (settings.shared ?? false);
   return {
     timeLimit: settings.timeLimit === undefined ? DEFAULT_TIME_LIMIT : parseTimeLimit(settings.timeLimit),
     tiebreak: body.decisive ? 'hp' : parseTiebreak(settings.tiebreak),
-    suddenDeath: settings.suddenDeath === undefined ? CONFIG.suddenDeath.after : parseSuddenDeath(settings.suddenDeath),
+    suddenDeath: settings.suddenDeath === undefined ? defaultSuddenDeath : parseSuddenDeath(settings.suddenDeath),
+    royale,
+    // Played to the server's clock with the same math in every browser, so any
+    // number of displays show it together. A royale always is.
+    shared,
+    // Only a shared match waits: an unshared one plays on each display's own time.
+    startDelay: shared ? (settings.startDelay === undefined ? DEFAULT_START_DELAY : parseStartDelay(settings.startDelay)) : 0,
   };
 }
 
-// A character is a fighter: { name?, color?, weapon, upgrades?, transformations? }. `team` is
+// A character is a fighter: { name?, color?, highlight?, skin?, tag?, size?, weapon, upgrades?, transformations? }. `team` is
 // accepted in place of `name`, and upgrades and transformations may each be a
 // list of ids (repeat an id to stack it) or an { id: count } object, so the
 // quiz's loadouts can be passed straight in. Transformations go only in
@@ -257,6 +288,16 @@ function parseFighter(input, i) {
   const color = input.color ?? null;
   if (color !== null && !(typeof color === 'string' && HEX_COLOR.test(color))) {
     throw new ApiError(400, `${where}.color must be a hex colour like "#e5484d"`);
+  }
+  const highlight = input.highlight ?? false;
+  if (typeof highlight !== 'boolean') throw new ApiError(400, `${where}.highlight must be true or false`);
+  const skin = input.skin ?? null;
+  if (skin !== null && !SKINS.has(skin)) throw new ApiError(400, `${where}.skin must be one of ${SKIN_IDS.map((id) => `"${id}"`).join(', ')} or null`);
+  const tag = typeof input.tag === 'string' ? input.tag.trim() || null : input.tag ?? null;
+  if (tag !== null && !(typeof tag === 'string' && [...tag].length <= MAX_TAG)) throw new ApiError(400, `${where}.tag must be a string of at most ${MAX_TAG} characters`);
+  const size = input.size ?? 1;
+  if (!(typeof size === 'number' && size >= MIN_SIZE && size <= MAX_SIZE)) {
+    throw new ApiError(400, `${where}.size must be a number from ${MIN_SIZE} to ${MAX_SIZE}`);
   }
 
   const upgrades = parseUpgradeIds(input.upgrades ?? [], `${where}.upgrades`);
@@ -273,7 +314,7 @@ function parseFighter(input, i) {
   } catch (err) {
     throw new ApiError(400, `${where}: ${err.message}`);
   }
-  return { name, color, weapon: input.weapon, upgrades, transformations };
+  return { name, color, highlight, skin, tag, size, weapon: input.weapon, upgrades, transformations };
 }
 
 function parseUpgradeIds(upgrades, where) {
@@ -306,6 +347,13 @@ function parseTimeLimit(timeLimit) {
     throw new ApiError(400, `"timeLimit" must be a number of seconds above 0 and at most ${MAX_TIME_LIMIT}`);
   }
   return timeLimit;
+}
+
+function parseStartDelay(startDelay) {
+  if (typeof startDelay !== 'number' || !(startDelay >= 0 && startDelay <= MAX_START_DELAY)) {
+    throw new ApiError(400, `"startDelay" must be a number of seconds from 0 to ${MAX_START_DELAY}`);
+  }
+  return startDelay;
 }
 
 // Sim seconds before sudden death starts, or null for none.
@@ -380,7 +428,7 @@ function openDisplay(req, res) {
     if (displays.size > 0) return;
     // Nobody is watching the matches any more; play them again from the start later.
     for (const match of screens) {
-      if (match?.status !== 'playing') continue;
+      if (match?.status !== 'playing' || match.shared) continue;
       match.status = 'queued';
       match.startedAt = null;
     }
@@ -388,8 +436,9 @@ function openDisplay(req, res) {
 }
 
 // One message holds every screen, so a display never sees half an update.
+// `now` lets it work out when a match started by this server's clock.
 function send(res) {
-  res.write(`data: ${JSON.stringify({ screens })}\n\n`);
+  res.write(`data: ${JSON.stringify({ screens, now: Date.now() })}\n\n`);
 }
 
 function broadcast() {
@@ -400,7 +449,9 @@ function start(match) {
   if (!isOnScreen(match)) throw new ApiError(409, 'That match is not on screen');
   if (match.status === 'queued') {
     match.status = 'playing';
-    match.startedAt = new Date().toISOString();
+    // A shared match's clock starts `startDelay` s from now (see DEFAULT_START_DELAY).
+    match.startedAt = new Date(Date.now() + match.startDelay * 1000).toISOString();
+    broadcast(); // every other display needs startedAt too, to keep to the same clock
   }
   return match;
 }
@@ -440,6 +491,7 @@ function finish(match, body) {
     ranking,
   };
   settle(match);
+  recordMatch(match); // appended to data/records/ for tools/stats.js (server/records.js)
   return match;
 }
 

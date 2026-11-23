@@ -27,6 +27,7 @@ export interface Upgrade {
   weapons?: string[]; // only offered to these weapons; omit for all
   requires?: string[]; // upgrade ids the team must own first; omit for none
   excludedBy?: string[]; // not offered to a team that owns one of these (it would do nothing); omit for none
+  stacked?: string[]; // what 2, 3... copies do together (entry i: i + 2 copies); omit when it can't stack
 }
 
 export interface Catalog {

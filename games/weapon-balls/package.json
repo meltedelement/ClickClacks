@@ -10,7 +10,9 @@
     "start": "node server/index.js",
     "balance": "node tools/balance.js",
     "sweep": "node tools/sweep.js",
+    "balance:all": "bash tools/massive-balance.sh",
     "flawless": "node tools/flawless.js",
+    "stats": "node tools/stats.js",
     "display:headless": "node tools/headless-display.js"
   },
   "devDependencies": {

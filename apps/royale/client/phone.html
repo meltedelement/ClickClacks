@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171a21">
+  <title>Ball Royale</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar" id="bar" hidden>
+    <span class="dot" id="myColor"></span>
+    <span class="name" id="myName"></span>
+    <span class="spacer"></span>
+    <span class="meta" id="roundText"></span>
+    <span class="live" id="live" title="Connection"></span>
+  </header>
+
+  <div class="arena" id="arena" hidden></div>
+  <main>
+    <form class="stack" id="joinForm" hidden>
+      <h1 class="title">Ball Royale</h1>
+      <p class="muted">Draft a weapon and upgrades, then drop into the arena with everyone else.</p>
+      <input class="input" id="name" placeholder="Your name" aria-label="Your name" autocomplete="off" autocapitalize="words" maxlength="20" required>
+      <button class="button primary" id="joinButton">Join</button>
+    </form>
+    <p class="error" id="error" role="alert"></p>
+    <div id="screen"></div>
+    <div id="table"></div>
+  </main>
+
+  <script type="module">
+    import { eventsUrl, post, subscribe } from '/client/index.ts';
+    import { arena, buildTags, dot, draw, h, ordinal } from '/ui.js';
+
+    const TOKEN_KEY = 'royale-token';
+    const $ = (id) => document.getElementById(id);
+    const stage = arena($('arena'));
+    let token = null;
+    let stop = null;
+    let busy = false;
+
+    try { token = localStorage.getItem(TOKEN_KEY); } catch { /* private window: only this visit */ }
+
+    function remember(value) {
+      token = value;
+      try {
+        if (value) localStorage.setItem(TOKEN_KEY, value);
+        else localStorage.removeItem(TOKEN_KEY);
+      } catch { /* as above */ }
+    }
+
+    function showError(message) {
+      $('error').textContent = message ?? '';
+    }
+
+    // One action at a time, so a double tap can't take the next offer too.
+    async function act(path, body) {
+      if (busy) return;
+      busy = true;
+      try {
+        await post(path, body, { token });
+        showError('');
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        busy = false;
+      }
+    }
+
+    function choice(item, kind, onPick) {
+      return h(`button.choice.${kind}`, { type: 'button', onclick: onPick },
+        h('span.choice-name', item.name),
+        h('span.choice-text', item.description));
+    }
+
+    function draftScreen(view) {
+      const { draft } = view;
+      if (!draft.weapon) {
+        return h('.stack', {},
+          h('.eyebrow', `Round ${view.round}`),
+          h('h1.title', 'Pick your weapon'),
+          draft.mode === 'buildup' ? h('p.muted', 'You keep this weapon and your build from round to round, and add one pick each round.') : null,
+          draft.weapons.map((w) => choice(w, 'weapon', () => act('/api/weapon', { weapon: w.id }))),
+          draft.unbalanced.length > 0 ? h('p.muted', `Left out for now, unbalanced in a royale: ${draft.unbalanced.join(', ')}.`) : null);
+      }
+      if (draft.finished) {
+        return h('.stack', {},
+          h('.eyebrow', `Round ${view.round}`),
+          h('h1.title', 'You\'re in'),
+          h('p.muted', 'The host drops everyone in when they\'re ready.'),
+          buildTags(draft));
+      }
+      const transforming = draft.kind === 'transformation';
+      return h('.stack', {},
+        h('.eyebrow', `Pick ${draft.pickNumber} of ${draft.picksTotal}`),
+        h('h1.title', transforming ? `Transform your ${draft.weapon.name}` : 'Take an upgrade'),
+        draft.offer.map((item) => choice(item, draft.kind, () => act('/api/pick', { id: item.id }))),
+        h('.section', {}, buildTags(draft)));
+    }
+
+    function fightScreen(view) {
+      const { fight, draft } = view;
+      if (fight.slot === null) {
+        return h('.stack', {},
+          h('h1.title', 'Round in progress'),
+          h('p.muted', 'You joined after this one started, so you\'re watching. You\'ll be in the next round.'));
+      }
+      return h('.stack', {},
+        h('p.muted', 'Your ball has the white ring. Other players have names and coloured rings; the small gray balls are bots. In a big arena, tap to zoom out.'),
+        buildTags(draft));
+    }
+
+    function resultsScreen(view) {
+      const { results, you } = view;
+      const mine = results.places.find((p) => p.playerId === you.id);
+      const humans = results.places.filter((p) => !p.bot || p.place === 1);
+      return h('.stack', {},
+        h('.eyebrow', `Round ${results.round} · ${results.balls} balls · ${Math.round(results.seconds)}s`),
+        mine
+          ? h(`div.big-place${mine.place === 1 ? '.won' : ''}`, mine.place === 1 ? 'You won!' : `${ordinal(mine.place)} of ${results.balls}`)
+          : h('.big-place', `${results.winner} won`),
+        mine && mine.place !== 1 ? h('p.muted', `${results.winner} won the round.`) : null,
+        h('ul.rows', {}, humans.map((p) =>
+          h(`li.row${p.playerId === you.id ? '.you' : ''}`, {},
+            h('span.place', ordinal(p.place)),
+            dot(p.color),
+            h('span.grow', p.name, h('span.build', [p.weapon, ...p.picks].join(' · ')))))),
+        h('p.muted', view.draft.mode === 'buildup' ? 'The host starts the next round, where you add to your build.' : 'The host starts the next round.'));
+    }
+
+    function tableContent(view) {
+      return view.lobby.map((p) => ({ ...p, you: p.id === view.you.id, showReady: view.phase === 'draft' }));
+    }
+
+    function table(rows) {
+      return h('.section', {},
+        h('.eyebrow', `Players (${rows.length})`),
+        h('ul.rows', {}, rows.map((p) =>
+          h(`li.row${p.you ? '.you' : ''}`, {},
+            dot(p.color),
+            h('span.grow', p.name),
+            p.wins > 0 ? h('span.side', `${p.wins} ${p.wins === 1 ? 'win' : 'wins'}`) : null,
+            p.showReady ? h(`span.side${p.ready ? '.good' : ''}`, p.ready ? 'Ready' : 'Drafting') : null))));
+    }
+
+    function render(view) {
+      $('bar').hidden = false;
+      $('myColor').style.background = view.you.color;
+      $('myName').textContent = view.you.name;
+      $('roundText').textContent = view.you.wins > 0 ? `${view.you.wins} ${view.you.wins === 1 ? 'win' : 'wins'}` : `Round ${view.round}`;
+
+      const fighting = view.fight !== null;
+      if (fighting) {
+        stage.set(`${view.fight.arena}&round=${view.fight.round}`, {
+          countdownMs: view.fight.countdownMs,
+          text: view.fight.slot === null ? 'The next fight is starting' : 'Dropping in',
+        });
+      } else {
+        stage.set(null);
+      }
+
+      const screen = fighting ? { fight: view.fight.slot, draft: view.draft } : view.phase === 'results' ? { results: view.results, you: view.you.id } : { draft: view.draft, round: view.round, notice: view.notice };
+      draw($('screen'), screen, () => [
+        view.notice && !fighting && view.phase !== 'results' ? h('p.notice', view.notice) : null,
+        fighting ? fightScreen(view) : view.phase === 'results' ? resultsScreen(view) : draftScreen(view),
+      ]);
+      draw($('table'), { rows: tableContent(view) }, () => [
+        table(tableContent(view)),
+        view.phase === 'draft' ? h('.section', {}, h('button.button.quiet', { type: 'button', onclick: leave }, 'Leave the game')) : null,
+      ]);
+    }
+
+    async function leave() {
+      if (!confirm('Leave the game? Your wins and build will be lost.')) return;
+      await act('/api/leave', {});
+    }
+
+    function start() {
+      stop?.();
+      stop = null;
+      $('joinForm').hidden = Boolean(token);
+      if (!token) {
+        $('bar').hidden = true;
+        stage.set(null);
+        draw($('screen'), null, () => []);
+        draw($('table'), null, () => []);
+        $('name').focus();
+        return;
+      }
+      stop = subscribe(eventsUrl({ token }), {
+        onData(view) {
+          if (view === null) {
+            // The host removed this player, or the server restarted and forgot them.
+            remember(null);
+            showError('You\'re not in this game any more. Join again.');
+            start();
+            return;
+          }
+          render(view);
+        },
+        onConnected(live) {
+          $('live').classList.toggle('on', live);
+          $('live').title = live ? 'Connected' : 'Reconnecting';
+        },
+      });
+    }
+
+    $('joinForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('joinButton').disabled = true;
+      try {
+        const answer = await post('/api/join', { name: $('name').value });
+        remember(answer.token);
+        showError('');
+        start();
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        $('joinButton').disabled = false;
+      }
+    });
+
+    start();
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "royale",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Weapon Balls for a room: join on your phone, draft a build, fight a battle royale together. Needs the game running; `npm run royale` in the repo root starts both.",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.ts",
+    "test": "node --test shared/*.test.ts server/*.test.ts",
+    "typecheck": "../quiz-of-doom/node_modules/.bin/tsc --noEmit -p ."
+  }
+}

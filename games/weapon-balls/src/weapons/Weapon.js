@@ -1,4 +1,6 @@
-import { randomSign, TAU } from '../sim/math.js';
+import { TAU, hypot, randomSign } from '../sim/math.js';
+import { Ability } from '../abilities/Ability.js';
+import { Upgrade } from '../upgrades/Upgrade.js';
 
 const GATHERED_GAP = 0.3; // radians between neighbouring blades when gathered together
 const SPREAD_RATE = 14; // how quickly blades move between spread and gathered (per second)
@@ -32,6 +34,13 @@ export class Weapon {
     this.widthScale = 1; // stretches drawLocal across the blade; set it when changing thickness
     this.critChance = 0; // 0–1 chance a hit is a critical hit
     this.critMultiplier = 2; // damage multiplier on a critical hit
+    // Damage falloff with distance, for ranged weapons (Gun, Drone): hits landing within
+    // `falloffStart` px of the ball's centre do full damage, fading linearly to
+    // `falloffMin` x the damage at `falloffEnd` px and beyond. Off by default.
+    this.falloffStart = Infinity;
+    this.falloffEnd = Infinity;
+    this.falloffMin = 1;
+    this.lastHitCrit = false; // whether the hit being registered was a crit
     this.nudges = false; // true: a hit's knockback adds to the target's velocity instead of replacing it
 
     // Optional special move, e.g. `this.ability = new SpinSwipe(this)`. See src/abilities/.
@@ -42,6 +51,8 @@ export class Weapon {
     this.fireTrail = null;
     // Roguelike upgrades from the loadout, added by Ball after construction. See src/upgrades/.
     this.upgrades = [];
+    this.overrideCache = null; // see overridesOf
+    this.blockedRound = -1; // Simulation.resolveCombat's round this weapon was last blocked in
   }
 
   get name() {
@@ -53,17 +64,46 @@ export class Weapon {
   // With `point` (where a hit landed), upgrades that care where the blade
   // connected get a say too.
   getDamage(point) {
-    let damage = (this.damage + this.sum('bonusDamage')) * this.multiplier('damageMultiplier');
-    if (point) for (const upgrade of this.upgrades) damage *= upgrade.damageMultiplierAt(point);
+    let damage = (this.baseDamage + this.sum('bonusDamage')) * this.multiplier('damageMultiplier');
+    if (point) {
+      damage *= this.rangeMultiplier(point);
+      for (const upgrade of this.upgradesWith('damageMultiplierAt')) damage *= upgrade.damageMultiplierAt(point);
+    }
     return damage;
+  }
+
+  // 1 up close, fading to `falloffMin` the further from the ball a hit lands
+  // (distances at size 1; a royale scales them with the ball).
+  rangeMultiplier(point) {
+    if (this.falloffStart === Infinity) return 1;
+    const { owner } = this;
+    const dist = hypot(point.x - owner.pos.x, point.y - owner.pos.y) / owner.size;
+    if (dist <= this.falloffStart) return 1;
+    const t = Math.min(1, (dist - this.falloffStart) / (this.falloffEnd - this.falloffStart));
+    return 1 - (1 - this.falloffMin) * t;
   }
 
   // Rolls for a critical hit landing at `point`. Only uses Math.random when
   // there is a chance to crit and no upgrade guarantees one, so fights without
   // crits play out the same as before crits existed.
   rollCrit(point) {
-    if (point && this.upgrades.some((upgrade) => upgrade.critsAt(point))) return true;
+    if (this.ability?.guaranteesCrit) return true;
+    if (point) {
+      for (const upgrade of this.upgradesWith('critsAt')) if (upgrade.critsAt(point)) return true;
+    }
     return this.critChance > 0 && Math.random() < this.critChance;
+  }
+
+  // The weapon's own damage before upgrades: `damage`, plus anything the weapon
+  // itself adds on top for now (the Daggers' stolen damage).
+  get baseDamage() {
+    return this.damage;
+  }
+
+  // Last say on a weapon hit's damage to this weapon's ball, after armor and
+  // multipliers (the Daggers take off what they've stolen). Returns the damage.
+  reduceIncoming(damage) {
+    return damage;
   }
 
   get knockbackMultiplier() {
@@ -75,22 +115,34 @@ export class Weapon {
     return this.multiplier('damageTakenMultiplier');
   }
 
+  // These four and spinMultiplier are asked for every step, so they read the
+  // override table's fields directly (see overrideTable).
   get controlsMovement() {
-    return this.anyModifier('controlsMovement');
+    return anyOf(this, this.overrideTable().controlsMovement);
   }
 
   get unblockable() {
-    return this.anyModifier('unblockable');
+    return anyOf(this, this.overrideTable().unblockable);
   }
 
   get unstoppable() {
-    return this.anyModifier('unstoppable');
+    return anyOf(this, this.overrideTable().unstoppable);
   }
 
   // True while the weapon is out of its ball's hands (e.g. thrown): its blades
   // don't exist, so they can't hit, clash or be drawn. Shields stay.
   get disarmed() {
-    return this.anyModifier('disarmed');
+    return anyOf(this, this.overrideTable().disarmed);
+  }
+
+  // How much faster than its spinSpeed the weapon turns right now (Swarm, a swipe...).
+  get spinMultiplier() {
+    return multiplierOf(this, this.overrideTable().spinMultiplier);
+  }
+
+  // How far beyond the ball's surface it sends bullets back (a Parry), or 0.
+  get projectileReflectRadius() {
+    return this.ability?.reflectRadius ?? 0;
   }
 
   // How far from the ball's centre any blade's hitbox can reach (thickness
@@ -125,6 +177,9 @@ export class Weapon {
   // Called when this weapon clashes with another weapon.
   onParry(otherWeapon, sim) {}
 
+  // Called when this weapon's ball bounces off a wall (before its upgrades hear of it).
+  onWallBounce(sim) {}
+
   // Whether this weapon is currently able to parry `otherWeapon`. Defaults to
   // the shared cooldown set on every parry; override to add per-opponent locks.
   canParry(otherWeapon) {
@@ -138,6 +193,9 @@ export class Weapon {
     return true;
   }
 
+  // Draw anything the weapon leaves lying in the arena, underneath the balls.
+  drawUnder(ctx) {}
+
   // Draw the weapon pointing along +x, starting at x = `start`.
   // The canvas is already translated to the ball's centre and rotated.
   drawLocal(ctx, start) {
@@ -149,55 +207,64 @@ export class Weapon {
 
   update(dt, sim) {
     this.ability?.update(dt, sim);
-    for (const upgrade of this.upgrades) upgrade.onUpdate(dt, sim);
+    for (const upgrade of this.overrideTable().onUpdate.upgrades) upgrade.onUpdate(dt, sim);
     this.turn(dt, sim);
 
-    const targetSpread = this.multiplier('bladeSpread');
+    const targetSpread = multiplierOf(this, this.overrideTable().bladeSpread);
     this.spread += (targetSpread - this.spread) * Math.min(1, SPREAD_RATE * dt);
     if (this.parryCooldown > 0) this.parryCooldown -= dt;
   }
 
   // Turns the weapon for one step: a steady spin. Override to aim instead (Gun).
   turn(dt, sim) {
-    this.angle += this.spinSpeed * this.multiplier('spinMultiplier') * this.spinDir * dt;
+    this.angle += this.spinSpeed * this.spinMultiplier * this.spinDir * dt;
   }
 
   registerHit(target, sim, damage, point) {
     this.ability?.onHit(target, sim);
     this.onHit(target, sim);
-    for (const upgrade of this.upgrades) upgrade.onHit(target, sim, damage, point);
+    for (const upgrade of this.upgradesWith('onHit')) upgrade.onHit(target, sim, damage, point);
   }
 
   registerParry(otherWeapon, sim) {
     this.ability?.onParry(otherWeapon, sim);
     this.onParry(otherWeapon, sim);
-    for (const upgrade of this.upgrades) upgrade.onParry(otherWeapon, sim);
+    for (const upgrade of this.upgradesWith('onParry')) upgrade.onParry(otherWeapon, sim);
   }
 
-  registerOwnerHit(attackerWeapon, sim, damage) {
+  // `scatters` is false for a hit that leaves a guard alone (see Drone).
+  registerOwnerHit(attackerWeapon, sim, damage, scatters = true) {
     this.ability?.onOwnerHit(attackerWeapon, sim);
-    for (const upgrade of this.upgrades) upgrade.onOwnerHit(attackerWeapon, sim, damage);
+    for (const upgrade of this.upgradesWith('onOwnerHit')) upgrade.onOwnerHit(attackerWeapon, sim, damage);
   }
 
   // True if an upgrade cancels this hit on this weapon's ball completely. The
   // first upgrade that does uses itself up; the rest aren't asked.
   preventsHit(attackerWeapon, sim) {
-    return this.upgrades.some((upgrade) => upgrade.preventHit(attackerWeapon, sim));
+    for (const upgrade of this.upgradesWith('preventHit')) if (upgrade.preventHit(attackerWeapon, sim)) return true;
+    return false;
+  }
+
+  // True if the ability stops `damage` coming from ball `source` (a Parry). Asked
+  // by the Simulation once the damage is worked out, for weapon hits and other damage.
+  absorbsDamage(source, damage, sim) {
+    return this.ability?.absorbDamage(source, damage, sim) ?? false;
   }
 
   // This weapon's shield stopped `attackerWeapon`.
   registerBlock(attackerWeapon, sim) {
-    for (const upgrade of this.upgrades) upgrade.onBlock(attackerWeapon, sim);
+    for (const upgrade of this.upgradesWith('onBlock')) upgrade.onBlock(attackerWeapon, sim);
   }
 
   // This weapon's ball bounced off a wall.
   registerWallBounce(sim) {
-    for (const upgrade of this.upgrades) upgrade.onWallBounce(sim);
+    this.onWallBounce(sim);
+    for (const upgrade of this.upgradesWith('onWallBounce')) upgrade.onWallBounce(sim);
   }
 
   // This weapon's ball bumped into `other` ball (their bodies touched).
   registerBump(other, sim) {
-    for (const upgrade of this.upgrades) upgrade.onBump(other, sim);
+    for (const upgrade of this.upgradesWith('onBump')) upgrade.onBump(other, sim);
   }
 
   // This weapon's ball grew by `factor` (royale): the blades and shields grow
@@ -205,7 +272,7 @@ export class Weapon {
   registerGrow(factor) {
     this.scaleGeometry(factor);
     this.onGrow(factor);
-    for (const upgrade of this.upgrades) upgrade.onGrow(factor);
+    for (const upgrade of this.upgradesWith('onGrow')) upgrade.onGrow(factor);
   }
 
   onGrow(factor) {}
@@ -232,23 +299,84 @@ export class Weapon {
 
   // A modifier multiplied across the ability and every upgrade (1 if none change it).
   multiplier(key) {
-    let value = this.ability?.[key] ?? 1;
-    for (const upgrade of this.upgrades) value *= upgrade[key];
+    return multiplierOf(this, this.overridesOf(key));
+  }
+
+  // Like multiplier, but the upgrades' only, without the ability's: for hits
+  // that don't come from the blades, which a swing doesn't power up.
+  upgradeMultiplier(key) {
+    const { upgrades, reads } = this.overridesOf(key);
+    let value = 1;
+    for (let i = 0; i < upgrades.length; i++) value *= reads[i].call(upgrades[i]);
     return value;
   }
 
   // A modifier added up across the ability and every upgrade (0 if none change it).
   sum(key) {
-    let value = this.ability?.[key] ?? 0;
-    for (const upgrade of this.upgrades) value += upgrade[key];
-    return value;
+    const { abilityRead, upgrades, reads, skips } = this.overridesOf(key);
+    let value = abilityRead === null ? 0 : abilityRead.call(this.ability) ?? 0;
+    for (let i = 0; i < upgrades.length; i++) value += reads[i].call(upgrades[i]);
+    // Adding the skipped upgrades' 0s would turn a -0 into 0; nothing else.
+    return skips ? value + 0 : value;
   }
 
   // True if the ability or any upgrade turns this flag on.
   anyModifier(key) {
-    if (this.ability?.[key]) return true;
-    for (const upgrade of this.upgrades) if (upgrade[key]) return true;
-    return false;
+    return anyOf(this, this.overridesOf(key));
+  }
+
+  // The upgrades that override hook or modifier `key`, in order (don't modify the list).
+  upgradesWith(key) {
+    return this.overridesOf(key).upgrades;
+  }
+
+  // Which parts of this weapon can change modifier or hook `key`:
+  // { abilityRead, upgrades, reads, skips }. `upgrades` lists, in order, only
+  // the upgrades whose class overrides Upgrade's `key`, and `abilityRead` is
+  // null if the ability's class leaves it as Ability has it. The defaults are
+  // a multiplier of 1, a bonus of 0, a flag that's off and a hook that does
+  // nothing, so skipping them changes no result, down to the bit. `skips` is
+  // true if any upgrade was left out. `abilityRead` and `reads` (one per
+  // upgrade) read the modifier: called on the ability or upgrade, they give
+  // what `object[key]` would (usually they're its getter), without V8 looking
+  // `key` up by name, which is slow with this many keys and classes.
+  overridesOf(key) {
+    const table = this.overrideTable();
+    return table.entries.get(key) ?? this.addOverrides(table, key);
+  }
+
+  // Every overridesOf entry so far, for this weapon's current ability and
+  // upgrades. The engine asks dozens of times a step and most upgrades change
+  // only a few things, so they're worked out once: a weapon's ability and
+  // upgrades only change while its ball is being built, and then this starts
+  // afresh. The ones asked for every step are fields as well as in the Map,
+  // as a field is quicker to read. Kept small so V8 inlines it.
+  overrideTable() {
+    const table = this.overrideCache;
+    if (table !== null && table.count === this.upgrades.length && table.ability === this.ability) return table;
+    return this.newOverrideTable();
+  }
+
+  newOverrideTable() {
+    const table = { count: this.upgrades.length, ability: this.ability, entries: new Map() };
+    this.overrideCache = table;
+    table.spinMultiplier = this.addOverrides(table, 'spinMultiplier');
+    table.bladeSpread = this.addOverrides(table, 'bladeSpread');
+    table.controlsMovement = this.addOverrides(table, 'controlsMovement');
+    table.unblockable = this.addOverrides(table, 'unblockable');
+    table.unstoppable = this.addOverrides(table, 'unstoppable');
+    table.disarmed = this.addOverrides(table, 'disarmed');
+    table.onUpdate = this.addOverrides(table, 'onUpdate');
+    return table;
+  }
+
+  addOverrides(table, key) {
+    const upgrades = this.upgrades.filter((upgrade) => overrideOf(upgrade, key, Upgrade) !== null);
+    const reads = upgrades.map((upgrade) => overrideOf(upgrade, key, Upgrade));
+    const abilityRead = this.ability === null ? null : overrideOf(this.ability, key, Ability);
+    const entry = { abilityRead, upgrades, reads, skips: upgrades.length < this.upgrades.length };
+    table.entries.set(key, entry);
+    return entry;
   }
 
   // Angle of each blade. Spread out, blade 0 points along `this.angle`;
@@ -323,7 +451,7 @@ export class Weapon {
     }
     this.owner.atUnitSize(() => {
       const unitStart = start / size;
-      this.drawLocal(ctx, unitStart);
+      this.drawLocal(ctx, unitStart, drone);
       for (const upgrade of this.upgrades) upgrade.drawBlade(ctx, unitStart, drone);
     });
     if (size !== 1) ctx.restore();
@@ -343,4 +471,47 @@ export class Weapon {
     ctx.restore();
     for (const shield of this.shields) shield.drawHitbox(ctx);
   }
+}
+
+// A multiplier from a Weapon.overridesOf entry: the ability's times every upgrade's.
+function multiplierOf(weapon, { abilityRead, upgrades, reads }) {
+  let value = abilityRead === null ? 1 : abilityRead.call(weapon.ability) ?? 1;
+  for (let i = 0; i < upgrades.length; i++) value *= reads[i].call(upgrades[i]);
+  return value;
+}
+
+// A flag from a Weapon.overridesOf entry: on if the ability or any upgrade turns it on.
+function anyOf(weapon, { abilityRead, upgrades, reads }) {
+  if (abilityRead !== null && abilityRead.call(weapon.ability)) return true;
+  for (let i = 0; i < upgrades.length; i++) if (reads[i].call(upgrades[i])) return true;
+  return false;
+}
+
+// If `object` (an upgrade or an ability) has its own `key`, one its class or a
+// class between it and `Base` defines rather than Base's default or nothing at
+// all (an optional hook like the Drone's flyDrone), a function that reads it
+// when called on `object`: its getter, or else one that reads it by name.
+// Otherwise null. Worked out once per class; an own property on the object
+// itself also counts.
+const overrideMemo = new Map(); // class -> Map(key -> reader or null)
+
+function overrideOf(object, key, Base) {
+  if (Object.hasOwn(object, key)) return readerOf(object, key);
+  let byKey = overrideMemo.get(object.constructor);
+  if (byKey === undefined) overrideMemo.set(object.constructor, (byKey = new Map()));
+  let reader = byKey.get(key);
+  if (reader === undefined) {
+    let holder = Object.getPrototypeOf(object);
+    while (holder !== null && !Object.hasOwn(holder, key)) holder = Object.getPrototypeOf(holder);
+    reader = holder !== null && holder !== Base.prototype ? readerOf(holder, key) : null;
+    byKey.set(key, reader);
+  }
+  return reader;
+}
+
+function readerOf(holder, key) {
+  const getter = Object.getOwnPropertyDescriptor(holder, key).get;
+  return getter ?? function () {
+    return this[key];
+  };
 }

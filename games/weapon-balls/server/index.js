@@ -5,8 +5,10 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { handleApi } from './matches.js';
+import { recordsInfo } from './records.js';
 
 const PORT = Number(process.env.PORT ?? 3002);
+const HOST = process.env.HOST; // e.g. 127.0.0.1 to stay off the network; every interface if unset
 const DIST = path.join(import.meta.dirname, '..', 'dist');
 const MIME = {
   '.html': 'text/html',
@@ -35,8 +37,9 @@ http
   .createServer(async (req, res) => {
     if (!(await handleApi(req, res))) serveStatic(req, res);
   })
-  .listen(PORT, () => {
+  .listen(PORT, HOST, () => {
     console.log(`Weapon Balls on http://localhost:${PORT}`);
     console.log(`  Display page: http://localhost:${PORT}/?display`);
     console.log(`  Match API:    http://localhost:${PORT}/api/matches`);
+    console.log(`  Records:      ${recordsInfo.enabled ? recordsInfo.dir : 'off (RECORDS=off)'}`);
   });

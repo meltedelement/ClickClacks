@@ -15,5 +15,5 @@
     "typeRoots": ["../apps/quiz-of-doom/node_modules/@types"],
     "types": ["node"]
   },
-  "include": ["server", "client", "shared", "dev"]
+  "include": ["server", "client", "shared", "dev", "demo"]
 }

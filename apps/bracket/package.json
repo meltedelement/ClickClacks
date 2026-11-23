@@ -1,0 +1,12 @@
+{
+  "name": "bracket",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Weapon Balls for a room, as a tournament: join on your phone, draft a build, and fight 1v1 through a bracket, adding an upgrade every stage. Needs the game and the tournament service; `npm run tournament` in the repo root starts all three.",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.ts",
+    "test": "node --test server/*.test.ts",
+    "typecheck": "../quiz-of-doom/node_modules/.bin/tsc --noEmit -p ."
+  }
+}

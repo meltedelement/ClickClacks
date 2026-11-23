@@ -27,6 +27,7 @@ interface UpgradeData {
   requires?: string[] | null;
   excludedBy?: string[] | null;
   maxStacks?: number | null;
+  stacked?: string[];
 }
 
 // The shape of data/game.json (and of GET /api/catalog, with nulls for "none").
@@ -95,6 +96,7 @@ function toCatalog(data: CatalogData, source: 'game' | 'file', syncedAt: string 
         requires: u.requires && u.requires.length > 0 ? u.requires : undefined,
         excludedBy: u.excludedBy && u.excludedBy.length > 0 ? u.excludedBy : undefined,
         maxStacks: u.maxStacks ?? undefined,
+        stacked: u.stacked && u.stacked.length > 0 ? u.stacked : undefined,
       }));
   return {
     weapons: data.weapons.map((w) => ({ id: w.id, name: w.name })),

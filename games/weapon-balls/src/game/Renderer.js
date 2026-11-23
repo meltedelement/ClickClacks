@@ -1,8 +1,11 @@
 import { CONFIG } from '../config.js';
 import { TAU } from '../sim/math.js';
 import { drawText } from './TextSprites.js';
+import { SKINS } from './skins.js';
 
 const GRID_SPACING = 50;
+const FOLLOW_VIEW = 650; // arena units across the view when following a ball of size 1
+const FOLLOW_EASE = 0.14; // how much of the way the view moves to its target each frame
 const LABEL_SIZE = 18;
 // 2x is plenty for this flat-shaded art, and it keeps the backing store (and so
 // the fill rate) sane on 3x screens. The quality levels scale below this.
@@ -24,7 +27,8 @@ const COLORS = {
 // units; the canvas backing store tracks its on-screen size so it stays sharp
 // however big the arena is displayed. A royale's arena is bigger than the
 // normal one: it's zoomed out to fit, while the banners, border and grid are
-// drawn in "screen units" (the normal arena's), so they look the same.
+// drawn in "screen units" (the normal arena's), so they look the same. A royale
+// can also follow one ball with a closer view, which keeps it readable on a phone.
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -65,14 +69,20 @@ export class Renderer {
   }
 
   // With no sim (nothing to play yet) this draws an empty arena.
-  draw(sim, effects, { showHitboxes = false, paused = false, endHint = '' } = {}) {
+  // `follow` is a ball to mark, and with `zoomed` to keep the view on while it lives.
+  // `countdown` is seconds until the match starts (a shared match waiting on its clock), or 0.
+  draw(sim, effects, { showHitboxes = false, paused = false, endHint = '', follow = null, zoomed = false, countdown = 0 } = {}) {
     const { ctx } = this;
     const { width, height } = sim?.arena ?? CONFIG.arena;
-    // Device pixels per arena unit, and arena units per screen unit (1 unless it's a royale).
-    this.scale = this.canvas.width / width;
+    const view = this.updateView(sim, width, zoomed && follow?.alive && !sim.over ? follow : null);
+    // Device pixels per arena unit, arena units per screen unit (1 unless it's a
+    // royale), and the same for what's in view (the whole arena unless following).
+    this.scale = this.canvas.width / view.size;
     const zoom = width / CONFIG.arena.width;
+    const viewZoom = view.size / CONFIG.arena.width;
+    const worldTransform = () => ctx.setTransform(this.scale, 0, 0, this.scale, -view.x * this.scale, -view.y * this.scale);
 
-    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+    worldTransform();
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, width, height);
 
@@ -80,15 +90,21 @@ export class Renderer {
     const shake = effects.shakeOffset();
     ctx.translate(shake.x, shake.y);
 
-    this.drawGrid(width, height, GRID_SPACING * zoom);
+    this.drawGrid(width, height, GRID_SPACING * zoom, viewZoom);
     const balls = sim?.aliveBalls ?? [];
+    const now = performance.now() / 1000; // for the skins' animations
     for (const ball of balls) {
+      ball.weapon.drawUnder(ctx);
       ball.weapon.ability?.draw(ctx);
       for (const upgrade of ball.weapon.upgrades) upgrade.drawUnder(ctx);
     }
     for (const ball of balls) {
-      ball.draw(ctx);
-      HP_STYLE.fill = ball.hpTextColor;
+      const skin = SKINS[ball.skin];
+      if (skin && ball.flash <= 0) skin.draw(ctx, ball, now);
+      else ball.draw(ctx);
+      if (ball.vulnerability > 0 && ball.flash <= 0) this.drawVulnerable(ball);
+      if (ball.highlight) this.drawRing(ball, ball.color, 4, viewZoom);
+      HP_STYLE.fill = skin?.hp ? skin.hp[ball.flash > 0 ? 1 : 0] : ball.hpTextColor;
       this.drawHp(ball);
     }
     for (const ball of balls) for (const status of ball.statuses) status.draw(ctx);
@@ -97,32 +113,66 @@ export class Renderer {
       ball.weapon.ability?.drawOver(ctx);
       for (const upgrade of ball.weapon.upgrades) upgrade.drawOver(ctx);
     }
-    for (const ball of balls) if (ball.label) this.drawLabel(ball);
+    for (const ball of balls) if (ball.label) this.drawLabel(ball, viewZoom);
+    // Around the ball being followed, so its owner can find it in the crowd.
+    if (follow?.alive) this.drawRing(follow, '#ffffff', 7, viewZoom);
     if (showHitboxes) this.drawHitboxes(balls);
     effects.draw(ctx, this.scale);
 
     ctx.restore();
 
+    // The walls, the same thickness on screen however close the view is.
+    worldTransform();
+    ctx.strokeStyle = COLORS.border;
+    ctx.lineWidth = 4 * viewZoom;
+    ctx.strokeRect(2 * viewZoom, 2 * viewZoom, width - 4 * viewZoom, height - 4 * viewZoom);
+
     // The rest is in screen units: the normal arena's size, whatever this one's is.
-    const screen = this.scale * zoom;
+    const screen = this.canvas.width / CONFIG.arena.width;
     ctx.setTransform(screen, 0, 0, screen, 0, 0);
     const w = width / zoom;
     const h = height / zoom;
-    ctx.strokeStyle = COLORS.border;
-    ctx.lineWidth = 4;
-    ctx.strokeRect(2, 2, w - 4, h - 4);
     if (sim?.inSuddenDeath && !sim.over) this.drawSuddenDeath(sim, w, h);
     if (sim?.royale && !sim.over) this.drawRemaining(sim, screen);
 
     if (!sim) this.drawBanner(w, h, 'WAITING FOR MATCH', '#ffffff', '');
     else if (sim.over) this.drawBanner(w, h, winnerText(sim), sim.winner?.color, endHint);
+    else if (countdown > 0 && sim.time === 0) this.drawBanner(w, h, String(Math.ceil(countdown)), '#ffffff', 'Get ready');
     else if (paused) this.drawBanner(w, h, 'PAUSED', '#ffffff', 'Space to resume');
   }
 
-  drawGrid(width, height, spacing) {
+  // Which square of the arena is on screen: all of it, or a window around
+  // `target`, kept inside the walls. It eases rather than jumps, except at the
+  // start of a match. Returns { x, y, size } in arena units, x and y its corner.
+  updateView(sim, width, target) {
+    const size = target ? Math.min(width, FOLLOW_VIEW * target.size) : width;
+    const x = target ? clamp(target.pos.x - size / 2, 0, width - size) : 0;
+    const y = target ? clamp(target.pos.y - size / 2, 0, width - size) : 0;
+    if (!this.view || this.viewSim !== sim) {
+      this.viewSim = sim;
+      this.view = { x, y, size };
+    } else {
+      this.view.x += (x - this.view.x) * FOLLOW_EASE;
+      this.view.y += (y - this.view.y) * FOLLOW_EASE;
+      this.view.size += (size - this.view.size) * FOLLOW_EASE;
+    }
+    return this.view;
+  }
+
+  // A ring `gap` screen units outside a ball, the same thickness however close the view is.
+  drawRing(ball, color, gap, viewZoom) {
+    const { ctx } = this;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3 * viewZoom;
+    ctx.beginPath();
+    ctx.arc(ball.pos.x, ball.pos.y, ball.radius + gap * viewZoom, 0, TAU);
+    ctx.stroke();
+  }
+
+  drawGrid(width, height, spacing, viewZoom) {
     const { ctx } = this;
     ctx.strokeStyle = COLORS.grid;
-    ctx.lineWidth = spacing / GRID_SPACING;
+    ctx.lineWidth = viewZoom;
     ctx.beginPath();
     for (let x = spacing; x < width; x += spacing) {
       ctx.moveTo(x, 0);
@@ -161,11 +211,33 @@ export class Renderer {
   }
 
   // A fighter's name (e.g. its team) above the ball, or below it near the top wall.
-  drawLabel(ball) {
-    const above = ball.pos.y - ball.radius > LABEL_SIZE + 12;
+  // The same size on screen however far out the view is, so it can still be read.
+  drawLabel(ball, viewZoom) {
+    const { ctx } = this;
+    const above = ball.pos.y - ball.radius > (LABEL_SIZE + 12) * viewZoom;
     LABEL_STYLE.baseline = above ? 'bottom' : 'top';
-    const y = above ? ball.pos.y - ball.radius - 8 : ball.pos.y + ball.radius + 8;
-    drawText(this.ctx, ball.label, ball.pos.x, y, LABEL_STYLE, this.scale);
+    const gap = ball.radius + (ball.highlight ? 10 : 8) * viewZoom; // clear of the rings
+    ctx.save();
+    ctx.translate(ball.pos.x, above ? ball.pos.y - gap : ball.pos.y + gap);
+    ctx.scale(viewZoom, viewZoom);
+    LABEL_STYLE.fill = SKINS[ball.skin]?.label ?? '#ffffff';
+    drawText(ctx, ball.tag ? `${ball.tag} · ${ball.label}` : ball.label, 0, 0, LABEL_STYLE, this.scale * viewZoom);
+    LABEL_STYLE.fill = '#ffffff';
+    ctx.restore();
+  }
+
+  // Drains the colour out of a ball that takes extra damage (Sabotage, a
+  // net...): the more vulnerable, the greyer, almost grey at +55%.
+  drawVulnerable(ball) {
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalAlpha = Math.min(0.9, ball.vulnerability * 1.6);
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.fillStyle = '#808080';
+    ctx.beginPath();
+    ctx.arc(ball.pos.x, ball.pos.y, ball.radius, 0, TAU);
+    ctx.fill();
+    ctx.restore();
   }
 
   drawHitboxes(balls) {
@@ -210,6 +282,10 @@ export class Renderer {
     ctx.font = '16px system-ui, sans-serif';
     ctx.fillText(subtitle, width / 2, y + 28);
   }
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function winnerText({ winner, decidedBy }) {

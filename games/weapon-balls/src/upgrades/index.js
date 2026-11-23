@@ -1,3 +1,4 @@
+import { WEAPONS } from '../weapons/index.js';
 import {
   Armor,
   Compact,
@@ -7,23 +8,27 @@ import {
   Lifesteal,
   LongBlade,
   QuickSpin,
+  Sabotage,
   Sharpened,
-  Swift,
   Thorns,
   Vitality,
 } from './common.js';
 import { BigShield, LongSwipe, ShieldBash, SpikedShield, WideSwipe } from './sword.js';
 import { Captain, Dizzy, DualWielder, FireEater, Gladiator, Piercer, Stalwart, Wildling } from './sword-transformations.js';
-import { DashGuard, DeadlyCrits, LongDash, QuickCharge, RapidGrowth } from './spear.js';
+import { DashGuard, PatientCharge, RapidGrowth } from './spear.js';
 import { Bouncer, Dancer, Hoplite, Olympian, Poseidon, Runner, Tackler, Tactician } from './spear-transformations.js';
-import { CloseQuarters, Evasion, Momentum, QuickRecovery, Rebound } from './daggers.js';
-import { Axeman, Careful, Multidexterous, Rogue, Saw, Slippery, Thief, Trickster } from './daggers-transformations.js';
-import { GreatMace, HeavyImpact, HighBounce, Meteor, QuickDrop } from './mace.js';
+import { CloseQuarters, Evasion, Momentum } from './daggers.js';
+import { Ambidextrous, Careful, Rogue, Saw, Slippery, Swashbuckler, Thief, Trickster } from './daggers-transformations.js';
+import { GreatMace, HeavyImpact, HighBounce, Meteor, SlowDrop } from './mace.js';
 import { Crusher, Devil, Kamikaze, Metalworker, Pilot, Portaler, RubberMace, Valkyrie } from './mace-transformations.js';
 import { Boosters, DefenseMatrix, QuickProduction, QuickRepair, SpikedDrones } from './drone.js';
 import { Ace, Daredevils, Fighters, Fortress, Legion, NonEuclidean, Slicers, Wingmen } from './drone-transformations.js';
 import { Accurate, AntiMateriel, FireRate, MotivatedBullets, PopPop } from './gun.js';
 import { Bayonet, Grenadier, HighEx, Hotshot, Shotgun, SixShooter, Smg } from './gun-transformations.js';
+import { BigRing, Echo, Magnetism, PanicButton, ThickOrbs } from './wand.js';
+import { Aeromancer, Artificer, Evoker, Geomancer, Hydromancer, Merlin, Pyromancer, WildMagic } from './wand-transformations.js';
+import { MorePortals, QuickLashes, StickyTentacles, StretchyTentacles, ThickTentacles } from './tome.js';
+import { AbyssWarlock, Arsonist, BestialWorshipper, Ensnarer, Priest, Puppeteer, Satanist, Witch } from './tome-transformations.js';
 
 // Every upgrade that can go into a loadout, in the order the menu lists them.
 // Add new ones here (after writing them in common.js for any weapon, or in the
@@ -38,7 +43,7 @@ export const UPGRADES = [
   Compact,
   Thorns,
   Vitality,
-  Swift,
+  Sabotage,
   Focus,
   Armor,
   Lifesteal,
@@ -59,11 +64,9 @@ export const UPGRADES = [
   DualWielder,
   Gladiator,
   // Spear
-  LongDash,
-  QuickCharge,
+  PatientCharge,
   DashGuard,
   RapidGrowth,
-  DeadlyCrits,
   // Spear transformations
   Hoplite,
   Poseidon,
@@ -74,22 +77,20 @@ export const UPGRADES = [
   Tackler,
   Runner,
   // Daggers
-  QuickRecovery,
   Momentum,
   CloseQuarters,
   Evasion,
-  Rebound,
   // Daggers transformations
   Rogue,
   Thief,
   Saw,
   Trickster,
-  Multidexterous,
+  Ambidextrous,
   Slippery,
   Careful,
-  Axeman,
+  Swashbuckler,
   // Mace
-  QuickDrop,
+  SlowDrop,
   HeavyImpact,
   HighBounce,
   GreatMace,
@@ -132,7 +133,57 @@ export const UPGRADES = [
   Grenadier,
   Bayonet,
   Hotshot,
+  // Wand
+  ThickOrbs,
+  Echo,
+  Magnetism,
+  PanicButton,
+  BigRing,
+  // Wand transformations
+  Merlin,
+  Evoker,
+  Pyromancer,
+  Aeromancer,
+  Hydromancer,
+  Geomancer,
+  WildMagic,
+  Artificer,
+  // Tome
+  MorePortals,
+  ThickTentacles,
+  StickyTentacles,
+  StretchyTentacles,
+  QuickLashes,
+  // Tome transformations
+  AbyssWarlock,
+  Puppeteer,
+  Ensnarer,
+  Satanist,
+  Priest,
+  BestialWorshipper,
+  Arsonist,
+  Witch,
 ];
+
+// The weapon ids `Upgrade` can go on, or null for any weapon: what a catalog
+// lists as its `weapons` (a `notWeapons` list becomes the weapons it leaves).
+export function weaponsFor(Upgrade) {
+  if (Upgrade.weapons) return Upgrade.weapons.filter((id) => !Upgrade.notWeapons.includes(id));
+  if (Upgrade.notWeapons.length === 0) return null;
+  return WEAPONS.map((W) => W.id).filter((id) => Upgrade.canApplyTo(id));
+}
+
+// Most copies a catalog describes: more than any draft is likely to stack.
+const DESCRIBED_STACKS = 30;
+
+// What a catalog lists as an upgrade's `stacked`: entry i says what i + 2
+// copies do together, up to its stack limit. Empty when it can't stack.
+export function stackedDescriptions(Upgrade) {
+  const most = Math.min(Upgrade.maxStacks, DESCRIBED_STACKS);
+  const list = [];
+  for (let n = 2; n <= most; n++) list.push(Upgrade.describe(n));
+  return list;
+}
 
 export function getUpgradeById(id) {
   const upgrade = UPGRADES.find((U) => U.id === id);

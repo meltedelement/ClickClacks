@@ -331,7 +331,7 @@ export class Controls {
       const U = getUpgradeById(id);
       const count = owned.filter((x) => x === id).length;
       const item = el('li', 'upgrade');
-      item.title = U.description;
+      item.title = count > 1 ? U.describe(count) : U.description;
       item.append(el('span', 'upgrade-name', U.displayName));
       if (count > 1) item.append(el('span', 'upgrade-count', `×${count}`));
       const remove = button('−', `Remove one ${U.displayName}`, () => this.changeUpgrade(i, id, -1));

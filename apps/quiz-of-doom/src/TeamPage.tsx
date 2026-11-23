@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { TeamView, WeaponInfo } from '../shared/types.ts';
+import type { TeamView, Upgrade, WeaponInfo } from '../shared/types.ts';
 import { eventsUrl, post, useEvents } from './api.ts';
 import { TEAM_COLORS, colorName } from '../shared/colors.ts';
 import { Brand, ColorPicker, LETTERS, RoundProgress, Status, TeamDot, ThemeToggle, WeaponSwatch } from './ui.tsx';
@@ -417,6 +417,12 @@ function QuestionSection({ view, busy, act }: { view: TeamView; busy: boolean; a
   );
 }
 
+// What `n` copies of an upgrade do together, for a list that shows a stack as one entry.
+function describeStacks(upgrade: Upgrade | undefined, n: number): string | undefined {
+  if (!upgrade) return undefined;
+  return n > 1 ? (upgrade.stacked?.[n - 2] ?? upgrade.description) : upgrade.description;
+}
+
 function Loadout({ view }: { view: TeamView }) {
   const { team } = view;
   const upgradeName = (id: string) => view.upgrades.find((u) => u.id === id)?.name ?? id;
@@ -457,7 +463,7 @@ function Loadout({ view }: { view: TeamView }) {
           ) : (
             <div className="chips">
               {upgrades.map(([id, n]) => (
-                <span key={id} className="chip" title={view.upgrades.find((u) => u.id === id)?.description}>
+                <span key={id} className="chip" title={describeStacks(view.upgrades.find((u) => u.id === id), n)}>
                   {upgradeName(id)}
                   {n > 1 && <span className="count">×{n}</span>}
                 </span>

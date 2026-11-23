@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#171a21">
+  <title>Ball Bracket: host</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/bracket.css">
+</head>
+<body>
+  <main id="login" class="stack" hidden>
+    <h1 class="title">Host a Ball Bracket</h1>
+    <p class="muted">The key is printed in the terminal that started the server.</p>
+    <form class="stack" id="loginForm">
+      <input class="input" id="key" placeholder="Host key" aria-label="Host key" autocomplete="off" required>
+      <button class="button primary">Open</button>
+    </form>
+    <p class="error" id="loginError" role="alert"></p>
+  </main>
+
+  <div class="host" id="host" hidden>
+    <aside class="host-side stack">
+      <div id="controls"></div>
+      <p class="error" id="error" role="alert"></p>
+      <div id="players"></div>
+    </aside>
+    <section class="host-stage" aria-label="Arena">
+      <div class="stack" id="welcome"></div>
+      <div id="roundBar" hidden></div>
+      <div class="arena" id="arena" hidden></div>
+      <div class="stack" id="board" style="width: min(100%, 40rem)"></div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { eventsUrl, post, subscribe } from '/client/index.ts';
+    import { arena, dot, draw, h, lookBackground, lookButton, tagged } from '/ui.js';
+    import { bracketSection, nowPlaying, roundBanner, winCard, standings } from '/bracket.js';
+
+    const KEY_STORE = 'bracket-admin-key';
+    const $ = (id) => document.getElementById(id);
+    const ARENA = '/game/?display&embed';
+    const stage = arena($('arena'));
+    const winLayer = h('div.win-overlay');
+    $('arena').append(winLayer);
+    let key = null;
+    let stop = null;
+    let confirmedKey = false;
+
+    // This page's clicks can unlock audio for the arena inside it (see the game's Sound).
+    stage.onLoad((frame) => frame.contentWindow?.postMessage('weapon-balls:unlock-audio', '*'));
+
+    function loadKey() {
+      const fromUrl = new URLSearchParams(location.search).get('key');
+      if (fromUrl) {
+        history.replaceState(null, '', location.pathname); // keep it out of the address bar and history
+        return fromUrl;
+      }
+      try { return localStorage.getItem(KEY_STORE); } catch { return null; }
+    }
+
+    function saveKey(value) {
+      try {
+        if (value) localStorage.setItem(KEY_STORE, value);
+        else localStorage.removeItem(KEY_STORE);
+      } catch { /* private window: only this visit */ }
+    }
+
+    async function act(path, body = {}) {
+      try {
+        await post(path, body, { adminKey: key });
+        $('error').textContent = '';
+      } catch (err) {
+        $('error').textContent = err.message;
+      }
+    }
+
+    function controls(view) {
+      const button = (text, path, primary = true, ask = null) =>
+        h(`button.button${primary ? '.primary' : '.quiet'}`, { type: 'button', onclick: () => { if (!ask || confirm(ask)) void act(path); } }, text);
+      const entered = view.players.filter((p) => p.entered && !p.out);
+      const picking = entered.filter((p) => !p.ready);
+      const bracket = view.bracket;
+      return h('.stack', {},
+        h('.eyebrow', bracket ? `${bracket.format} · Stage ${bracket.stage} of ${bracket.stages}` : 'Lobby'),
+        view.notice ? h('p.notice', view.notice) : null,
+        view.phase === 'lobby'
+          ? h('.host-actions', {},
+              h('h1.title', view.players.length < 2 ? 'Waiting for players' : `${view.players.filter((p) => p.ready).length} of ${view.players.length} ready`),
+              view.players.length >= 2 && view.players.some((p) => !p.ready) ? h('p.muted', 'Starting now finishes the rest of their drafts at random.') : null,
+              h('label.field', {},
+                h('span', 'Format'),
+                h('select', { onchange: (e) => act('/api/format', { format: e.target.value }) },
+                  view.formats.map((f) => h('option', { value: f.id, selected: f.id === view.format }, f.name)))),
+              h('p.muted', view.formats.find((f) => f.id === view.format)?.description ?? ''),
+              h('button.button.primary', { type: 'button', disabled: !view.ready || view.players.length < 2, onclick: () => act('/api/start') },
+                view.ready ? 'Start the tournament' : 'Waiting for the game'))
+          : null,
+        view.phase === 'picking'
+          ? h('.host-actions', {},
+              h('h1.title', picking.length > 0 ? `${picking.length} still picking` : 'Starting the stage'),
+              picking.length > 0 ? h('p.muted', `${picking.map((p) => p.name).join(', ')}. The stage starts by itself once everyone has picked. Starting now picks for them at random.`) : null,
+              button('Start the stage now', '/api/start-stage'))
+          : null,
+        view.phase === 'playing'
+          ? h('.host-actions', {},
+              h('h1.title', 'Fighting'),
+              view.note ? h('p.notice', view.note) : h('p.muted', 'Every phone shows the fights. A fight only moves on while at least one screen with the page is awake.'),
+              button('Stop the stage', '/api/stop-stage', false, 'Stop the stage? Its unfinished matches play again from the start when it restarts.'))
+          : null,
+        view.phase === 'done'
+          ? h('.host-actions', {},
+              h('h1.title', `${bracket.champion?.name ?? '?'} won`),
+              button('New tournament', '/api/end'))
+          : null,
+        view.phase === 'picking' || view.phase === 'playing'
+          ? button('End the tournament', '/api/end', false, 'End the tournament now? Everyone goes back to the lobby with a new build.')
+          : null);
+    }
+
+    function players(view) {
+      const status = (p) => {
+        if (!p.online) return 'Offline';
+        if (view.phase === 'lobby') return p.ready ? 'Ready' : `${p.picksDone} of ${p.picksTotal}`;
+        if (!p.entered) return 'Watching';
+        if (p.out) return 'Out';
+        if (view.phase === 'picking') return p.ready ? 'Ready' : 'Picking';
+        return null;
+      };
+      return h('.section', {},
+        h('.eyebrow', `Players (${view.players.length})`),
+        view.players.length === 0 ? h('p.muted', 'Nobody yet.') : null,
+        h('ul.rows', {}, view.players.map((p) =>
+          h('li.row', {},
+            dot(lookBackground(p)),
+            h('span.grow', tagged(p)),
+            p.titles > 0 ? h('span.side', `${p.titles} ${p.titles === 1 ? 'title' : 'titles'}`) : null,
+            status(p) ? h(`span.side${p.ready && view.phase !== 'playing' ? '.good' : ''}`, status(p)) : null,
+            lookButton(p, (look) => act('/api/look', { id: p.id, ...look })),
+            h('button.button.quiet', { type: 'button', 'aria-label': `Remove ${p.name}`, onclick: () => { if (confirm(`Remove ${p.name}?`)) act('/api/remove', { id: p.id }); } }, 'Remove')))));
+    }
+
+    function welcome(view) {
+      return h('.stack', { style: { textAlign: 'center' } },
+        h('p.muted', 'Join on your phone at'),
+        h('.join-address', view.join[0] ?? `http://localhost:${location.port}/`),
+        view.join.length > 1 ? h('.join-other', `Also ${view.join.slice(1).join(', ')}`) : null);
+    }
+
+    function board(view) {
+      const { bracket } = view;
+      if (view.phase === 'done') {
+        return h('.stack', {},
+          h('p.muted', 'Champion'),
+          h('div.champion-name', bracket.champion?.name ?? '?'),
+          standings(bracket));
+      }
+      return h('.stack', {}, view.phase === 'playing' ? nowPlaying(bracket) : null, bracketSection(bracket));
+    }
+
+    function render(view) {
+      if (!confirmedKey) {
+        confirmedKey = true;
+        saveKey(key);
+      }
+      $('login').hidden = true;
+      $('host').hidden = false;
+      draw($('controls'), { phase: view.phase, ready: view.ready, formats: view.formats, format: view.format, notice: view.notice, note: view.note, players: view.players.map((p) => [p.name, p.ready, p.entered, p.out]), bracket: view.bracket && [view.bracket.format, view.bracket.stage, view.bracket.stages, view.bracket.champion] }, () => controls(view));
+      draw($('players'), { phase: view.phase, players: view.players }, () => players(view));
+      // The arena stays loaded and connected all night, and is only shown while a
+      // stage plays. Loading it when a stage starts took a second or two, and the
+      // fight's shared clock was already running by then: phones joined it late.
+      stage.set(ARENA);
+      $('arena').hidden = !view.arena;
+      const won = view.bracket?.justWon ?? null;
+      draw(winLayer, won, () => (won ? winCard(won, null) : []));
+      const showRound = view.bracket && view.phase !== 'lobby';
+      $('roundBar').hidden = !showRound;
+      if (showRound) draw($('roundBar'), { phase: view.phase, b: [view.bracket.round, view.bracket.roundMatch, view.bracket.stage, view.bracket.stages, view.bracket.champion] }, () => roundBanner(view.bracket, view.phase));
+      $('welcome').hidden = view.phase !== 'lobby';
+      $('board').hidden = view.phase === 'lobby' || !view.bracket;
+      if (view.phase === 'lobby') draw($('welcome'), view.join, () => welcome(view));
+      else if (view.bracket) draw($('board'), { phase: view.phase, bracket: view.bracket }, () => board(view));
+    }
+
+    function showLogin(message = '') {
+      stop?.();
+      stop = null;
+      key = null;
+      confirmedKey = false;
+      saveKey(null);
+      $('host').hidden = true;
+      $('login').hidden = false;
+      $('loginError').textContent = message;
+    }
+
+    // The event stream answers a wrong key with a 401, which EventSource only
+    // reports as a closed connection. Asking a route first gets the real answer.
+    async function open(candidate) {
+      key = candidate;
+      const res = await fetch('/api/settings-check', { method: 'POST', headers: { 'x-admin-key': key } }).catch(() => null);
+      if (res?.status === 401) return showLogin('That key is wrong.');
+      stop?.();
+      stop = subscribe(eventsUrl({ adminKey: key }), { onData: render });
+    }
+
+    $('loginForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      void open($('key').value.trim());
+    });
+
+    const saved = loadKey();
+    if (saved) void open(saved);
+    else showLogin();
+  </script>
+</body>
+</html>

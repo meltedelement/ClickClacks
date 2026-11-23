@@ -35,6 +35,7 @@ HOST_API=http://127.0.0.1:5173/api PORT=3003 HOST=0.0.0.0 npm start
 | `HOST_API` | `http://127.0.0.1:3002/api` | The game's Match Host API. Weapon Balls serves it on 3002 with `npm start` in `games/weapon-balls/`, and on 5173 with `npm run dev` there. |
 | `PORT` | `3003` | |
 | `HOST` | `127.0.0.1` | Nothing here checks who asks, so by default only programs on this machine can reach it. |
+| `DATA_DIR` | `data/` here | Where `tournaments.json` is kept. A second service (e.g. `npm run tournament`'s, next to the quiz's) needs its own, or it plays the other's tournaments too. |
 
 From the repo root, `npm run dev:all` and `npm run start:all` start the game,
 this service and the quiz together.

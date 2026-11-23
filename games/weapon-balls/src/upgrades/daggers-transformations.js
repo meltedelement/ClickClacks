@@ -1,6 +1,9 @@
 import { Upgrade } from './Upgrade.js';
-import { Buzzsaw } from '../abilities/Buzzsaw.js';
+import { Sawblade } from '../abilities/Sawblade.js';
+import { CutlassWave } from '../abilities/CutlassWave.js';
 import { TAU, add, angleOf, distance, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
+import { reflectDamage, reflectedBy } from '../sim/reflect.js';
+import { jitter } from '../sim/timing.js';
 import { formatNumber } from '../utils/format.js';
 
 // Transformations for the Daggers: big upgrades that change how they fight.
@@ -21,7 +24,7 @@ const GHOST_TIME = 0.4; // s the afterimage left behind by a teleport takes to f
 export class Rogue extends DaggersTransformation {
   static id = 'rogue';
   static displayName = 'Rogue';
-  static description = 'Every 6th hit you land readies a vanish: the next hit you would take misses completely as you teleport away from the attacker.';
+  static description = 'Every 6th hit you land readies a vanish. The next hit on you misses and you teleport away.';
 
   constructor(weapon) {
     super(weapon);
@@ -94,34 +97,108 @@ export class Rogue extends DaggersTransformation {
     ctx.restore();
   }
 
-  // Small pips over the ball counting hits towards the vanish, and a swirling
-  // shadow around it once it's ready.
+  // A hood, its rim studded with the hits towards the vanish. Once it's
+  // ready, every stud and two eyes in the hood's shadow glow, and shadow swirls round.
   drawOver(ctx) {
     const { owner } = this;
+    drawCowl(ctx, owner, this.ready ? this.hitsNeeded : this.hits, this.hitsNeeded, this.ready, this.time);
+    if (!this.ready) return;
     const { x, y } = owner.pos;
     ctx.save();
-    if (this.ready) {
-      ctx.strokeStyle = SHADOW;
-      ctx.lineWidth = 3;
-      ctx.globalAlpha = 0.7;
-      for (let i = 0; i < 3; i++) {
-        const a = this.time * 4 + (i * TAU) / 3;
-        ctx.beginPath();
-        ctx.arc(x, y, owner.radius + 5, a, a + 1.2);
-        ctx.stroke();
-      }
-    } else {
-      const n = this.hitsNeeded;
-      for (let i = 0; i < n; i++) {
-        const px = x + (i - (n - 1) / 2) * 8;
-        ctx.fillStyle = i < this.hits ? SHADOW : 'rgba(0, 0, 0, 0.3)';
-        ctx.beginPath();
-        ctx.arc(px, y - owner.radius * 0.55, 2.5, 0, TAU);
-        ctx.fill();
-      }
+    ctx.strokeStyle = SHADOW;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.7;
+    for (let i = 0; i < 3; i++) {
+      const a = this.time * 4 + (i * TAU) / 3;
+      ctx.beginPath();
+      ctx.arc(x, y, owner.radius + 7, a, a + 1.2);
+      ctx.stroke();
     }
     ctx.restore();
   }
+}
+
+const COWL = '#2d2740';
+const COWL_EDGE = '#16121f';
+
+// A pointed hood over the top of the ball, open at the front so the number shows.
+function drawCowl(ctx, { pos, radius: r }, lit, count, ready, time) {
+  const { x, y } = pos;
+  const hole = { x, y: y + r * 0.14, rx: r * 0.78, ry: r * 0.76 };
+  const bottom = y + r * 0.42;
+  ctx.save();
+
+  // Hood: up over the top from one side to the other, its sides tapering in
+  // to the face opening, then back along the top of the opening
+  const side = 0.35; // angle on the opening where the sides meet it
+  const meet = { x: hole.rx * Math.cos(side), y: hole.y + hole.ry * Math.sin(side) };
+  const hood = new Path2D();
+  hood.moveTo(x - r - 3, bottom);
+  hood.bezierCurveTo(x - r - 7, y - r * 0.6, x - r * 0.5, y - r - 4, x + r * 0.05, y - r - 13);
+  hood.bezierCurveTo(x + r * 0.6, y - r - 4, x + r + 7, y - r * 0.55, x + r + 3, bottom);
+  hood.quadraticCurveTo(x + r * 0.9, bottom + r * 0.12, x + meet.x, meet.y);
+  hood.ellipse(hole.x, hole.y, hole.rx, hole.ry, 0, side, Math.PI - side, true);
+  hood.quadraticCurveTo(x - r * 0.9, bottom + r * 0.12, x - r - 3, bottom);
+  hood.closePath();
+  ctx.fillStyle = COWL;
+  ctx.fill(hood);
+  ctx.save();
+
+  // Shadow inside the top of the opening, and the eyes in it when the vanish is ready
+  ctx.beginPath();
+  ctx.ellipse(hole.x, hole.y, hole.rx, hole.ry, 0, 0, TAU);
+  ctx.clip();
+  const shade = ctx.createLinearGradient(0, hole.y - hole.ry, 0, y - r * 0.2);
+  shade.addColorStop(0, 'rgba(10, 6, 20, 0.75)');
+  shade.addColorStop(1, 'rgba(10, 6, 20, 0)');
+  ctx.fillStyle = shade;
+  ctx.fillRect(x - r, hole.y - hole.ry, r * 2, hole.ry);
+  ctx.restore();
+
+  ctx.strokeStyle = COWL_EDGE;
+  ctx.lineWidth = 2;
+  ctx.stroke(hood);
+  ctx.strokeStyle = '#4a4060';
+  ctx.beginPath();
+  ctx.ellipse(hole.x, hole.y, hole.rx, hole.ry, 0, Math.PI * 1.02, Math.PI * 1.98);
+  ctx.stroke();
+
+  if (ready) {
+    const blink = Math.sin(time * 3) > 0.96 ? 0.2 : 1;
+    ctx.fillStyle = '#d9c8ff';
+    ctx.shadowColor = SHADOW;
+    ctx.shadowBlur = 8;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(x + dir * r * 0.26, y - r * 0.42, r * 0.11, r * 0.045 * blink + 0.5, dir * 0.15, 0, TAU);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  // Studs round the rim, one per hit towards the vanish
+  for (let i = 0; i < count; i++) {
+    const a = Math.PI * (1.18 + (0.64 * i) / (count - 1));
+    const sx = hole.x + Math.cos(a) * (hole.rx + 4);
+    const sy = hole.y + Math.sin(a) * (hole.ry + 4);
+    const on = i < lit;
+    ctx.fillStyle = on ? SHADOW : '#151020';
+    if (on) {
+      ctx.shadowColor = SHADOW;
+      ctx.shadowBlur = ready ? 8 : 4;
+    }
+    ctx.beginPath();
+    ctx.arc(sx, sy, 2.6, 0, TAU);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    if (on) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.beginPath();
+      ctx.arc(sx - 0.8, sy - 0.8, 0.9, 0, TAU);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 
 // ---- Thief ----------------------------------------------------------------------
@@ -131,8 +208,7 @@ const GOLD = '#ffd23f';
 export class Thief extends DaggersTransformation {
   static id = 'thief';
   static displayName = 'Thief';
-  static description =
-    "Whenever your ball bumps into an enemy, steal 20% of their next hit's damage (up to 60%). Your next hit deals what you stole on top.";
+  static description = 'Bumping into an enemy steals 20% of their next hit on you (up to 60%). Your next hit adds what you stole.';
 
   constructor(weapon) {
     super(weapon);
@@ -179,75 +255,127 @@ export class Thief extends DaggersTransformation {
     this.stolen = 0;
   }
 
-  // A bandit's mask, and gold coins above the ball, one per steal waiting.
-  drawOver(ctx) {
-    const { owner } = this;
-    drawBanditMask(ctx, owner);
-    ctx.save();
-    ctx.fillStyle = GOLD;
-    ctx.strokeStyle = '#b8860b';
-    ctx.lineWidth = 1.5;
-    for (let i = 0; i < this.steals; i++) {
-      const px = owner.pos.x + (i - (this.steals - 1) / 2) * 11;
-      ctx.beginPath();
-      ctx.arc(px, owner.pos.y - owner.radius - 8, 4.5, 0, TAU);
-      ctx.fill();
-      ctx.stroke();
-    }
-    ctx.restore();
+  // A loot sack slung behind the ball, with a gold coin in its mouth per steal waiting.
+  drawUnder(ctx) {
+    drawLootSack(ctx, this.owner, this.steals);
   }
 
-  // The blades glint gold while they carry stolen damage.
+  // A domino mask.
+  drawOver(ctx) {
+    drawDominoMask(ctx, this.owner);
+  }
+
+  // The blades' edges turn gold while they carry stolen damage.
   drawBlade(ctx, start) {
     if (this.stolen <= 0) return;
+    const end = start + this.weapon.length;
     ctx.save();
     ctx.strokeStyle = GOLD;
-    ctx.lineWidth = 2;
+    ctx.shadowColor = GOLD;
+    ctx.shadowBlur = 6;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(start + 14, 0);
-    ctx.lineTo(start + this.weapon.length - 4, 0);
+    ctx.moveTo(start + 14, 3.5);
+    ctx.lineTo(end - 8, 3);
+    ctx.lineTo(end - 1, 0);
     ctx.stroke();
     ctx.restore();
   }
 }
 
-// A black band across the ball with two eye holes, its ties trailing off the side.
-function drawBanditMask(ctx, { pos, radius }) {
-  const { x, y } = pos;
-  const top = y - 27;
-  const height = 14;
-  ctx.save();
-  ctx.fillStyle = '#1d1d22';
+const MASK = '#1d1d24';
+const SACK = '#a8774a';
+const SACK_DARK = '#6e4a28';
 
-  // Ties
-  const knot = { x: x + radius - 1, y: top + height / 2 };
-  for (const [dx, dy] of [[16, -9], [18, 4]]) {
-    ctx.beginPath();
-    ctx.moveTo(knot.x, knot.y - 3);
-    ctx.lineTo(knot.x + dx, knot.y + dy - 3);
-    ctx.lineTo(knot.x + dx - 2, knot.y + dy + 3);
-    ctx.lineTo(knot.x, knot.y + 3);
-    ctx.closePath();
-    ctx.fill();
-  }
-
+// A black domino mask across the top of the ball, the ball showing through its eye holes.
+function drawDominoMask(ctx, { pos, radius: r }) {
+  const { x } = pos;
+  const y = pos.y - r * 0.46; // eye line
+  const w = r * 0.78; // half width
   ctx.save();
+  const mask = new Path2D();
+  mask.moveTo(x, y - r * 0.08);
+  mask.bezierCurveTo(x - w * 0.35, y - r * 0.26, x - w * 0.9, y - r * 0.26, x - w, y - r * 0.08);
+  mask.quadraticCurveTo(x - w * 1.05, y + r * 0.14, x - w * 0.6, y + r * 0.2);
+  mask.quadraticCurveTo(x - w * 0.2, y + r * 0.22, x, y + r * 0.06);
+  mask.quadraticCurveTo(x + w * 0.2, y + r * 0.22, x + w * 0.6, y + r * 0.2);
+  mask.quadraticCurveTo(x + w * 1.05, y + r * 0.14, x + w, y - r * 0.08);
+  mask.bezierCurveTo(x + w * 0.9, y - r * 0.26, x + w * 0.35, y - r * 0.26, x, y - r * 0.08);
+  mask.closePath();
+  for (const dir of [-1, 1]) mask.ellipse(x + dir * w * 0.5, y, r * 0.15, r * 0.09, dir * -0.15, 0, TAU);
+  ctx.fillStyle = MASK;
+  ctx.fill(mask, 'evenodd');
+  // A soft shine along the top
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(x, y, radius + 1, 0, TAU);
-  ctx.clip();
-  ctx.fillRect(x - radius - 1, top, (radius + 1) * 2, height);
+  ctx.moveTo(x - w * 0.8, y - r * 0.12);
+  ctx.bezierCurveTo(x - w * 0.6, y - r * 0.22, x - w * 0.3, y - r * 0.2, x - w * 0.1, y - r * 0.1);
+  ctx.stroke();
   ctx.restore();
+}
 
-  for (const dir of [-1, 1]) {
-    ctx.fillStyle = '#ffffff';
+// A burlap sack poking out behind the ball's upper left, tied at the neck.
+function drawLootSack(ctx, { pos, radius: r }, coins) {
+  ctx.save();
+  ctx.translate(pos.x - r * 0.62, pos.y - r * 0.62);
+  ctx.rotate(-0.55);
+  const s = r / 40;
+  ctx.scale(s, s);
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = SACK_DARK;
+  ctx.lineWidth = 2;
+
+  // Body
+  ctx.fillStyle = SACK;
+  ctx.beginPath();
+  ctx.moveTo(-6, -14);
+  ctx.bezierCurveTo(-26, -8, -26, 22, 0, 24);
+  ctx.bezierCurveTo(26, 22, 26, -8, 6, -14);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Coins in its mouth
+  for (let i = 0; i < coins; i++) {
+    const cx = (i - (coins - 1) / 2) * 7;
+    const cy = -27 - (i === 1 ? 3 : 0);
+    ctx.fillStyle = GOLD;
+    ctx.strokeStyle = '#b8860b';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.ellipse(x + dir * 13, top + height / 2, 6.5, 4, 0, 0, TAU);
+    ctx.arc(cx, cy, 4.5, 0, TAU);
     ctx.fill();
-    ctx.fillStyle = '#1d1d22';
-    ctx.beginPath();
-    ctx.arc(x + dir * 13 + 2, top + height / 2, 2.2, 0, TAU);
-    ctx.fill();
+    ctx.stroke();
   }
+
+  // Neck, flared above the tie
+  ctx.strokeStyle = SACK_DARK;
+  ctx.lineWidth = 2;
+  ctx.fillStyle = SACK;
+  ctx.beginPath();
+  ctx.moveTo(-6, -14);
+  ctx.lineTo(-11, -24);
+  ctx.quadraticCurveTo(0, -20, 11, -24);
+  ctx.lineTo(6, -14);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Rope tie
+  ctx.strokeStyle = '#e0c48a';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-7, -15);
+  ctx.lineTo(7, -15);
+  ctx.stroke();
+
+  // Patch
+  ctx.strokeStyle = SACK_DARK;
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([2, 2]);
+  ctx.strokeRect(-12, 6, 9, 8);
   ctx.restore();
 }
 
@@ -256,26 +384,35 @@ function drawBanditMask(ctx, { pos, radius }) {
 export class Saw extends DaggersTransformation {
   static id = 'saw';
   static displayName = 'Saw';
-  static description =
-    "Dash Flurry becomes Buzzsaw: launch your daggers as a spinning saw that chases the enemy for 2 s, landing a light hit (40% damage) every 0.1 s while it's on them. It grinds through weapons but not shields. Then it flies back. You're unarmed until it returns.";
+  static description = "Backstab becomes a saw that latches on and keeps cutting for up to 3s, until you're hit or parried.";
 
   apply() {
-    this.weapon.ability = new Buzzsaw(this.weapon);
+    this.weapon.ability = new Sawblade(this.weapon);
   }
 
-  // Teeth along the back of each blade.
+  // Big raked teeth all along the back of each blade, leaning back from the tip.
   drawBlade(ctx, start) {
-    const from = start + 14;
-    const to = start + this.weapon.length - 8;
+    const { weapon } = this;
+    const from = start + 13;
+    const to = start + weapon.length - 9;
+    const pitch = 6;
+    const n = Math.max(1, Math.floor((to - from) / pitch));
+    const step = (to - from) / n;
     ctx.save();
-    ctx.fillStyle = '#b9c2cc';
+    ctx.fillStyle = weapon.parryLocked ? '#e8493f' : '#e3e8ee';
+    ctx.strokeStyle = '#5d6672';
+    ctx.lineWidth = 1;
+    ctx.lineJoin = 'miter';
     ctx.beginPath();
-    for (let x = from; x + 5 <= to; x += 5) {
-      ctx.moveTo(x, -3.5);
-      ctx.lineTo(x + 2.5, -7);
-      ctx.lineTo(x + 5, -3.5);
+    ctx.moveTo(from, -3);
+    for (let i = 0; i < n; i++) {
+      const x = from + i * step;
+      ctx.lineTo(x + step * 0.2, -9);
+      ctx.lineTo(x + step, -3);
     }
+    ctx.lineTo(from, -3);
     ctx.fill();
+    ctx.stroke();
     ctx.restore();
   }
 }
@@ -288,13 +425,14 @@ const MAX_FLIGHT_TIME = 3; // s; safety net in case it somehow never makes it ba
 export class Trickster extends DaggersTransformation {
   static id = 'trickster';
   static displayName = 'Trickster';
-  static description =
-    'Every 1.5 s, when the enemy is close, throw one of your daggers like a boomerang. It curves out and back, dealing 3 damage to enemies it passes through each way. Throws alternate between your daggers, and you spin one short until it returns.';
+  static description = 'Every 1.5s, throw your dagger at a nearby enemy like a boomerang. It hits on the way out and back for half damage, and can crit.';
 
   constructor(weapon) {
     super(weapon);
     this.interval = 1.5; // s between throws
-    this.damage = 3; // per pass through an enemy
+    this.passDamage = 0.5; // damage multiplier of a pass: half a stab
+    this.knockback = 0.5; // knockback multiplier of a pass: a glancing blow
+    this.striking = false; // true while a pass's hit is being dealt
     this.throwSpeed = 600; // px/s
     this.returnSpeed = 650; // px/s
     this.range = 260; // px it flies out before turning back
@@ -303,7 +441,7 @@ export class Trickster extends DaggersTransformation {
     this.returnTurnGain = 14; // ...growing by this much per second, so it always gets home
     this.triggerRange = 320; // px; only throws when an enemy is this close
     this.hitRadius = 8; // px around the flying dagger
-    this.cooldownLeft = this.interval / 2;
+    this.cooldownLeft = jitter(this.interval / 2);
 
     this.throws = 0;
     this.time = 0; // for the bells' jingle
@@ -323,6 +461,20 @@ export class Trickster extends DaggersTransformation {
     const { owner } = this;
     f.time += dt;
     f.spin += THROWN_SPIN * f.curve * dt;
+
+    // A parrying ball sends it back: it flies straight at the thrower and hits them instead.
+    if (!f.reflector && !sim.over) f.reflector = reflectedBy(sim, owner, f.pos);
+    if (f.reflector) {
+      f.heading = angleOf(sub(owner.pos, f.pos));
+      f.speed = this.returnSpeed;
+      if (distance(owner.pos, f.pos) <= owner.radius + this.hitRadius + f.speed * dt) {
+        if (!sim.over) sim.dealDamage(f.reflector, owner, reflectDamage(f.reflector, this.weapon.getDamage() * this.passDamage), { reason: 'reflect', color: '#e3e8ee' });
+        this.catch(sim);
+        return;
+      }
+      f.pos = add(f.pos, fromAngle(f.heading, f.speed * dt));
+      return;
+    }
 
     if (f.phase === 'out') {
       f.heading += this.curveRate * f.curve * dt;
@@ -347,17 +499,37 @@ export class Trickster extends DaggersTransformation {
     for (const enemy of sim.aliveBalls) {
       if (enemy === owner || f.hit.has(enemy) || distance(enemy.pos, f.pos) >= enemy.radius + this.hitRadius) continue;
       f.hit.add(enemy);
-      sim.dealDamage(owner, enemy, this.damage, { reason: 'boomerang', color: '#e3e8ee' });
+      this.strike(enemy, f.pos, sim);
+      if (sim.over) break;
     }
   }
 
-  // Throws blade 0; the next one round takes its place, so the throws take
-  // turns between the daggers. Keeps at least one in hand, and doesn't throw
-  // in the middle of the ability.
+  // A pass through `enemy` is a hit with the dagger: the Daggers' damage and
+  // crits, and it grows them like any other hit.
+  strike(enemy, pos, sim) {
+    const away = sub(pos, enemy.pos);
+    const side = away.x || away.y ? normalize(away) : fromAngle(this.flying.heading + Math.PI);
+    enemy.clearHitCooldown(this.weapon);
+    this.striking = true;
+    sim.applyHit(this.owner, enemy, add(enemy.pos, scale(side, enemy.radius)));
+    this.striking = false;
+  }
+
+  get damageMultiplier() {
+    return this.striking ? this.passDamage : 1;
+  }
+
+  get knockbackMultiplier() {
+    return this.striking ? this.knockback : 1;
+  }
+
+  // Throws blade 0; the next one round (if any) takes its place, so the throws
+  // take turns between the daggers. Throws the only dagger too, leaving just
+  // the money bag. Doesn't throw in the middle of the ability.
   tryThrow(sim) {
     const { owner, weapon } = this;
     const enemy = this.enemyWithin(sim, this.triggerRange);
-    if (weapon.blades < 2 || weapon.ability?.active || !enemy) return;
+    if (weapon.blades < 1 || weapon.ability?.active || !enemy) return;
 
     const angles = weapon.bladeAngles();
     const pos = add(owner.pos, fromAngle(angles[0], owner.radius + weapon.gap + weapon.length / 2));
@@ -366,10 +538,10 @@ export class Trickster extends DaggersTransformation {
     const flightTime = distance(pos, enemy.pos) / this.throwSpeed;
     const heading = angleOf(leadDirection(pos, enemy, this.throwSpeed)) - (this.curveRate * curve * Math.min(flightTime, this.range / this.throwSpeed)) / 2;
 
-    weapon.angle = angles[1];
+    if (angles.length > 1) weapon.angle = angles[1];
     weapon.blades -= 1;
     this.throws += 1;
-    this.cooldownLeft = this.interval;
+    this.cooldownLeft = jitter(this.interval);
     this.flying = { pos, heading, speed: this.throwSpeed, phase: 'out', travelled: 0, time: 0, backTime: 0, curve, spin: angles[0], hit: new Set() };
     this.emit(sim, 'throw');
   }
@@ -453,12 +625,12 @@ function drawJesterHat(ctx, { pos, radius }, time) {
   ctx.restore();
 }
 
-// ---- Multidexterous -------------------------------------------------------------
+// ---- Ambidextrous -------------------------------------------------------------
 
-export class Multidexterous extends DaggersTransformation {
-  static id = 'multidexterous';
-  static displayName = 'Multidexterous';
-  static description = 'Gain a third dagger.';
+export class Ambidextrous extends DaggersTransformation {
+  static id = 'ambidextrous';
+  static displayName = 'Ambidextrous';
+  static description = 'Gain a second dagger.';
 
   apply() {
     this.weapon.blades += 1;
@@ -507,7 +679,7 @@ const SLICK = '#7fe0d4';
 export class Slippery extends DaggersTransformation {
   static id = 'slippery';
   static displayName = 'Slippery';
-  static description = '20% chance for a hit on you to slide right off: no damage, and you squirt away from the attacker. Rolled separately from dodging.';
+  static description = '20% chance for a hit to slide right off you, sending you skidding away.';
   // Asked before Rogue, so a slip doesn't use up a ready vanish.
   static order = -1;
 
@@ -525,21 +697,73 @@ export class Slippery extends DaggersTransformation {
     return true;
   }
 
-  // A wet shine on the ball.
+  onUpdate(dt) {
+    this.time = (this.time ?? 0) + dt;
+  }
+
+  // A glossy wet coat: a slick rim, a big shine, and drips running off the bottom.
   drawOver(ctx) {
-    const { pos, radius } = this.owner;
+    const { pos, radius: r } = this.owner;
+    const { x, y } = pos;
+    const time = this.time ?? 0;
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+
+    // Sheen round the edge
+    const sheen = ctx.createRadialGradient(x, y, r * 0.6, x, y, r);
+    sheen.addColorStop(0, 'rgba(127, 224, 212, 0)');
+    sheen.addColorStop(1, 'rgba(127, 224, 212, 0.45)');
+    ctx.fillStyle = sheen;
     ctx.beginPath();
-    ctx.ellipse(pos.x - radius * 0.35, pos.y - radius * 0.45, radius * 0.32, radius * 0.14, -0.6, 0, TAU);
+    ctx.arc(x, y, r, 0, TAU);
     ctx.fill();
-    ctx.fillStyle = SLICK;
+    ctx.strokeStyle = SLICK;
+    ctx.lineWidth = 2;
     ctx.globalAlpha = 0.8;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Shine
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.lineCap = 'round';
+    ctx.lineWidth = r * 0.1;
     ctx.beginPath();
-    ctx.arc(pos.x + radius * 0.5, pos.y + radius * 0.62, 3.5, 0, TAU);
+    ctx.arc(x, y, r * 0.74, Math.PI * 1.08, Math.PI * 1.38);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(Math.PI * 1.48) * r * 0.74, y + Math.sin(Math.PI * 1.48) * r * 0.74, r * 0.05, 0, TAU);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = r * 0.05;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.78, Math.PI * 0.12, Math.PI * 0.3);
+    ctx.stroke();
+
+    // Drips: each swells on the edge, then falls away and fades
+    ctx.fillStyle = SLICK;
+    for (const [angle, offset] of [[0.32, 0], [0.62, 0.45], [0.82, 0.75]]) {
+      const phase = (time / 1.4 + offset) % 1;
+      const a = Math.PI * angle;
+      const ex = x + Math.cos(a) * r;
+      const ey = y + Math.sin(a) * r;
+      const grow = Math.min(1, phase / 0.6);
+      const fall = Math.max(0, phase - 0.6) / 0.4;
+      const size = r * (0.05 + 0.05 * grow);
+      ctx.globalAlpha = 0.9 * (1 - fall);
+      drawDrop(ctx, ex, ey - size * 0.6 + fall * fall * r * 0.5 + grow * size, size);
+    }
     ctx.restore();
   }
+}
+
+// A teardrop hanging point up, its round bottom centred on (x, y).
+function drawDrop(ctx, x, y, size) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - size * 2.2);
+  ctx.bezierCurveTo(x + size * 0.4, y - size, x + size, y - size * 0.5, x + size, y);
+  ctx.arc(x, y, size, 0, Math.PI);
+  ctx.bezierCurveTo(x - size, y - size * 0.5, x - size * 0.4, y - size, x, y - size * 2.2);
+  ctx.fill();
 }
 
 // ---- Careful --------------------------------------------------------------------
@@ -549,17 +773,17 @@ const POISE = '#9fd3ff';
 export class Careful extends DaggersTransformation {
   static id = 'careful';
   static displayName = 'Careful';
-  static description = 'Every parry adds +1 damage to your next hit (up to +6).';
+  static description = 'Each parry adds +1 damage to your next crit (up to +6).';
 
   constructor(weapon) {
     super(weapon);
     this.damagePerParry = 1;
     this.maxParries = 6;
-    this.parries = 0; // since the last hit
+    this.parries = 0; // since the last crit
   }
 
-  // Adds the bonus to the daggers' own damage, before other multipliers.
-  get bonusDamage() {
+  // Added to a critical hit's damage, after the crit multiplier.
+  get critBonusDamage() {
     return this.parries * this.damagePerParry;
   }
 
@@ -570,7 +794,7 @@ export class Careful extends DaggersTransformation {
   }
 
   onHit() {
-    this.parries = 0;
+    if (this.weapon.lastHitCrit) this.parries = 0;
   }
 
   // Sai prongs curving forward off the guard, and a glow on the blades that
@@ -603,26 +827,99 @@ export class Careful extends DaggersTransformation {
   }
 }
 
-// ---- Axeman ---------------------------------------------------------------------
+// ---- Swashbuckler ---------------------------------------------------------------
 
-export class Axeman extends DaggersTransformation {
-  static id = 'axeman';
-  static displayName = 'Axeman';
-  static description = 'Swap your daggers for hatchets: twice as thick, so they hit and block much more, and they deal 25% more damage.';
-
-  constructor(weapon) {
-    super(weapon);
-    this.damageBonus = 0.25;
-  }
-
-  get damageMultiplier() {
-    return 1 + this.damageBonus;
-  }
+export class Swashbuckler extends DaggersTransformation {
+  static id = 'swashbuckler';
+  static displayName = 'Swashbuckler';
+  static description = 'Your dagger becomes a longer cutlass, and Backstab becomes a slash that sends a wave at the enemy. The wave crits everyone it passes through. With Saw, the wave chases its target and saws them.';
+  // After Saw, so it can turn the Sawblade into a sawing wave.
+  static order = 1;
 
   apply() {
-    this.weapon.style = 'hatchet';
-    this.weapon.thickness *= 2;
+    this.weapon.style = 'cutlass';
+    this.weapon.length = 66;
+    this.weapon.thickness = 4;
+    this.weapon.ability = new CutlassWave(this.weapon, { saw: this.ability instanceof Sawblade });
   }
+
+  onUpdate(dt) {
+    this.time = (this.time ?? 0) + dt;
+  }
+
+  drawOver(ctx) {
+    drawBandana(ctx, this.owner, this.time ?? 0);
+  }
+}
+
+const BANDANA = '#c8302c';
+const BANDANA_DARK = '#7d1a17';
+
+// A red polka-dot pirate bandana over the top of the ball, knotted at the
+// side with its two tails flapping.
+function drawBandana(ctx, { pos, radius: r }, time) {
+  const { x, y } = pos;
+  // The bottom edge, high enough to leave the eyes (and a Thief's mask) showing
+  const left = y - r * 0.64;
+  const right = y - r * 0.7;
+  const dip = y - r * 0.5; // its curve's control point
+  const knot = { x: x + r * 0.78, y: y - r * 0.64 };
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = BANDANA_DARK;
+  ctx.lineWidth = 1.5;
+
+  // Tails
+  const flap = Math.sin(time * 7);
+  ctx.fillStyle = BANDANA;
+  for (const [len, drop, phase] of [[r * 0.6, r * 0.05, 0], [r * 0.5, r * 0.45, 1.3]]) {
+    const wave = Math.sin(time * 7 + phase) * r * 0.08;
+    ctx.beginPath();
+    ctx.moveTo(knot.x, knot.y - r * 0.06);
+    ctx.quadraticCurveTo(knot.x + len * 0.5, knot.y + drop * 0.4 - r * 0.12 + wave, knot.x + len, knot.y + drop + wave);
+    ctx.lineTo(knot.x + len - r * 0.08, knot.y + drop + r * 0.14 + wave);
+    ctx.quadraticCurveTo(knot.x + len * 0.45, knot.y + drop * 0.5 + r * 0.06 + wave * 0.5, knot.x, knot.y + r * 0.08);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Cap, clipped to the ball (a touch bigger, so it sits on it)
+  const cap = new Path2D();
+  cap.moveTo(x - r - 2, left);
+  cap.quadraticCurveTo(x, dip, x + r + 2, right);
+  cap.lineTo(x + r + 2, y - r - 4);
+  cap.lineTo(x - r - 2, y - r - 4);
+  cap.closePath();
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, r + 1.5, 0, TAU);
+  ctx.clip();
+  ctx.fillStyle = BANDANA;
+  ctx.fill(cap);
+  ctx.clip(cap);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  for (const [dx, dy] of [[-0.5, -0.75], [-0.15, -0.88], [0.22, -0.72], [0.5, -0.86], [-0.28, -0.6], [0.05, -0.6], [-0.7, -0.62]]) {
+    ctx.beginPath();
+    ctx.arc(x + dx * r, y + dy * r, r * 0.055, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(x, y, r + 1.5, Math.PI + Math.asin(0.62), TAU - Math.asin(0.66));
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x - r * 0.8, left);
+  ctx.quadraticCurveTo(x, dip, x + r * 0.76, right);
+  ctx.stroke();
+
+  // Knot
+  ctx.fillStyle = BANDANA;
+  ctx.beginPath();
+  ctx.ellipse(knot.x, knot.y, r * 0.12, r * 0.1 + flap * 0.3, 0.4, 0, TAU);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
 }
 
 // ---- Helpers --------------------------------------------------------------------

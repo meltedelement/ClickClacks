@@ -3,7 +3,9 @@
 //
 //   GET /api/events?token=<player token>   server-sent events: the player's view on every change
 //   GET /api/events?key=<admin key>        the same for the admin pages (the admin view)
-//   GET /api/lan                           { addresses }: this machine's LAN addresses, private ranges first
+//   GET /api/lan[?port=]                   { addresses, public }: this machine's LAN addresses, private
+//                                          ranges first, and the Tailscale Funnel URLs that reach this
+//                                          port (or `port`: a dev server in front of this one)
 //   any other /api route                   the app's own (Party.route), JSON in and out
 //
 // Each event is `data: <view as JSON>`. A player whose token the app does not
@@ -35,4 +37,6 @@ export interface ErrorBody {
 /** GET /api/lan */
 export interface LanBody {
   addresses: string[];
+  /** Public URLs (https://…/) from Tailscale Funnel that forward to this server's port; usually none. */
+  public: string[];
 }

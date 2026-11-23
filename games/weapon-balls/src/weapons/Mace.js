@@ -19,6 +19,7 @@ export class Mace extends Weapon {
     this.thickness = 7;
     this.damagePerHit = 0.4;
     this.head = 'mace'; // 'mace' | 'hammer' (the Metalworker transformation)
+    this.wings = false; // true: each blade is drawn as a wing (Valkyrie, while slamming)
     this.ability = new DropSlam(this);
   }
 
@@ -28,6 +29,10 @@ export class Mace extends Weapon {
 
   drawLocal(ctx, start) {
     const end = start + this.length;
+    if (this.wings) {
+      drawWingBlade(ctx, start, end);
+      return;
+    }
     const headX = end - HEAD_RADIUS;
 
     // Handle
@@ -57,6 +62,28 @@ export class Mace extends Weapon {
     ctx.beginPath();
     ctx.arc(headX, 0, HEAD_RADIUS, 0, TAU);
     ctx.fill();
+  }
+}
+
+// A white feathered wing reaching from `start` to `end` along +x, the
+// feathers fanning back from the leading edge (Valkyrie).
+function drawWingBlade(ctx, start, end) {
+  const len = end - start;
+  const feathers = 5;
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+  ctx.lineWidth = 1.5;
+  for (let i = feathers - 1; i >= 0; i--) {
+    const f = i / (feathers - 1);
+    const featherLen = len * (1 - 0.4 * f);
+    ctx.save();
+    ctx.translate(start, 0);
+    ctx.rotate(f * 0.35);
+    ctx.fillStyle = i % 2 ? '#e3e8ef' : '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(featherLen / 2, 0, featherLen / 2, 7, 0, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
   }
 }
 

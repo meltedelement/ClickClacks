@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzer Admin</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 0; padding: 16px; max-width: 640px; margin-inline: auto; background: #111; color: #eee; }
+    input, button { font: inherit; padding: 8px 12px; border-radius: 6px; border: 1px solid #555; background: #222; color: inherit; }
+    button { cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    td, th { text-align: left; padding: 6px; border-bottom: 1px solid #333; }
+    code { font-size: 12px; opacity: 0.7; }
+    .error { color: #ff8a80; min-height: 1.4em; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #666; }
+    .dot.on { background: #43a047; }
+    #buzzed { font-size: 32px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Buzzer admin</h1>
+
+  <form id="keyForm">
+    <input id="key" placeholder="Admin key (printed by the server)" autocomplete="off">
+    <button>Use key</button>
+  </form>
+
+  <p>Join at: <span id="lan">…</span></p>
+  <p>Stream: <span id="live">not connected</span></p>
+  <div id="buzzed">Nobody has buzzed</div>
+  <p>
+    <button id="clear">Clear buzzer</button>
+    <button id="reset">Remove everyone</button>
+  </p>
+  <table>
+    <thead><tr><th>Online</th><th>Name</th><th>Token</th><th></th></tr></thead>
+    <tbody id="players"></tbody>
+  </table>
+  <p class="error" id="error"></p>
+
+  <script type="module">
+    import { eventsUrl, post, subscribe } from '/client/index.ts';
+
+    const KEY_STORAGE = 'party-demo-admin-key';
+    const $ = (id) => document.getElementById(id);
+    let adminKey = localStorage.getItem(KEY_STORAGE) ?? '';
+    let stop = null;
+    $('key').value = adminKey;
+
+    const escape = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+
+    async function act(path, body = {}) {
+      try { await post(path, body, { adminKey }); $('error').textContent = ''; }
+      catch (err) { $('error').textContent = err.message; }
+    }
+
+    function start() {
+      stop?.();
+      if (!adminKey) return;
+      stop = subscribe(eventsUrl({ adminKey }), {
+        onData(view) {
+          $('buzzed').textContent = view.buzzed ? `${view.buzzed} buzzed!` : 'Nobody has buzzed';
+          $('players').innerHTML = view.players.map((p) => `
+            <tr>
+              <td><span class="dot ${p.online ? 'on' : ''}"></span></td>
+              <td>${escape(p.name)}</td>
+              <td><code>${p.token.slice(0, 8)}…</code></td>
+              <td><button data-token="${p.token}">Remove</button></td>
+            </tr>`).join('') || '<tr><td colspan="4">No players yet</td></tr>';
+        },
+        // A wrong key is a 401, which EventSource reports as an error: this stays "reconnecting".
+        onConnected(live) { $('live').textContent = live ? 'live' : 'reconnecting (wrong key?)'; },
+      });
+    }
+
+    $('keyForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      adminKey = $('key').value.trim();
+      localStorage.setItem(KEY_STORAGE, adminKey);
+      start();
+    });
+    $('clear').addEventListener('click', () => act('/api/clear'));
+    $('reset').addEventListener('click', () => act('/api/reset'));
+    $('players').addEventListener('click', (e) => {
+      const token = e.target.dataset?.token;
+      if (token) act('/api/remove', { token });
+    });
+
+    fetch('/api/lan').then((r) => r.json()).then(({ addresses }) => {
+      $('lan').textContent = addresses.map((ip) => `http://${ip}:${location.port}/`).join('  ') || 'no LAN address';
+    });
+
+    start();
+  </script>
+</body>
+</html>

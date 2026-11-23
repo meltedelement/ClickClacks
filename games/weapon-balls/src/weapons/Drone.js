@@ -1,6 +1,6 @@
 import { Weapon } from './Weapon.js';
 import { Swarm } from '../abilities/Swarm.js';
-import { TAU, add, angleDiff, angleOf, clamp, closestPointOnSegment, closestPointsBetweenSegments, distance, dot, fromAngle, length, normalize, scale, sub, turnTowards } from '../sim/math.js';
+import { TAU, add, angleDiff, angleOf, clamp, closestPointOnSegment, closestPointsBetweenSegments, distance, dot, fromAngle, hypot, length, normalize, scale, sub, turnTowards } from '../sim/math.js';
 import { nearestEnemy } from '../sim/targeting.js';
 
 const TRAIL = 2.2; // a drone's streak at full attack speed, in drone lengths
@@ -26,9 +26,10 @@ const BODY_HALF_WIDTH = 6; // px, the drawn triangle's half-width before widthSc
 // hits a ball at most once per `hitLock`, whatever the others do, so a swarm
 // passing through lands one hit per drone.
 //
-// Common upgrades map onto the drones: spin speed (Quick Spin, spinMultiplier)
+// Stats map onto the drones: spin speed (and spinMultiplier, e.g. Swarm)
 // scales how fast they orbit and fly, `length` and `thickness` are each
-// drone's size and hitbox, and `blades` is how many there are.
+// drone's size and hitbox, and `blades` is how many there are. Quick Spin,
+// Long Blade and Heavy Blade aren't offered to the Drone (`notWeapons`).
 //
 // Transformations (src/upgrades/drone-transformations.js) reshape the swarm
 // through the stats below (`toughness`, `wrapsWalls`, `scatters`, the guard's...)
@@ -47,10 +48,15 @@ export class Drone extends Weapon {
 
   constructor(owner) {
     super(owner);
-    this.damage = 1.1;
+    this.damage = 1.25;
+    this.falloffStart = 115; // px from the ball: full damage this close, fading with distance (see Weapon)
+    this.falloffEnd = 390;
+    this.falloffMin = 0.55; // x damage at falloffEnd and beyond
     this.spinSpeed = 3; // orbit, rad/s; also scales every drone speed below
     this.baseSpinSpeed = this.spinSpeed;
     this.length = 16; // px, each drone nose to tail
+    this.hull = null; // a transformation drawing the drones its own way (see drawLocal)
+    this.clock = 0; // s; only for drawing (spinning saws, propellers, flames)
     this.thickness = 5; // hitbox half-width, px
     this.gap = 22; // px between the ball's surface and the orbit
     this.blades = 3; // drones
@@ -70,6 +76,7 @@ export class Drone extends Weapon {
     this.tumbleTime = 0.5; // s a swatted drone tumbles before flying back
     this.recoverTime = this.restTime; // s a swatted drone rests once it's back before it can attack again
     this.toughness = 1; // swats it takes to knock a drone away; the ones before only deflect it
+    this.bulletAbsorb = 0.2; // share of a bullet's damage each drone it passes through soaks up (see Gun.fly)
     this.tumbleSpeed = 320; // px/s it's knocked away at
     this.droneKnockback = 0.2; // hits are pokes: knockback multiplier
     this.nudges = true; // the poke adds to how the enemy was moving instead of stopping it
@@ -100,7 +107,7 @@ export class Drone extends Weapon {
 
   // How much faster than normal the drones fly right now (Quick Spin, Swarm...).
   get speedFactor() {
-    return (this.spinSpeed / this.baseSpinSpeed) * this.multiplier('spinMultiplier');
+    return (this.spinSpeed / this.baseSpinSpeed) * this.spinMultiplier;
   }
 
   get knockbackMultiplier() {
@@ -126,7 +133,12 @@ export class Drone extends Weapon {
   get guardingDrones() {
     if (!this.guardTarget) return [];
     const reach = this.guardRadius + this.guardSlack;
-    return this.drones.filter((drone) => drone.state === 'orbit' && distance(drone.pos, this.owner.pos) <= reach);
+    const { pos } = this.owner;
+    const guards = [];
+    for (const drone of this.drones) {
+      if (drone.state === 'orbit' && hypot(drone.pos.x - pos.x, drone.pos.y - pos.y) <= reach) guards.push(drone);
+    }
+    return guards;
   }
 
   // Each guarding drone takes a share off weapon hits on the ball.
@@ -134,9 +146,11 @@ export class Drone extends Weapon {
     return super.damageTakenMultiplier * (1 - Math.min(this.maxGuard, this.guardPerDrone * this.guardingDrones.length));
   }
 
-  // A weapon hit got through: the guard (already counted in the damage) scatters.
-  registerOwnerHit(attackerWeapon, sim, damage) {
-    for (const drone of this.scatters ? this.guardingDrones : []) {
+  // A weapon hit got through: the guard (already counted in the damage)
+  // scatters, unless the hit leaves it alone (`scatters` false, see
+  // Simulation.applySecondaryHit).
+  registerOwnerHit(attackerWeapon, sim, damage, scatters = true) {
+    for (const drone of this.scatters && scatters ? this.guardingDrones : []) {
       drone.state = 'tumble';
       drone.timer = this.tumbleTime;
       drone.heading = angleOf(sub(drone.pos, this.owner.pos));
@@ -203,6 +217,7 @@ export class Drone extends Weapon {
 
   update(dt, sim) {
     this.arena = sim.arena;
+    this.clock += dt;
     // New drones (the first ones, or built by hits) take off from the ball.
     while (this.drones.length < Math.floor(this.blades)) {
       const heading = this.angle + (this.drones.length * TAU) / Math.floor(this.blades);
@@ -211,8 +226,16 @@ export class Drone extends Weapon {
     super.update(dt, sim); // the ability may launch drones (Swarm)
     this.updateGuard(dt, sim);
     const guard = this.guardTarget ? this.guardOrder() : [];
+    // The same for every guarding drone this step. (guardStep isn't: a kill
+    // by one drone grows the ball in a royale, and the guard with it.)
+    const guardEase = guard.length > 0 ? Math.exp(-this.guardPull * dt) : 0;
+    const flyers = this.upgradesWith('flyDrone');
 
-    this.drones.forEach((drone, i) => {
+    // A plain loop rather than forEach: this runs for every drone every step.
+    // Nothing adds or removes drones while it runs.
+    const { drones } = this;
+    for (let i = 0, n = drones.length; i < n; i++) {
+      const drone = drones[i];
       if (drone.hitLocks.size > 0) {
         for (const [ball, time] of drone.hitLocks) {
           if (time - dt <= 0) drone.hitLocks.delete(ball);
@@ -221,17 +244,18 @@ export class Drone extends Weapon {
       }
       drone.bounceLock = Math.max(0, drone.bounceLock - dt);
       drone.swatLock = Math.max(0, drone.swatLock - dt);
-      if (guard.includes(drone)) {
-        this.holdGuard(drone, guard.indexOf(drone), guard.length, dt);
-        return;
+      const k = guard.indexOf(drone);
+      if (k >= 0) {
+        this.holdGuard(drone, k, guard.length, dt, guardEase);
+        continue;
       }
-      if (this.upgrades.some((upgrade) => upgrade.flyDrone?.(drone, dt, sim))) return;
+      if (flies(flyers, drone, dt, sim)) continue;
       if (drone.state === 'orbit') this.flyInFormation(drone, i, dt);
       else if (drone.state === 'attack') this.flyAttack(drone, dt);
       else if (drone.state === 'through') this.flyThrough(drone, dt);
       else this.tumble(drone, dt);
       this.move(drone, dt);
-    });
+    }
 
     if (sim.over) return;
     this.launchTimer -= dt;
@@ -265,6 +289,19 @@ export class Drone extends Weapon {
       toughness: this.toughness, // swats left before one knocks it away
       route: { x: 0, y: 0 }, // wrapping drones: where the enemy is reached through the walls, see delta()
       hitLocks: new Map(),
+      guardSide: 0, // see guardOrder
+      // Used only by transformations, but every drone has them from the start
+      // so all drones have the same shape: drones that grew fields later took
+      // a dozen, which made V8 look every drone field up the slow way.
+      warped: false, // Non-Euclidean
+      latch: 0, // Slicers
+      clash: 0,
+      orbit: 0, // Fighters
+      orbitDir: 1,
+      weavePhase: 0,
+      fireTimer: 0,
+      flash: 0,
+      side: 0, // Wingmen
     };
   }
 
@@ -288,7 +325,9 @@ export class Drone extends Weapon {
 
   // Flies `drone` on along its heading for one step, then off (or through) the walls.
   move(drone, dt) {
-    drone.pos = add(drone.pos, fromAngle(drone.heading, drone.speed * dt));
+    // add(pos, fromAngle(heading, speed * dt)), written out: it runs for every drone every step.
+    const step = drone.speed * dt;
+    drone.pos = { x: drone.pos.x + Math.cos(drone.heading) * step, y: drone.pos.y + Math.sin(drone.heading) * step };
     this.bounceOffWalls(drone, this.arena);
   }
 
@@ -312,13 +351,22 @@ export class Drone extends Weapon {
   }
 
   // Steers for the slot: the velocity that keeps pace with it, plus a pull towards it.
+  // The vector maths is written out (the same sums as add, fromAngle and so on,
+  // in the same order): it runs for every drone in formation every step.
   flyInFormation(drone, i, dt) {
     drone.rest -= dt;
-    const orbitRate = this.spinSpeed * this.multiplier('spinMultiplier') * this.spinDir;
-    const slotVel = add(this.owner.vel, fromAngle(this.slotAngle(i) + Math.PI / 2, this.orbitRadius * orbitRate));
-    const want = add(slotVel, scale(sub(this.slotPoint(i), drone.pos), this.formationPull));
-    const speed = clamp(length(want), this.minSpeed, this.flySpeed * this.speedFactor);
-    this.steer(drone, angleOf(want), speed, this.grip, dt);
+    const { pos, vel } = this.owner;
+    const orbitRate = this.spinSpeed * this.spinMultiplier * this.spinDir;
+    const slot = this.slotAngle(i);
+    const orbitRadius = this.orbitRadius;
+    const tangent = slot + Math.PI / 2;
+    const slotSpeed = orbitRadius * orbitRate;
+    const slotVelX = vel.x + Math.cos(tangent) * slotSpeed;
+    const slotVelY = vel.y + Math.sin(tangent) * slotSpeed;
+    const wantX = slotVelX + (pos.x + Math.cos(slot) * orbitRadius - drone.pos.x) * this.formationPull;
+    const wantY = slotVelY + (pos.y + Math.sin(slot) * orbitRadius - drone.pos.y) * this.formationPull;
+    const speed = clamp(hypot(wantX, wantY), this.minSpeed, this.flySpeed * this.speedFactor);
+    this.steer(drone, Math.atan2(wantY, wantX), speed, this.grip, dt);
   }
 
   // ---- Guarding ----------------------------------------------------------------
@@ -328,20 +376,29 @@ export class Drone extends Weapon {
 
   // The drones in formation, in their order round the ball from one side of
   // the guard to the other, so none has to cross another to reach its place.
+  // Each drone's side is worked out once before sorting, rather than in every comparison.
   guardOrder() {
-    const side = (drone) => angleDiff(this.guardAngle, angleOf(sub(drone.pos, this.owner.pos)));
-    return this.drones.filter((drone) => drone.state === 'orbit').sort((a, b) => side(a) - side(b));
+    const { pos } = this.owner;
+    const order = [];
+    for (const drone of this.drones) {
+      if (drone.state !== 'orbit') continue;
+      drone.guardSide = angleDiff(this.guardAngle, Math.atan2(drone.pos.y - pos.y, drone.pos.x - pos.x));
+      order.push(drone);
+    }
+    return order.sort(bySide);
   }
 
-  // Moves drone `k` of `n` in the guard round the ball to its place.
-  holdGuard(drone, k, n, dt) {
+  // Moves drone `k` of `n` in the guard round the ball to its place. `ease`
+  // is how much of the way there is left after `dt`.
+  holdGuard(drone, k, n, dt, ease = Math.exp(-this.guardPull * dt)) {
     drone.rest -= dt;
+    const { pos } = this.owner;
     const place = this.guardAngle + (k - (n - 1) / 2) * this.guardStep;
-    const offset = sub(drone.pos, this.owner.pos);
-    const ease = Math.exp(-this.guardPull * dt);
-    const angle = place + angleDiff(place, angleOf(offset)) * ease;
-    const radius = this.guardRadius + (length(offset) - this.guardRadius) * ease;
-    drone.pos = add(this.owner.pos, fromAngle(angle, radius));
+    const offsetX = drone.pos.x - pos.x;
+    const offsetY = drone.pos.y - pos.y;
+    const angle = place + angleDiff(place, Math.atan2(offsetY, offsetX)) * ease;
+    const radius = this.guardRadius + (hypot(offsetX, offsetY) - this.guardRadius) * ease;
+    drone.pos = { x: pos.x + Math.cos(angle) * radius, y: pos.y + Math.sin(angle) * radius };
     drone.heading = angle + angleDiff(angle, drone.heading) * ease;
     drone.speed = this.minSpeed;
   }
@@ -351,12 +408,13 @@ export class Drone extends Weapon {
     const { target } = drone;
     drone.timer += dt;
     const toTarget = target?.alive ? this.delta(drone, target.pos) : null;
-    if (!toTarget || dot(toTarget, fromAngle(drone.heading)) < 0 || drone.hitLocks.has(target) || drone.timer > this.maxAttackTime) {
+    if (!toTarget || toTarget.x * Math.cos(drone.heading) + toTarget.y * Math.sin(drone.heading) < 0 || drone.hitLocks.has(target) || drone.timer > this.maxAttackTime) {
       drone.state = 'through';
       drone.timer = this.overshoot / Math.max(drone.speed, 1);
       return;
     }
-    const lead = add(target.pos, scale(target.vel, length(toTarget) / Math.max(drone.speed, 1)));
+    const ahead = hypot(toTarget.x, toTarget.y) / Math.max(drone.speed, 1);
+    const lead = { x: target.pos.x + target.vel.x * ahead, y: target.pos.y + target.vel.y * ahead };
     this.steer(drone, angleOf(this.delta(drone, lead)), this.dashSpeed * this.speedFactor, this.attackGrip, dt);
   }
 
@@ -425,20 +483,23 @@ export class Drone extends Weapon {
   strike(sim) {
     const guards = this.guardingDrones;
     for (const drone of this.drones) {
-      if (!this.swattable(drone) || guards.includes(drone)) continue;
+      if (!this.swattable(drone) || (guards.length > 0 && guards.includes(drone))) continue;
       const { a, b } = this.droneSegment(drone);
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
-      const half = Math.hypot(b.x - a.x, b.y - a.y) / 2;
+      const half = hypot(b.x - a.x, b.y - a.y) / 2;
       for (const enemy of sim.aliveBalls) {
         if (enemy === this.owner) continue;
         // Out of reach of the enemy's ball, blades and shields: neither the
         // touch nor the ram below could happen. Most enemies, in a royale.
         const dx = enemy.pos.x - mx;
         const dy = enemy.pos.y - my;
-        const far = Math.max(enemy.weapon.guardReach, enemy.radius) + this.thickness + half + 1;
+        const guardReach = enemy.weapon.guardReach;
+        const far = Math.max(guardReach, enemy.radius) + this.thickness + half + 1;
         if (dx * dx + dy * dy > far * far) continue;
-        const touch = drone.swatLock > 0 ? null : this.touch(a, b, enemy, { shields: drone.bounceLock <= 0 });
+        // touchAt's sums, from what's worked out above (its gap is this one's, mirrored).
+        const touch =
+          drone.swatLock > 0 ? null : this.touchWithin(a, b, enemy, this.thickness, drone.bounceLock <= 0, hypot(dx, dy), guardReach + this.thickness + half + 1e-6);
         if (touch) {
           if (touch.shield) this.bounce(drone, enemy, touch.point, sim);
           else this.swat(drone, enemy, touch.point, sim);
@@ -454,7 +515,7 @@ export class Drone extends Weapon {
         this.striker = drone;
         sim.applyHit(this.owner, enemy, add(enemy.pos, scale(dir, enemy.radius)));
         this.striker = null;
-        for (const upgrade of this.upgrades) upgrade.onDroneHit?.(drone, enemy, sim);
+        for (const upgrade of this.upgradesWith('onDroneHit')) upgrade.onDroneHit(drone, enemy, sim);
         if (!this.rams(drone)) break;
       }
     }
@@ -467,12 +528,23 @@ export class Drone extends Weapon {
   // through shields, and a guard-broken ball can't block at all. Without
   // `shields` it passes through shields (a drone that just bounced off one).
   touch(a, b, enemy, { reach = this.thickness, shields = true } = {}) {
-    const weapon = enemy.weapon;
+    return this.touchAt(a, b, enemy, reach, shields);
+  }
+
+  // touch, with its options as arguments: strike calls it for every drone near an enemy.
+  touchAt(a, b, enemy, reach, shields) {
     // Too far from the enemy for anything of theirs to reach (see Weapon.guardReach).
     // Checked first as it's the cheapest way out, and the usual one.
-    const half = Math.hypot(b.x - a.x, b.y - a.y) / 2;
-    const gap = Math.hypot((a.x + b.x) / 2 - enemy.pos.x, (a.y + b.y) / 2 - enemy.pos.y);
-    if (gap >= weapon.guardReach + reach + half + 1e-6) return null;
+    const half = hypot(b.x - a.x, b.y - a.y) / 2;
+    const gap = hypot((a.x + b.x) / 2 - enemy.pos.x, (a.y + b.y) / 2 - enemy.pos.y);
+    return this.touchWithin(a, b, enemy, reach, shields, gap, enemy.weapon.guardReach + reach + half + 1e-6);
+  }
+
+  // touchAt once the segment's distance from the enemy (`gap`) and the most
+  // it can be to touch anything of theirs (`limit`) are known.
+  touchWithin(a, b, enemy, reach, shields, gap, limit) {
+    const weapon = enemy.weapon;
+    if (gap >= limit) return null;
     if (this.unblockable || enemy.guardBroken) return null;
     // Blades first, then shields. Called for every drone every step, so no intermediate arrays.
     if (!weapon.unblockable) {
@@ -495,7 +567,7 @@ export class Drone extends Weapon {
   // balls, but only the drone is affected: no spin flip, no knockback, and
   // only the drone hooks. A drone with toughness to spare is only deflected.
   swat(drone, enemy, point, sim) {
-    for (const upgrade of this.upgrades) upgrade.onDroneSwat?.(drone, enemy, point, sim);
+    for (const upgrade of this.upgradesWith('onDroneSwat')) upgrade.onDroneSwat(drone, enemy, point, sim);
     if (drone.toughness > 1) {
       this.deflect(drone, enemy, point, sim);
       return;
@@ -523,19 +595,28 @@ export class Drone extends Weapon {
   }
 
   // Glances the drone off a shield: it keeps its speed, turned away from the
-  // shield, and an attack it was on is over. Reported as a block; no hooks.
+  // shield, and an attack it was on is over. Reported as a block, and the
+  // shield's ball hears of it (registerBlock: Shield Bash); no hooks of ours.
   bounce(drone, enemy, point, sim) {
     const away = sub(drone.pos, point);
     drone.heading = length(away) > 1e-6 ? angleOf(away) : drone.heading + Math.PI;
     drone.bounceLock = this.bounceLock;
     if (drone.state === 'attack' || drone.state === 'through') this.rejoin(drone);
     sim.onEvent('block', { attacker: this.owner, defender: enemy, point });
+    enemy.weapon.registerBlock(this, sim); // Shield Bash
   }
 
   // ---- Drawing ------------------------------------------------------------------
 
-  // A dart-shaped drone pointing along +x, from `start` to `start + length`.
-  drawLocal(ctx, start) {
+  // A dart-shaped drone pointing along +x, from `start` to `start + length`,
+  // unless a transformation has swapped in its own hull (`hull`, an upgrade
+  // with drawHull: the last one applied wins). `drone` is missing for a
+  // drone drawn on its own (a preview).
+  drawLocal(ctx, start, drone) {
+    if (this.hull) {
+      this.hull.drawHull(ctx, start, drone);
+      return;
+    }
     const end = start + this.length;
     const w = BODY_HALF_WIDTH;
     ctx.fillStyle = this.owner.color;
@@ -592,7 +673,7 @@ export class Drone extends Weapon {
       }
       ctx.globalAlpha = drone.state === 'tumble' ? 0.6 : 1;
       ctx.scale(1, this.widthScale);
-      this.drawLocal(ctx, start);
+      this.drawLocal(ctx, start, drone);
       for (const upgrade of this.upgrades) upgrade.drawBlade(ctx, start, drone);
       ctx.restore();
     }
@@ -612,6 +693,16 @@ export class Drone extends Weapon {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+// True if one of `flyers` (upgrades with a flyDrone hook) flew `drone` this step.
+function flies(flyers, drone, dt, sim) {
+  for (const upgrade of flyers) if (upgrade.flyDrone(drone, dt, sim)) return true;
+  return false;
+}
+
+function bySide(a, b) {
+  return a.guardSide - b.guardSide;
 }
 
 // Midpoint of the closest approach of segments a-b and c-d, if it's under `reach`, otherwise null.

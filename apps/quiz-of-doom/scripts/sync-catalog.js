@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { WEAPONS } from '../../../games/weapon-balls/src/weapons/index.js';
-import { UPGRADES } from '../../../games/weapon-balls/src/upgrades/index.js';
+import { UPGRADES, stackedDescriptions, weaponsFor } from '../../../games/weapon-balls/src/upgrades/index.js';
 
 const FILE = path.join(import.meta.dirname, '..', 'data', 'game.json');
 
@@ -34,10 +34,11 @@ function describe(U) {
     id: U.id,
     name: U.displayName,
     description: U.description,
-    weapons: U.weapons, // null = any weapon
+    weapons: weaponsFor(U), // null = any weapon
     requires: U.requires ?? [],
     excludedBy: U.excludedBy ?? [], // not offered to a fighter that has one of these
     maxStacks: Number.isFinite(U.maxStacks) ? U.maxStacks : null, // null = no limit
+    stacked: stackedDescriptions(U), // what 2, 3... copies do together
   };
 }
 

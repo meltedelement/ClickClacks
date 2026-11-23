@@ -143,6 +143,22 @@ export class Sound {
       case 'dash':
         this.whoosh(0.18 + shake * 0.03, 900, 2200 + shake * 200, 0.3 + shake * 0.06);
         break;
+      case 'guard':
+        this.clang([1400, 2100, 2900], 0.3, 0.2);
+        this.whoosh(0.1, 1800, 4200, 0.25);
+        break;
+      case 'deflect':
+        this.clang([1180, 1790, 2630], 0.35, 0.25);
+        break;
+      case 'riposte':
+        this.whoosh(0.35, 500, 3400, 0.7);
+        this.tone({ type: 'sawtooth', freq: 200, freqEnd: 700, dur: 0.3, gain: 0.1, attack: 0.1, lowpass: 2000 });
+        break;
+      case 'impact':
+        this.tone({ type: 'sine', freq: 120, freqEnd: 40, dur: 0.5, gain: 0.8 });
+        this.clang([1560, 2340, 3120], 0.5, 0.3);
+        this.noise({ filter: 'highpass', freq: 2500, freqEnd: 900, dur: 0.15, gain: 0.5 });
+        break;
       case 'throw':
         this.whoosh(0.3, 500, 2400, 0.5);
         break;
@@ -176,6 +192,30 @@ export class Sound {
       case 'reload':
         this.noise({ filter: 'bandpass', freq: 2800, q: 3, dur: 0.03, gain: 0.35 });
         this.tone({ type: 'square', freq: 1800, freqEnd: 900, dur: 0.03, gain: 0.04, delay: 0.08, lowpass: 3500 });
+        break;
+      case 'pop':
+        this.tone({ type: 'sine', freq: 700, freqEnd: 180, dur: 0.18, gain: 0.45 });
+        this.noise({ filter: 'bandpass', freq: 2400, freqEnd: 900, q: 1.5, dur: 0.12, gain: 0.35 });
+        this.tone({ type: 'triangle', freq: 2900, freqEnd: 3600, dur: 0.1, gain: 0.06, delay: 0.03 });
+        break;
+      case 'fizzle':
+        this.noise({ filter: 'highpass', freq: 3800, dur: 0.06, gain: 0.15 });
+        break;
+      case 'rift': // the Tome tearing open a portal
+        this.tone({ type: 'sine', freq: 140, freqEnd: 60, dur: 0.35, gain: 0.35 });
+        this.noise({ filter: 'bandpass', freq: 500, freqEnd: 1600, q: 1.5, dur: 0.25, gain: 0.25 });
+        break;
+      case 'tentacle': // a tentacle lashing out between two portals
+        this.tone({ type: 'sawtooth', freq: 90, freqEnd: 45, dur: 0.4, gain: 0.12, attack: 0.05, lowpass: 600 });
+        this.whoosh(0.25, 300, 1100, 0.4);
+        break;
+      case 'vanish':
+        this.tone({ type: 'sine', freq: 900, freqEnd: 200, dur: 0.3, gain: 0.2 });
+        this.whoosh(0.3, 2400, 500, 0.3);
+        break;
+      case 'appear':
+        this.whoosh(0.12, 600, 3200, 0.5);
+        this.tone({ type: 'triangle', freq: 400, freqEnd: 1500, dur: 0.12, gain: 0.2 });
         break;
       case 'slam': {
         const power = Math.min(shake / 12, 1);
@@ -288,6 +328,53 @@ export class Sound {
         break;
       case 'restock':
         this.clang([1200, 1800], 0.12, 0.08);
+        break;
+      // Wand transformations
+      case 'excalibur':
+        this.whoosh(0.3, 900, 3600, 0.45);
+        this.clang([1320, 1980, 2640], 0.35, 0.12);
+        break;
+      case 'conjure':
+        this.tone({ type: 'triangle', freq: 1200, freqEnd: 2400, dur: 0.12, gain: 0.08 });
+        break;
+      case 'drop':
+        this.tone({ type: 'sine', freq: 520, freqEnd: 780, dur: 0.08, gain: 0.08 });
+        break;
+      case 'gust': // Aeromancer's ring of fire blowing someone away
+        this.whoosh(0.25, 600, 2600, 0.35);
+        break;
+      case 'fizzle':
+        this.noise({ filter: 'highpass', freq: 3800, dur: 0.06, gain: 0.15 });
+        break;
+      // Tome transformations
+      case 'puppet': // Puppeteer: a portal where an enemy hit the wall
+        this.tone({ type: 'sine', freq: 220, freqEnd: 90, dur: 0.25, gain: 0.2 });
+        break;
+      case 'detonate': // Ensnarer
+        this.tone({ type: 'sine', freq: 160, freqEnd: 40, dur: 0.45, gain: 0.7 });
+        this.noise({ filter: 'lowpass', freq: 2400, freqEnd: 200, dur: 0.4, gain: 0.6 });
+        break;
+      case 'pentagram-warn': // Satanist: the pentagram drawn
+        this.tone({ type: 'sawtooth', freq: 55, freqEnd: 75, dur: 1.1, gain: 0.12, attack: 0.3, lowpass: 500 });
+        break;
+      case 'pentagram': // Satanist: the pentagram burns
+        this.tone({ type: 'sawtooth', freq: 110, freqEnd: 35, dur: 0.7, gain: 0.35, lowpass: 900 });
+        this.noise({ filter: 'lowpass', freq: 1800, freqEnd: 150, dur: 0.6, gain: 0.6 });
+        break;
+      case 'bless': // Priest healing in a beam
+        this.tone({ type: 'sine', freq: 990, freqEnd: 1320, dur: 0.15, gain: 0.05 });
+        break;
+      case 'claw': // Bestial Worshipper
+        this.noise({ filter: 'bandpass', freq: 1600, freqEnd: 3200, q: 1.2, dur: 0.09, gain: 0.3 });
+        break;
+      case 'caw': // Witch's raven swooping
+        this.tone({ type: 'sawtooth', freq: 820, freqEnd: 560, dur: 0.14, gain: 0.07, lowpass: 2200 });
+        break;
+      case 'peck':
+        this.tone({ type: 'triangle', freq: 1500, freqEnd: 900, dur: 0.05, gain: 0.12 });
+        break;
+      case 'shoo': // the raven swatted away
+        this.whoosh(0.18, 2200, 800, 0.25);
         break;
       case 'bump':
         this.tone({ type: 'sine', freq: 170, freqEnd: 320, dur: 0.14, gain: 0.45 });

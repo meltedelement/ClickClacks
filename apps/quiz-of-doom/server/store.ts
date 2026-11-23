@@ -144,17 +144,26 @@ function eligibleUpgrades(team: Team) {
   );
 }
 
-function randomSample(pool: string[], size: number): string[] {
+// Upgrades have no stack limit, but each copy a team owns makes another one
+// rarer: its chance to be offered is multiplied by this for every copy.
+const REPEAT_WEIGHT = 0.5;
+
+// Draws up to `size` different ids, each in proportion to its weight.
+function weightedSample(pool: { id: string; weight: number }[], size: number): string[] {
   pool = [...pool];
   const sample: string[] = [];
   while (sample.length < size && pool.length > 0) {
-    sample.push(pool.splice(randomInt(pool.length), 1)[0]);
+    let r = Math.random() * pool.reduce((sum, p) => sum + p.weight, 0);
+    let i = 0;
+    while (i < pool.length - 1 && r >= pool[i].weight) r -= pool[i++].weight;
+    sample.push(pool.splice(i, 1)[0].id);
   }
   return sample;
 }
 
 function rollOffer(team: Team): string[] {
-  return randomSample(eligibleUpgrades(team).map((u) => u.id), getCatalog().offerSize);
+  const pool = eligibleUpgrades(team).map((u) => ({ id: u.id, weight: Math.pow(REPEAT_WEIGHT, Math.max(0, team.upgrades[u.id] ?? 0)) }));
+  return weightedSample(pool, getCatalog().offerSize);
 }
 
 // A team still in the battle gets one transformation pick for each battle
@@ -187,7 +196,7 @@ function reconcile() {
 
     const eligible = eligibleTransformations(team, getCatalog());
     if (transformPicks(team) > 0 && (!team.transformOffer?.length || !team.transformOffer.every((id) => eligible.includes(id)))) {
-      team.transformOffer = randomSample(eligible, TRANSFORM_OFFER_SIZE);
+      team.transformOffer = weightedSample(eligible.map((id) => ({ id, weight: 1 })), TRANSFORM_OFFER_SIZE);
     }
   }
 }

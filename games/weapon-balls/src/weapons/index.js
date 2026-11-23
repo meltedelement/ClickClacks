@@ -4,10 +4,12 @@ import { Mace } from './Mace.js';
 import { Daggers } from './Daggers.js';
 import { Drone } from './Drone.js';
 import { Gun } from './Gun.js';
+import { Wand } from './Wand.js';
+import { Tome } from './Tome.js';
 
 // Every selectable weapon. Add new ones here and they show up in the UI
 // and the balance script automatically.
-export const WEAPONS = [Sword, Spear, Mace, Daggers, Drone, Gun];
+export const WEAPONS = [Sword, Spear, Mace, Daggers, Drone, Gun, Wand, Tome];
 
 export function getWeaponById(id) {
   const weapon = WEAPONS.find((W) => W.id === id);

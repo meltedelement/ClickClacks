@@ -1,6 +1,8 @@
 import { Weapon } from './Weapon.js';
-import { TAU, add, angleDiff, angleOf, closestPointOnSegment, closestPointsBetweenSegments, distance, fromAngle, normalize, scale, sub, turnTowards } from '../sim/math.js';
-import { nearestEnemy } from '../sim/targeting.js';
+import { TAU, add, angleDiff, angleOf, closestPointOnSegment, distance, fromAngle, hypot, normalize, scale, sub, turnTowards } from '../sim/math.js';
+import { enemyInCone, nearestEnemy, withinRange } from '../sim/targeting.js';
+import { drawCone } from './cone.js';
+import { projectileBlockedBy } from './projectile.js';
 
 const MUZZLE_TIME = 0.06; // s the muzzle flash shows for
 const TRACER = '#ffe066';
@@ -9,22 +11,27 @@ const BAR_COLOR = '#ffd23f';
 const BRASS = '#d9a441';
 const MAX_PIPS = 10; // rounds shown one by one; a bigger magazine shows as a bar
 
-// A six-shooter. Instead of spinning freely it turns to aim at the nearest
-// enemy (leading it) and fires whenever it's lined up: six quick, heavy
-// rounds, each a little off true, then a long reload. Reloading, it keeps
-// aiming, with the cylinder swung out and filling round by round, and a bar
-// on the ball showing how far along it is. The rounds left show as pips in
-// the same spot.
+// A six-shooter. It spins like any other weapon, with a translucent cone out
+// of its muzzle. Whoever crosses the cone gets locked on: it turns to aim at
+// them (leading them) and fires whenever it's lined up, six quick, heavy
+// rounds, each a little off true, then a long reload. It stays locked while
+// they're within the cone's range, and goes back to spinning once they're
+// out of it or dead, or while it reloads (the cylinder swung out and filling
+// round by round, with a bar on the ball showing how far along it is). The
+// rounds left show as pips in the same spot.
 //
 // Bullets fly in a straight line until they hit something or leave the arena.
 // Each one that reaches an enemy ball is a weapon hit (crits, lifesteal,
-// armor and so on all apply). Enemy blades, shields and flying drones in
-// the way stop it. The gun has no melee at all: getSegments() is empty, so it
+// armor and so on all apply). Enemy blades and shields in the way stop it.
+// A flying drone in the way is swatted and soaks up `bulletAbsorb` of the
+// bullet's damage (`absorbed`), and the bullet flies on with the rest: it
+// only stops once the drones it went through have soaked up all of it. The gun has no melee at all: getSegments() is empty, so it
 // neither hits nor blocks anything up close.
 //
-// Common upgrades map onto it: spin speed (Quick Spin) is how fast it turns
-// to aim, `thickness` (Heavy Blade) is each bullet's hitbox half-width, and
-// `length` (Long Blade) is the barrel, from whose end bullets leave.
+// Stats map onto it: spin speed (Quick Spin) is how fast it spins and,
+// times `aimBoost`, how fast it turns to aim, `thickness` is each bullet's
+// hitbox half-width, and `length` is the barrel, from whose end bullets
+// leave. Long Blade and Heavy Blade aren't offered to the Gun (`notWeapons`).
 //
 // Upgrades (src/upgrades/gun.js, gun-transformations.js) reshape it through
 // the stats below (`volley`, `ricochets`, `bankShots`, `bayonet`, `nearMiss`,
@@ -32,7 +39,7 @@ const MAX_PIPS = 10; // rounds shown one by one; a bigger magazine shows as a ba
 //   onShot(sim)                              one round was fired (Pop Pop's free bullet)
 //   onBulletMove(bullet, from, sim)          a live bullet flew from `from` to bullet.pos
 //   onBulletBounce(bullet, sim)              a bullet ricocheted off a wall
-//   onBulletBlocked(bullet, enemy, point, sim)  an enemy blade, shield or drone stopped it
+//   onBulletBlocked(bullet, enemy, point, sim)  an enemy blade or shield stopped it, or drones soaked all of it up
 //   onBulletNearMiss(bullet, enemy, point, sim) it passed within `nearMiss` of an enemy
 // While a bullet is being dealt with, `striking` is that bullet (and
 // `strikeTarget` the ball it hit, during the hit), so per-hit modifiers can
@@ -44,16 +51,22 @@ export class Gun extends Weapon {
 
   constructor(owner) {
     super(owner);
-    this.damage = 4; // per round
-    this.spinSpeed = 5; // rad/s it turns to aim
+    this.damage = 4.7; // per round
+    this.spinSpeed = 4; // rad/s it spins while nobody is in the cone
+    this.aimBoost = 1.75; // it turns to aim this many times faster than it spins
+    this.coneHalfAngle = 0.6; // rad either side of the barrel that it spots enemies in
+    this.coneRange = 330; // px, centre to centre: how far the cone reaches, and how far a lock holds
     this.length = 34; // px, the barrel
     this.gap = 2;
     this.thickness = 3; // px, each bullet's hitbox half-width
     this.damagePerHit = 0.15;
+    this.falloffStart = 100; // px: full damage this close, fading with distance (see Weapon)
+    this.falloffEnd = 380;
+    this.falloffMin = 0.4; // x damage at falloffEnd and beyond
 
     this.magazine = 6; // rounds per reload
     this.fireInterval = 0.18; // s between two shots
-    this.reloadTime = 5.5; // s
+    this.reloadTime = 4.5; // s
     this.bulletSpeed = 700; // px/s
     this.aimTolerance = 0.08; // rad off target it still fires at
     this.inaccuracy = 0.3; // rad: each shot goes off up to this far either side of the barrel
@@ -64,13 +77,14 @@ export class Gun extends Weapon {
     this.bankShots = false; // true: a bullet is harmless until it has bounced, and the gun aims off the walls
     this.bayonet = 0; // px of blade past the muzzle, a melee hitbox; 0 = none
     this.nearMiss = 0; // px past an enemy's edge that counts as a near miss; 0 = none
-    this.model = 'revolver'; // drawing: 'revolver', 'shotgun' or 'smg'
+    this.model = 'revolver'; // drawing: 'revolver', 'shotgun', 'smg' or 'blaster'
+    this.ammoLights = []; // drawing: the blaster's ammo-type lights, one colour per special round
     this.tracer = TRACER; // bullet colour
 
-    this.ammo = this.magazine;
+    this.ammo = 0; // it starts empty: the first reload begins on the first step, once upgrades have set reloadTime
     this.fireTimer = 0; // s until it can fire again
     this.reloadLeft = 0; // s of reloading left; above 0 while reloading
-    this.target = null; // the enemy it's aiming at
+    this.target = null; // the enemy it's locked on to, or null while it spins
     this.aim = 0; // the angle it's turning towards
     this.bullets = []; // { pos, vel }
     this.flash = 0; // s left of the muzzle flash
@@ -109,13 +123,26 @@ export class Gun extends Weapon {
     if (this.striking) this.damage += this.damagePerHit;
   }
 
-  // Turns towards where the nearest enemy will be when a bullet gets there,
-  // reloading or not. With nobody left it holds still.
+  // Spins until an enemy crosses the cone, then turns towards where it will be
+  // when a bullet gets there, for as long as it stays within range. Reloading
+  // it spins instead: there's nothing to aim for. With bank shots it needs no
+  // line of sight: it always takes on the nearest enemy and aims off a wall.
   turn(dt, sim) {
-    this.target = sim.over ? null : nearestEnemy(this.owner, sim);
-    if (!this.target) return;
+    const { owner } = this;
+    if (this.bankShots) {
+      this.target = sim.over || this.reloading ? null : nearestEnemy(owner, sim);
+    } else {
+      const held = this.target?.alive && !this.reloading && withinRange(owner, this.target, this.coneRange);
+      if (!held) {
+        this.target = sim.over || this.reloading ? null : enemyInCone(owner, this.angle, this.coneHalfAngle, this.coneRange, sim);
+      }
+    }
+    if (!this.target) {
+      super.turn(dt, sim);
+      return;
+    }
     this.aim = this.bankShots ? this.bankAim(this.target, sim.arena) : this.leadAim(this.target);
-    this.angle = turnTowards(this.angle, this.aim, this.spinSpeed * this.multiplier('spinMultiplier') * dt);
+    this.angle = turnTowards(this.angle, this.aim, this.spinSpeed * this.aimBoost * this.spinMultiplier * dt);
   }
 
   leadAim({ pos, vel }) {
@@ -133,10 +160,10 @@ export class Gun extends Weapon {
     for (let wall = 0; wall < 4; wall++) {
       const sx = wall === 0 ? -1 : wall === 1 ? 1 : 0;
       const sy = wall === 2 ? -1 : wall === 3 ? 1 : 0;
-      const time = Math.hypot(reflect(pos.x, sx, width) - x, reflect(pos.y, sy, height) - y) / this.bulletSpeed;
+      const time = hypot(reflect(pos.x, sx, width) - x, reflect(pos.y, sy, height) - y) / this.bulletSpeed;
       const dx = reflect(pos.x + vel.x * time, sx, width) - x;
       const dy = reflect(pos.y + vel.y * time, sy, height) - y;
-      const d = Math.hypot(dx, dy);
+      const d = hypot(dx, dy);
       if (d < best) {
         best = d;
         aim = Math.atan2(dy, dx);
@@ -149,6 +176,7 @@ export class Gun extends Weapon {
     super.update(dt, sim);
     if (this.flash > 0) this.flash -= dt;
     this.fireTimer = Math.max(0, this.fireTimer - dt);
+    if (this.ammo === 0 && !this.reloading) this.startReload(sim, false);
     if (this.reloading) {
       this.reloadLeft -= dt;
       if (!this.reloading) {
@@ -171,7 +199,7 @@ export class Gun extends Weapon {
     sim.onEvent('ability', { ball: this.owner, ability: null, phase: 'gunshot', shake: rounds > 1 ? 4 : 1.5 });
     for (let i = 0; i < rounds; i++) {
       this.shoot(rounds > 1 ? (((i + Math.random()) / rounds) * 2 - 1) * this.inaccuracy : this.stray(), sim);
-      for (const upgrade of this.upgrades) upgrade.onShot?.(sim);
+      for (const upgrade of this.upgradesWith('onShot')) upgrade.onShot(sim);
     }
     if (this.ammo === 0) this.startReload(sim);
   }
@@ -187,14 +215,17 @@ export class Gun extends Weapon {
     const { owner } = this;
     const dir = fromAngle(this.angle);
     const muzzle = add(owner.pos, scale(dir, owner.radius + this.gap + this.length));
-    const bullet = { pos: muzzle, vel: fromAngle(this.angle + off, this.bulletSpeed), bounces: 0 };
+    // `reflector`, `damage` and `trail` (Hotshot) are set later, if ever; here so every bullet has one shape.
+    const bullet = { pos: muzzle, vel: fromAngle(this.angle + off, this.bulletSpeed), bounces: 0, reflector: null, damage: 0, trail: null, absorbed: 0, dronesHit: null };
     if (!this.strike(bullet, add(owner.pos, scale(dir, owner.radius)), sim)) this.bullets.push(bullet);
   }
 
-  // Swings the cylinder out and tips the spent brass out by the gun.
-  startReload(sim) {
+  // Swings the cylinder out and tips the spent brass out by the gun (not for
+  // the first reload: it starts empty, with no brass to tip out).
+  startReload(sim, eject = true) {
     const { owner } = this;
     this.reloadLeft = this.reloadTime;
+    if (!eject) return;
     const pos = add(owner.pos, fromAngle(this.angle, owner.radius + this.gap + 12 * owner.size));
     sim.onEvent('ability', { ball: owner, ability: null, phase: 'eject', pos, burst: { color: BRASS, count: Math.min(this.magazine, 10), speed: 110, life: 0.5, size: 2 } });
   }
@@ -232,14 +263,16 @@ export class Gun extends Weapon {
       pos.y = pos.y < 0 ? -pos.y : 2 * height - pos.y;
       vel.y = -vel.y;
     }
-    for (const upgrade of this.upgrades) upgrade.onBulletBounce?.(bullet, sim);
+    for (const upgrade of this.upgradesWith('onBulletBounce')) upgrade.onBulletBounce(bullet, sim);
     return true;
   }
 
   // Checks `bullet`'s path this step, from `from` to where it is now. Enemy
-  // blades and shields stop it (reported as a parry or a block, with no
-  // hooks but the Gun's own, like a swatted drone), and so does a drone,
-  // which it swats like a blade would; otherwise it hits the first enemy ball
+  // blades and shields stop it (reported as a parry or a block; a block
+  // also reaches the shield's ball through registerBlock, for Shield Bash).
+  // Drones it passes through are swatted, each soaking up its share of the
+  // bullet (see absorb), and stop it once they've soaked up all of it.
+  // Otherwise it hits the first enemy ball
   // in its way, or with `nearMiss` blows up passing one. Returns true if it
   // was stopped.
   strike(bullet, from, sim) {
@@ -253,22 +286,38 @@ export class Gun extends Weapon {
   fly(bullet, from, sim) {
     const { owner } = this;
     const to = bullet.pos;
+    if (bullet.reflector) return this.flyReflected(bullet, from, sim);
     // A bank shot is harmless until it has come off a wall.
     if (this.bankShots && bullet.bounces === 0) return false;
-    for (const upgrade of this.upgrades) upgrade.onBulletMove?.(bullet, from, sim);
+    for (const upgrade of this.upgradesWith('onBulletMove')) upgrade.onBulletMove(bullet, from, sim);
     for (const enemy of sim.aliveBalls) {
       if (enemy === owner) continue;
-      const touch = this.blockedBy(from, to, enemy);
+      // A parrying ball sends it back instead: it flies on as the parrier's.
+      const zone = enemy.weapon.projectileReflectRadius;
+      if (zone > 0) {
+        const near = closestPointOnSegment(enemy.pos, from, to);
+        if (distance(near, enemy.pos) < enemy.radius + zone) {
+          this.reflect(bullet, enemy, near, sim);
+          return false;
+        }
+      }
+      let touch = this.blockedBy(from, to, enemy, bullet.dronesHit);
+      while (touch && touch.drone) {
+        if (this.absorb(bullet, touch, enemy, sim)) return true;
+        touch = this.blockedBy(from, to, enemy, bullet.dronesHit);
+      }
       if (touch) {
-        if (touch.drone) enemy.weapon.swat(touch.drone, owner, touch.point, sim);
-        else if (touch.shield) sim.onEvent('block', { attacker: owner, defender: enemy, point: touch.point });
+        if (touch.shield) {
+          sim.onEvent('block', { attacker: owner, defender: enemy, point: touch.point });
+          enemy.weapon.registerBlock(this, sim); // Shield Bash
+        }
         else sim.onEvent('parry', { a: owner, b: enemy, point: touch.point });
-        for (const upgrade of this.upgrades) upgrade.onBulletBlocked?.(bullet, enemy, touch.point, sim);
+        for (const upgrade of this.upgradesWith('onBulletBlocked')) upgrade.onBulletBlocked(bullet, enemy, touch.point, sim);
         return true;
       }
       const closest = closestPointOnSegment(enemy.pos, from, to);
       const away = sub(closest, enemy.pos);
-      const gap = Math.hypot(away.x, away.y);
+      const gap = hypot(away.x, away.y);
       if (gap < enemy.radius + this.thickness) {
         // Strike the surface on the side the bullet came from, so the knockback carries it on.
         const dir = away.x || away.y ? normalize(away) : normalize(scale(bullet.vel, -1));
@@ -278,49 +327,58 @@ export class Gun extends Weapon {
       }
       // Only once it's past its closest approach, not while still coming in to hit.
       if (this.nearMiss > 0 && gap < enemy.radius + this.nearMiss && passedBy(enemy.pos, from, to)) {
-        for (const upgrade of this.upgrades) upgrade.onBulletNearMiss?.(bullet, enemy, closest, sim);
+        for (const upgrade of this.upgradesWith('onBulletNearMiss')) upgrade.onBulletNearMiss(bullet, enemy, closest, sim);
         return true;
       }
     }
     return false;
   }
 
+  // `bullet` went through one of `enemy`'s drones (`touch.drone`): the drone is
+  // swatted and soaks up its share of the bullet, which won't touch it again.
+  // Returns true if that was the last of the bullet (it stops, as blocked).
+  absorb(bullet, touch, enemy, sim) {
+    const { drone, point } = touch;
+    enemy.weapon.swat(drone, this.owner, point, sim);
+    (bullet.dronesHit ??= []).push(drone);
+    bullet.absorbed += enemy.weapon.bulletAbsorb;
+    if (bullet.absorbed < 1 - 1e-9) return false;
+    for (const upgrade of this.upgradesWith('onBulletBlocked')) upgrade.onBulletBlocked(bullet, enemy, point, sim);
+    return true;
+  }
+
+  // A bullet that went through drones hits for what they didn't soak up.
+  getDamage(point) {
+    const damage = super.getDamage(point);
+    return this.striking ? damage * (1 - this.striking.absorbed) : damage;
+  }
+
+  // `reflector` (parrying) sent `bullet` back: it now flies at this gun's ball
+  // and hits it, or anyone else in the way, as damage from the reflector.
+  reflect(bullet, reflector, point, sim) {
+    bullet.reflector = reflector;
+    bullet.vel = scale(normalize(sub(this.owner.pos, bullet.pos)), this.bulletSpeed);
+    bullet.damage = this.getDamage() * (reflector.weapon.ability?.counterMultiplier ?? 1);
+    reflector.weapon.ability?.onProjectileReflected?.(point, sim);
+  }
+
+  flyReflected(bullet, from, sim) {
+    const { reflector } = bullet;
+    for (const enemy of sim.aliveBalls) {
+      if (enemy === reflector) continue;
+      const closest = closestPointOnSegment(enemy.pos, from, bullet.pos);
+      if (distance(closest, enemy.pos) >= enemy.radius + this.thickness) continue;
+      sim.dealDamage(reflector, enemy, bullet.damage, { reason: 'reflect', color: '#bfe6ff' });
+      sim.onEvent('ability', { ball: reflector, ability: null, phase: 'impact', shake: 4, burst: { color: '#ffffff', count: 12, speed: 300, life: 0.3, size: 3 }, pos: closest });
+      return true;
+    }
+    return false;
+  }
+
   // Where the path from `a` to `b` runs into one of `enemy`'s blades, held
-  // shields or drones, as { point, shield, drone? }, or null. Follows the
-  // engine's blocking rules: an unblockable weapon on either side passes
-  // through blades, only ours through shields, and a guard-broken ball can't
-  // block. Drones follow their own (see Drone.strike): a guarding drone
-  // doesn't stop a bullet but takes its share off the hit, as usual.
-  blockedBy(a, b, enemy) {
-    if (this.unblockable || enemy.guardBroken) return null;
-    const weapon = enemy.weapon;
-    const reach = this.thickness;
-    // Drones fly far from their ball, so they aren't covered by guardReach below.
-    if (weapon.drones) {
-      const guards = weapon.guardingDrones;
-      for (const drone of weapon.drones) {
-        if (!weapon.swattable(drone) || guards.includes(drone)) continue;
-        const s = weapon.droneSegment(drone);
-        const point = contact(a, b, s.a, s.b, reach + weapon.thickness);
-        if (point) return { point, shield: false, drone };
-      }
-    }
-    // Too far from the enemy for its blades or shields to be in the way. The usual case.
-    const half = Math.hypot(b.x - a.x, b.y - a.y) / 2;
-    const gap = Math.hypot((a.x + b.x) / 2 - enemy.pos.x, (a.y + b.y) / 2 - enemy.pos.y);
-    if (gap >= weapon.guardReach + reach + half + 1e-6) return null;
-    if (!weapon.unblockable) {
-      for (const s of weapon.getSegments()) {
-        const point = contact(a, b, s.a, s.b, reach + weapon.thickness);
-        if (point) return { point, shield: false };
-      }
-    }
-    for (const shield of weapon.heldShields) {
-      const s = shield.getSegment();
-      const point = contact(a, b, s.a, s.b, reach + shield.thickness);
-      if (point) return { point, shield: true };
-    }
-    return null;
+  // shields or drones, or null (see projectileBlockedBy).
+  blockedBy(a, b, enemy, skip = null) {
+    return projectileBlockedBy(this, a, b, enemy, this.thickness, true, skip);
   }
 
   // The bayonet grows with the ball in a royale, like the barrel.
@@ -344,9 +402,14 @@ export class Gun extends Weapon {
 
   // ---- Drawing ------------------------------------------------------------------
 
+  drawUnder(ctx) {
+    drawCone(ctx, this, this.target !== null);
+  }
+
   drawLocal(ctx, start) {
     if (this.model === 'shotgun') this.drawShotgun(ctx, start);
     else if (this.model === 'smg') this.drawSmg(ctx, start);
+    else if (this.model === 'blaster') this.drawBlaster(ctx, start);
     else this.drawRevolver(ctx, start);
   }
 
@@ -466,6 +529,51 @@ export class Gun extends Weapon {
     ctx.fillRect(start + 11, 3, 3, 1.5);
   }
 
+  // A heavy sci-fi pistol: angled grip, a boxy body with a rail on top, a
+  // vented shroud and a muzzle brake, and a window lit in the colour of each
+  // special round it's loaded with (dark while it reloads).
+  drawBlaster(ctx, start) {
+    const end = start + this.length;
+
+    // Grip
+    ctx.fillStyle = '#2a2d33';
+    ctx.beginPath();
+    ctx.moveTo(start + 1, 2);
+    ctx.lineTo(start + 10, 2);
+    ctx.lineTo(start + 6, 12);
+    ctx.lineTo(start - 3, 10);
+    ctx.closePath();
+    ctx.fill();
+
+    // Body and rail
+    ctx.fillStyle = '#3a4150';
+    ctx.fillRect(start - 3, -5, 23, 8);
+    ctx.fillStyle = '#5a6272';
+    ctx.fillRect(start + 1, -7, 19, 2);
+    ctx.fillRect(start + 15, -8.5, 2, 1.5);
+
+    // Shroud with vents, then the muzzle brake
+    ctx.fillStyle = '#4a5262';
+    ctx.fillRect(start + 19, -4, end - start - 23, 6);
+    ctx.fillStyle = '#1d2027';
+    for (let x = start + 22; x < end - 7; x += 4) ctx.fillRect(x, -2.5, 2, 3);
+    ctx.fillStyle = '#2a2d33';
+    ctx.fillRect(end - 5, -5, 5, 8);
+    ctx.fillStyle = '#5a6272';
+    ctx.fillRect(end - 3.5, -5, 1, 8);
+
+    // Ammo window
+    const lights = this.ammoLights.length > 0 ? this.ammoLights : ['#6fd3ff'];
+    const width = 10 / lights.length;
+    lights.forEach((color, i) => {
+      ctx.fillStyle = this.reloading ? '#1d2027' : color;
+      ctx.fillRect(start + 4 + i * width, -3.5, width, 3);
+    });
+    ctx.strokeStyle = '#1d2027';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(start + 4, -3.5, 10, 3);
+  }
+
   // The cylinder seen end on at (x, y), one chamber per round, the loaded ones brass.
   drawOpenCylinder(ctx, x, y) {
     const loaded = Math.floor((1 - this.reloadLeft / this.reloadTime) * this.magazine);
@@ -500,15 +608,35 @@ export class Gun extends Weapon {
       ctx.lineCap = 'round';
       // Bank shots that haven't bounced yet are faint: they can't hurt anyone.
       for (const live of this.bankShots ? [false, true] : [true]) {
-        ctx.globalAlpha = live ? 1 : 0.35;
+        const alpha = live ? 1 : 0.35;
+        ctx.globalAlpha = alpha;
         ctx.beginPath();
-        for (const { pos, vel, bounces } of this.bullets) {
-          if (live !== (!this.bankShots || bounces > 0)) continue;
+        for (const { pos, vel, bounces, reflector, absorbed } of this.bullets) {
+          if (reflector || absorbed > 0 || live !== (!this.bankShots || bounces > 0)) continue;
           ctx.moveTo(pos.x, pos.y);
           ctx.lineTo(pos.x - vel.x * TRACER_LENGTH, pos.y - vel.y * TRACER_LENGTH);
         }
         ctx.stroke();
+        // One that drones have soaked some of is fainter, by what's left of it.
+        for (const { pos, vel, bounces, reflector, absorbed } of this.bullets) {
+          if (reflector || absorbed === 0 || live !== (!this.bankShots || bounces > 0)) continue;
+          ctx.globalAlpha = alpha * (1 - 0.6 * absorbed);
+          ctx.beginPath();
+          ctx.moveTo(pos.x, pos.y);
+          ctx.lineTo(pos.x - vel.x * TRACER_LENGTH, pos.y - vel.y * TRACER_LENGTH);
+          ctx.stroke();
+        }
       }
+      // Reflected ones.
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#d8f1ff';
+      ctx.beginPath();
+      for (const { pos, vel, reflector } of this.bullets) {
+        if (!reflector) continue;
+        ctx.moveTo(pos.x, pos.y);
+        ctx.lineTo(pos.x - vel.x * TRACER_LENGTH * 1.5, pos.y - vel.y * TRACER_LENGTH * 1.5);
+      }
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -589,10 +717,4 @@ function passedBy(p, a, b) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   return (p.x - a.x) * dx + (p.y - a.y) * dy < dx * dx + dy * dy;
-}
-
-// Midpoint of the closest approach of segments a-b and c-d, if it's under `reach`, otherwise null.
-function contact(a, b, c, d, reach) {
-  const { c1, c2, distance: dist } = closestPointsBetweenSegments(a, b, c, d);
-  return dist < reach ? { x: (c1.x + c2.x) / 2, y: (c1.y + c2.y) / 2 } : null;
 }

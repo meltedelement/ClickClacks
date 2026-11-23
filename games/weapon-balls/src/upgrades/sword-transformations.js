@@ -2,6 +2,8 @@ import { Upgrade } from './Upgrade.js';
 import { SpinSwipe } from '../abilities/SpinSwipe.js';
 import { OffhandSword } from '../weapons/OffhandSword.js';
 import { Status } from '../sim/Status.js';
+import { reflectDamage, reflectedBy } from '../sim/reflect.js';
+import { jitter } from '../sim/timing.js';
 import { TAU, add, angleOf, distance, fromAngle, normalize, scale, sub, turnTowards, vec } from '../sim/math.js';
 
 // Transformations for the Sword: big upgrades that change how it fights. They
@@ -19,15 +21,13 @@ class SwordTransformation extends Upgrade {
 
 const Y_ARM = 0.6; // radians either side of straight behind the sword
 const STALWART_WIDTH = 0.7; // each shield's width, as a share of the one it started with
-const STALWART_SPIN = 0.85; // the extra weight slows the sword's spin
 
 export class Stalwart extends SwordTransformation {
   static id = 'stalwart';
   static displayName = 'Stalwart';
-  static description = 'Gain a second, smaller shield. Both sit behind you in a Y, with your sword as its stem. The weight slows your spin by 15%.';
+  static description = 'Gain a second shield, and both move behind your sword.';
 
   apply() {
-    this.weapon.spinSpeed *= STALWART_SPIN;
     const { shields } = this.weapon;
     if (shields.length === 0) return;
     shields[0].width *= STALWART_WIDTH;
@@ -78,7 +78,7 @@ const WARD_COLOR = '#7ee081';
 export class Wildling extends SwordTransformation {
   static id = 'wildling';
   static displayName = 'Wildling';
-  static description = 'Landing a hit with Spin Swipe wards you: the next hit you take does nothing.';
+  static description = 'Landing a hit with Spin Swipe protects you from the next hit you take.';
 
   constructor(weapon) {
     super(weapon);
@@ -90,8 +90,8 @@ export class Wildling extends SwordTransformation {
     this.time += dt;
   }
 
-  onHit(target, sim) {
-    if (!(this.ability instanceof SpinSwipe) || !this.ability.active || this.warded) return;
+  onHit(target, sim, damage, point, hit = {}) {
+    if (hit.secondary || !(this.ability instanceof SpinSwipe) || !this.ability.active || this.warded) return;
     this.warded = true;
     this.emit(sim, 'ward', { text: 'WARD', color: WARD_COLOR, burst: { color: WARD_COLOR, count: 10, speed: 140, life: 0.4 } });
   }
@@ -191,7 +191,7 @@ const STARS = 3;
 export class Dizzy extends SwordTransformation {
   static id = 'dizzy';
   static displayName = 'Dizzy';
-  static description = 'Spin Swipe spins two extra full turns.';
+  static description = 'Spin Swipe spins 3 times.';
 
   constructor(weapon) {
     super(weapon);
@@ -286,12 +286,13 @@ function drawStar(ctx, { x, y }, r) {
 
 // ---- Captain --------------------------------------------------------------------
 
-const THROWN_SPIN = 14; // rad/s the thrown shield turns while flying
+const THROWN_SPIN = 14; // rad/s a thrown shield turns while flying
+const THROW_FAN = 0.18; // rad between two shields thrown together (Stalwart)
 
 export class Captain extends SwordTransformation {
   static id = 'captain';
   static displayName = 'Captain';
-  static description = "Every 4 s, throw your shield at the enemy for 2 damage (plus its own contact damage, like spikes). It flies back to you, but can't block while it's away.";
+  static description = 'Every 4s, throw your shield at a nearby enemy like a boomerang. With Stalwart, throw both.';
 
   constructor(weapon) {
     super(weapon);
@@ -299,16 +300,13 @@ export class Captain extends SwordTransformation {
     this.damage = 2;
     this.throwSpeed = 620; // px/s
     this.returnSpeed = 720; // px/s
-    this.range = 360; // px it flies out before turning back if it hits nothing
+    this.range = 360; // px a shield flies out before turning back if it hits nothing
     this.triggerRange = 320; // px; only throws when an enemy is this close
-    this.cooldownLeft = this.interval / 2;
+    this.cooldownLeft = jitter(this.interval / 2);
 
-    this.phase = null; // null (in hand) | 'out' | 'back'
-    this.shield = null; // the one being thrown
-    this.pos = vec();
-    this.vel = vec();
-    this.travelled = 0;
-    this.spin = 0;
+    // Shields in the air: { shield, phase: 'out' | 'back', pos, vel, travelled, spin, reflector }.
+    // `reflector` is the parrying ball that sent one back at us.
+    this.thrown = [];
   }
 
   // Paints the shield red, white and blue with a star. Stalwart's copy gets it too.
@@ -319,59 +317,78 @@ export class Captain extends SwordTransformation {
   }
 
   onUpdate(dt, sim) {
-    if (this.phase === null) {
+    if (this.thrown.length === 0) {
       this.cooldownLeft -= dt;
       if (this.cooldownLeft <= 0 && !sim.over) this.tryThrow(sim);
       return;
     }
+    let kept = 0;
+    for (const flight of this.thrown) {
+      if (this.fly(flight, dt, sim)) this.thrown[kept++] = flight;
+    }
+    this.thrown.length = kept;
+  }
 
-    this.spin += THROWN_SPIN * dt;
-    if (this.phase === 'out') {
-      this.pos = add(this.pos, scale(this.vel, dt));
-      this.travelled += this.throwSpeed * dt;
-      const target = sim.over ? null : touchedEnemy(sim, this.owner, this.pos, this.shield.width / 2);
-      if (target) {
-        const damage = this.damage + this.shield.contactDamage;
-        sim.dealDamage(this.owner, target, damage, { reason: 'shield-throw', color: '#ffd966' });
-        this.phase = 'back';
-      } else if (this.travelled >= this.range || outsideArena(this.pos, sim.arena)) {
-        this.phase = 'back';
+  // Moves one thrown shield on for a step. Returns false once it's back in hand.
+  fly(flight, dt, sim) {
+    const { owner } = this;
+    const { shield } = flight;
+    flight.spin += THROWN_SPIN * dt;
+    if (flight.phase === 'out') {
+      // A parrying ball sends it back: it flies at the thrower and hits them instead.
+      if (!flight.reflector && !sim.over) flight.reflector = reflectedBy(sim, owner, flight.pos);
+      if (flight.reflector) {
+        const { reflector } = flight;
+        flight.pos = add(flight.pos, scale(normalize(sub(owner.pos, flight.pos)), this.throwSpeed * dt));
+        if (distance(owner.pos, flight.pos) < owner.radius + shield.width / 2) {
+          if (!sim.over) sim.dealDamage(reflector, owner, reflectDamage(reflector, this.damage + shield.contactDamage), { reason: 'reflect', color: '#ffd966' });
+          flight.reflector = null;
+          flight.phase = 'back';
+        }
+        return true;
       }
-      return;
+      flight.pos = add(flight.pos, scale(flight.vel, dt));
+      flight.travelled += this.throwSpeed * dt;
+      const target = sim.over ? null : touchedEnemy(sim, owner, flight.pos, shield.width / 2);
+      if (target) {
+        sim.applySecondaryHit(owner, target, this.damage + shield.contactDamage, { reason: 'shield-throw', color: '#ffd966', point: flight.pos });
+        flight.phase = 'back';
+      } else if (flight.travelled >= this.range || outsideArena(flight.pos, sim.arena)) {
+        flight.phase = 'back';
+      }
+      return true;
     }
 
     // Flying back: home in on the owner and snap back into place on arrival.
     const step = this.returnSpeed * dt;
-    const toOwner = sub(this.owner.pos, this.pos);
-    if (distance(this.owner.pos, this.pos) <= this.owner.radius + step) {
-      this.shield.away = false;
-      this.shield = null;
-      this.phase = null;
+    if (distance(owner.pos, flight.pos) <= owner.radius + step) {
+      shield.away = false;
       this.emit(sim, 'catch');
-      return;
+      return false;
     }
-    this.pos = add(this.pos, scale(normalize(toOwner), step));
+    flight.pos = add(flight.pos, scale(normalize(sub(owner.pos, flight.pos)), step));
+    return true;
   }
 
+  // Throws every shield in hand at the nearest enemy in range, fanned a little apart.
   tryThrow(sim) {
-    const shield = this.weapon.heldShields[0];
+    const shields = [...this.weapon.heldShields]; // heldShields is shared, and throwing changes it
     const enemy = this.enemyWithin(sim, this.triggerRange);
-    if (!shield || !enemy) return;
+    if (shields.length === 0 || !enemy) return;
 
-    const { a, b } = shield.getSegment();
-    this.shield = shield;
-    shield.away = true;
-    this.pos = scale(add(a, b), 0.5);
-    this.vel = scale(leadDirection(this.pos, enemy, this.throwSpeed), this.throwSpeed);
-    this.travelled = 0;
-    this.spin = shield.angle;
-    this.phase = 'out';
-    this.cooldownLeft = this.interval;
+    shields.forEach((shield, i) => {
+      const { a, b } = shield.getSegment();
+      const pos = scale(add(a, b), 0.5);
+      const aim = angleOf(leadDirection(pos, enemy, this.throwSpeed)) + (i - (shields.length - 1) / 2) * THROW_FAN;
+      shield.away = true;
+      this.thrown.push({ shield, phase: 'out', pos, vel: fromAngle(aim, this.throwSpeed), travelled: 0, spin: shield.angle, reflector: null });
+    });
+    this.cooldownLeft = jitter(this.interval);
     this.emit(sim, 'throw');
   }
 
   drawOver(ctx) {
-    if (this.phase) this.shield.drawThrown(ctx, this.pos, this.spin);
+    for (const { shield, pos, spin } of this.thrown) shield.drawThrown(ctx, pos, spin);
   }
 }
 
@@ -383,7 +400,7 @@ const FIRE_CORE = '#ffd23f';
 export class FireEater extends SwordTransformation {
   static id = 'fire-eater';
   static displayName = 'Fire Eater';
-  static description = 'Every 3 s your blade catches fire. Your next hit sets the enemy burning for 1 damage every 0.5 s for 3 s.';
+  static description = 'Your sword catches fire 3s after its last burning hit. Its next hit sets the enemy alight for 6 damage over 3s.';
 
   constructor(weapon) {
     super(weapon);
@@ -410,8 +427,8 @@ export class FireEater extends SwordTransformation {
     this.emit(sim, 'ignite', { burst: { color: FIRE, count: 8, speed: 120, life: 0.35 } });
   }
 
-  onHit(target, sim) {
-    if (!this.lit) return;
+  onHit(target, sim, dealt, point, hit = {}) {
+    if (!this.lit || hit.secondary) return;
     this.lit = false;
     this.timer = this.igniteTime;
     const { burnDamage: damage, burnTick: tick, burnDuration: duration } = this;
@@ -499,7 +516,7 @@ export class Burning extends Status {
 export class Piercer extends SwordTransformation {
   static id = 'piercer';
   static displayName = 'Piercer';
-  static description = "After every Spin Swipe, lunge at the enemy sword-first for a big stab. Spin Swipe's cooldown is 50% longer.";
+  static description = 'After each Spin Swipe, aim and lunge at a nearby enemy for 1.5x damage. Spin Swipe takes 50% longer to recharge.';
 
   constructor(weapon) {
     super(weapon);
@@ -578,8 +595,8 @@ export class Piercer extends SwordTransformation {
     if (this.timer <= 0) this.finish();
   }
 
-  onHit(target, sim) {
-    if (this.phase !== 'lunge') return;
+  onHit(target, sim, damage, point, hit = {}) {
+    if (this.phase !== 'lunge' || hit.secondary) return;
     this.owner.vel = scale(this.owner.vel, this.recoil);
     this.finish();
   }
@@ -633,8 +650,7 @@ export class Piercer extends SwordTransformation {
 export class DualWielder extends SwordTransformation {
   static id = 'dual-wielder';
   static displayName = 'Dual Wielder';
-  static description =
-    'Swap your shield for a short second sword. It still blocks, deals 3 damage to enemies it touches (+0.5 each time your sword hits), and gets your shield upgrades.';
+  static description = 'Swap your shield for a short second sword. It hurts enemies it touches, gets stronger every time your main sword lands a hit, and keeps your shield upgrades.';
   // Swap the shield before anything else changes it, so e.g. Stalwart shrinks
   // and copies the off-hand sword rather than having its changes thrown away.
   static order = -1;
@@ -648,7 +664,9 @@ export class DualWielder extends SwordTransformation {
     this.weapon.shields = this.weapon.shields.map((shield) => new OffhandSword(this.weapon, { offset: shield.offset }));
   }
 
-  onHit() {
+  // Only the main sword's hits: the off-hand's own don't grow it.
+  onHit(target, sim, damage, point, hit = {}) {
+    if (hit.secondary) return;
     for (const shield of this.weapon.shields) {
       if (shield instanceof OffhandSword) shield.contactDamage += this.damagePerHit;
     }
@@ -662,7 +680,7 @@ const NET_COLOR = '#d8c690';
 export class Gladiator extends SwordTransformation {
   static id = 'gladiator';
   static displayName = 'Gladiator';
-  static description = "Every 4 s, throw a net at the enemy. If it lands they're 50% slower and take 50% more damage for 2.5 s.";
+  static description = 'Every 4s, throw a net at a nearby enemy. For 2.5s they move 50% slower and take 50% more damage.';
 
   constructor(weapon) {
     super(weapon);
@@ -674,7 +692,7 @@ export class Gladiator extends SwordTransformation {
     this.netDuration = 2.5; // s
     this.slow = 0.5; // speed multiplier while netted
     this.vulnerability = 1.5; // damage taken multiplier while netted
-    this.cooldownLeft = this.interval / 2;
+    this.cooldownLeft = jitter(this.interval / 2);
 
     this.net = null; // { pos, vel, travelled, spin } while one is flying
   }
@@ -690,6 +708,19 @@ export class Gladiator extends SwordTransformation {
     net.pos = add(net.pos, scale(net.vel, dt));
     net.travelled += this.throwSpeed * dt;
     net.spin += 6 * dt;
+    // A parrying ball sends the net back: it flies at the thrower and nets them.
+    if (!net.reflector && !sim.over) net.reflector = reflectedBy(sim, this.owner, net.pos);
+    if (net.reflector) {
+      const { owner } = this;
+      net.vel = scale(normalize(sub(owner.pos, net.pos)), this.throwSpeed);
+      if (distance(owner.pos, net.pos) < owner.radius + this.netRadius) {
+        const { netDuration: duration, slow, vulnerability } = this;
+        owner.addStatus(new Netted({ source: net.reflector, duration, slow, vulnerability }), sim);
+        this.emit(sim, 'net', { pos: owner.pos, text: 'NETTED', color: NET_COLOR, burst: { color: NET_COLOR, count: 12, speed: 160, life: 0.4 } });
+        this.net = null;
+      }
+      return;
+    }
     const target = sim.over ? null : touchedEnemy(sim, this.owner, net.pos, this.netRadius);
     if (target) {
       const { netDuration: duration, slow, vulnerability } = this;
@@ -711,7 +742,7 @@ export class Gladiator extends SwordTransformation {
       travelled: 0,
       spin: 0,
     };
-    this.cooldownLeft = this.interval;
+    this.cooldownLeft = jitter(this.interval);
     this.emit(sim, 'net-throw');
   }
 

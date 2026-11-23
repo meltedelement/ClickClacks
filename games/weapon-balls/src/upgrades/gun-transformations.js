@@ -1,7 +1,9 @@
 import { Upgrade } from './Upgrade.js';
 import { Burning } from './sword-transformations.js';
+import { reflectDamage, reflectedBy } from '../sim/reflect.js';
 import { FireTrail } from './spear-transformations.js';
-import { TAU, add, distance, dot, fromAngle, normalize, scale, sub } from '../sim/math.js';
+import { TAU, add, distance, dot, fromAngle, hypot, normalize, scale, sub } from '../sim/math.js';
+import * as looks from './gun-looks.js';
 
 // Transformations for the Gun: big upgrades that change how it shoots. Like
 // the other weapons', they combine with each other and with the small
@@ -22,8 +24,7 @@ const SPARK = '#fff3b0';
 export class SixShooter extends GunTransformation {
   static id = 'six-shooter';
   static displayName = 'Six-Shooter';
-  static description =
-    'Trick shots: your bullets ricochet off walls up to twice, but only hurt anyone once they have bounced. You aim off the walls, and every bullet that hits is a critical hit.';
+  static description = 'Every shot is banked off a wall at the nearest enemy. Bullets only hurt after they bounce, but always crit.';
 
   apply() {
     this.weapon.ricochets = 2;
@@ -84,7 +85,7 @@ export class SixShooter extends GunTransformation {
 export class Shotgun extends GunTransformation {
   static id = 'shotgun';
   static displayName = 'Shotgun';
-  static description = 'Fire your whole magazine at once, as a very wide spray of pellets, then reload, a third faster than before.';
+  static description = 'Fire your whole magazine at once in a spread, and reload faster.';
 
   apply() {
     const { weapon } = this;
@@ -94,6 +95,11 @@ export class Shotgun extends GunTransformation {
     weapon.length += 8;
     weapon.model = 'shotgun';
   }
+
+  // A bandolier of shells.
+  drawOver(ctx) {
+    looks.drawShellBandolier(ctx, this.owner);
+  }
 }
 
 // ---- SMG ------------------------------------------------------------------------
@@ -101,17 +107,49 @@ export class Shotgun extends GunTransformation {
 export class Smg extends GunTransformation {
   static id = 'smg';
   static displayName = 'SMG';
-  static description = 'A submachine gun: five times the magazine, fired 3.5 times as fast, but each bullet deals a quarter of the damage and barely pushes.';
+  static description = 'Swap your gun for an SMG: a 30-round magazine fired 3.5 times as fast, for a quarter of the damage per bullet.';
 
   apply() {
     const { weapon } = this;
     weapon.magazine *= 5;
-    weapon.ammo = weapon.magazine;
     weapon.fireInterval /= 3.5;
     weapon.damage *= 0.25;
     weapon.damagePerHit /= 20; // a quarter of the damage, over five times the hits
     weapon.bulletKnockback *= 0.35;
     weapon.model = 'smg';
+  }
+
+  // Only for drawing: spent casings flicked out of the gun, one per round fired.
+  onUpdate(dt) {
+    const { weapon, owner } = this;
+    this.casings ??= [];
+    this.ejected ??= 0;
+    this.lastAmmo ??= weapon.ammo;
+    for (let fired = this.lastAmmo - weapon.ammo; fired > 0; fired--) {
+      // Out of the right-hand side, a little backwards, spread by a golden-ratio step
+      const spread = ((this.ejected++ * 0.618) % 1) - 0.5;
+      const port = add(owner.pos, fromAngle(weapon.angle, owner.radius + weapon.gap + 10 * owner.size));
+      const out = fromAngle(weapon.angle + Math.PI * 0.6 + spread * 0.7, 170 + 60 * spread);
+      this.casings.push({ pos: port, vel: add(out, scale(owner.vel, 0.6)), angle: weapon.angle, spin: 25 + 20 * spread, life: 0.55, maxLife: 0.55 });
+    }
+    this.lastAmmo = weapon.ammo;
+    for (const casing of this.casings) {
+      casing.pos = add(casing.pos, scale(casing.vel, dt));
+      casing.vel = scale(casing.vel, Math.max(0, 1 - 4 * dt));
+      casing.angle += casing.spin * dt;
+      casing.life -= dt;
+    }
+    if (this.casings.length > 0 && this.casings[0].life <= 0) this.casings = this.casings.filter((casing) => casing.life > 0);
+  }
+
+  // Casings on the floor, under the balls.
+  drawUnder(ctx) {
+    if (this.casings?.length) looks.drawCasings(ctx, this.casings, this.owner.size);
+  }
+
+  // A tactical headset.
+  drawOver(ctx) {
+    looks.drawHeadset(ctx, this.owner);
   }
 }
 
@@ -121,11 +159,25 @@ const BLAST = '#ff8a3d';
 const BLAST_CORE = '#ffd23f';
 const BLAST_TIME = 0.25; // s a blast ring takes to spread
 
+// High-Ex and Hotshot: special rounds for a future cop's sidearm. Either swaps
+// the revolver for the blaster (a Shotgun or SMG keeps its own gun) and adds
+// its colour to the blaster's ammo lights, and the first of them on the ball
+// draws the riot helmet.
+function loadSpecialRound(upgrade, color) {
+  const { weapon } = upgrade;
+  if (weapon.model === 'revolver') weapon.model = 'blaster';
+  if (!weapon.ammoLights.includes(color)) weapon.ammoLights.push(color);
+}
+
+function drawRiotHelmetOnce(ctx, upgrade) {
+  const first = upgrade.weapon.upgrades.find((u) => u instanceof HighEx || u instanceof Hotshot);
+  if (first === upgrade) looks.drawRiotHelmet(ctx, upgrade.owner, upgrade.time);
+}
+
 export class HighEx extends GunTransformation {
   static id = 'high-ex';
   static displayName = 'High-Ex';
-  static description =
-    "Explosive rounds: a bullet that passes within 30 px of an enemy, or hits its weapon or shield, explodes, dealing half the bullet's damage to every enemy within 40 px.";
+  static description = 'Bullets explode when they pass close to an enemy or get blocked, hitting everyone nearby for half damage.';
 
   constructor(weapon) {
     super(weapon);
@@ -133,9 +185,11 @@ export class HighEx extends GunTransformation {
     this.blastRadius = 40; // px from the blast to an enemy's edge
     this.damageShare = 0.5; // of the bullet's damage
     this.blasts = []; // { pos, timeLeft } for drawing
+    this.time = 0; // for the helmet's visor glint
   }
 
   apply() {
+    loadSpecialRound(this, '#ff3b2f');
     this.weapon.nearMiss = this.nearMiss;
     this.weapon.tracer = BLAST;
   }
@@ -151,11 +205,14 @@ export class HighEx extends GunTransformation {
   explode(pos, sim) {
     const { owner } = this;
     if (!sim.over) {
-      const damage = this.weapon.getDamage() * this.damageShare;
+      // Half a bullet as a secondary weapon hit (see Simulation.applySecondaryHit):
+      // crits, Sharpened, Armor, Lifesteal... apply; it doesn't grow the gun.
+      const { weapon } = this;
+      const damage = (weapon.baseDamage + weapon.sum('bonusDamage')) * this.damageShare;
       const reach = this.blastRadius * owner.size;
-      for (const enemy of sim.aliveBalls) {
+      for (const enemy of [...sim.aliveBalls]) {
         if (enemy === owner || distance(enemy.pos, pos) - enemy.radius > reach) continue;
-        sim.dealDamage(owner, enemy, damage, { reason: 'explosion', color: BLAST });
+        sim.applySecondaryHit(owner, enemy, damage, { reason: 'explosion', color: BLAST, point: pos });
       }
     }
     this.blasts.push({ pos: { ...pos }, timeLeft: BLAST_TIME });
@@ -163,6 +220,7 @@ export class HighEx extends GunTransformation {
   }
 
   onUpdate(dt) {
+    this.time += dt;
     if (this.blasts.length === 0) return;
     for (const blast of this.blasts) blast.timeLeft -= dt;
     this.blasts = this.blasts.filter((blast) => blast.timeLeft > 0);
@@ -176,7 +234,9 @@ export class HighEx extends GunTransformation {
     ctx.restore();
   }
 
+  // The riot helmet, and the blasts.
   drawOver(ctx) {
+    drawRiotHelmetOnce(ctx, this);
     if (this.blasts.length === 0) return;
     const reach = this.blastRadius * this.owner.size;
     ctx.save();
@@ -205,8 +265,7 @@ const GRENADE_RADIUS = 6; // px
 export class Grenadier extends GunTransformation {
   static id = 'grenadier';
   static displayName = 'Grenadier';
-  static description =
-    'Carry 3 grenades, lobbed at enemies within 300 px. Each one blows up 1 s after it is thrown, dealing 6 damage to enemies within 60 px and blowing them back. Once all 3 are gone, restocking takes 9 s.';
+  static description = 'Throw grenades at nearby enemies. You carry 3, and get them back 9s after throwing the last.';
 
   constructor(weapon) {
     super(weapon);
@@ -276,7 +335,7 @@ export class Grenadier extends GunTransformation {
     let kept = 0;
     for (const grenade of this.live) {
       const { pos, vel } = grenade;
-      const speed = Math.hypot(vel.x, vel.y);
+      const speed = hypot(vel.x, vel.y);
       if (speed > 0) {
         const slowed = Math.max(0, speed - this.drag * dt) / speed;
         vel.x *= slowed;
@@ -292,8 +351,20 @@ export class Grenadier extends GunTransformation {
         pos.y = pos.y < r ? 2 * r - pos.y : 2 * (height - r) - pos.y;
         vel.y = -vel.y;
       }
+      // A parrying ball sends it back at the thrower, to blow up there.
+      if (!grenade.reflector && !sim.over) {
+        const reflector = reflectedBy(sim, this.owner, pos);
+        if (reflector) {
+          grenade.reflector = reflector;
+          const back = sub(this.owner.pos, pos);
+          const dir = normalize(back);
+          const speed = Math.min(this.maxThrowSpeed, Math.sqrt(2 * this.drag * hypot(back.x, back.y)));
+          vel.x = dir.x * speed;
+          vel.y = dir.y * speed;
+        }
+      }
       for (const enemy of sim.aliveBalls) {
-        if (enemy === this.owner || distance(enemy.pos, pos) > enemy.radius + r) continue;
+        if (enemy === this.owner || enemy === grenade.reflector || distance(enemy.pos, pos) > enemy.radius + r) continue;
         const n = normalize(sub(pos, enemy.pos));
         const into = dot(vel, n);
         if (into < 0) {
@@ -303,21 +374,24 @@ export class Grenadier extends GunTransformation {
         }
       }
       grenade.fuseLeft -= dt;
-      if (grenade.fuseLeft <= 0) this.explode(pos, sim);
+      if (grenade.fuseLeft <= 0) this.explode(pos, sim, grenade.reflector);
       else this.live[kept++] = grenade;
     }
     this.live.length = kept;
   }
 
-  explode(pos, sim) {
+  // A grenade a parrying `reflector` sent back hurts everyone but the reflector, as the reflector.
+  explode(pos, sim, reflector = null) {
     const { owner } = this;
+    const thrower = reflector ?? owner;
     if (!sim.over) {
-      const damage = this.damage * this.weapon.multiplier('damageMultiplier');
+      const base = this.damage * this.weapon.multiplier('damageMultiplier');
+      const damage = reflector ? reflectDamage(reflector, base) : base;
       const reach = this.blastRadius * owner.size;
       for (const enemy of sim.aliveBalls) {
-        if (enemy === owner || distance(enemy.pos, pos) - enemy.radius > reach) continue;
+        if (enemy === thrower || distance(enemy.pos, pos) - enemy.radius > reach) continue;
         enemy.vel = scale(normalize(sub(enemy.pos, pos)), enemy.speed * this.blastKnockback);
-        sim.dealDamage(owner, enemy, damage, { reason: 'explosion', color: BLAST });
+        sim.dealDamage(thrower, enemy, damage, { reason: 'explosion', color: BLAST });
       }
     }
     this.blasts.push({ pos: { ...pos }, timeLeft: BLAST_TIME * 1.6 });
@@ -353,26 +427,9 @@ export class Grenadier extends GunTransformation {
     ctx.restore();
   }
 
-  // The grenades still in hand, in a row above the HP; spent ones are hollow.
+  // The grenades still in hand, hanging from hooks on a belt; spent ones leave a hook empty.
   drawBelt(ctx) {
-    const { pos, radius } = this.owner;
-    const size = this.owner.size;
-    const r = 4.5 * size;
-    const y = pos.y - radius * 0.52;
-    ctx.save();
-    for (let i = 0; i < this.capacity; i++) {
-      const x = pos.x + (i - (this.capacity - 1) / 2) * r * 2.6;
-      if (i < this.grenades) {
-        drawGrenade(ctx, x, y, r, false);
-        continue;
-      }
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, TAU);
-      ctx.stroke();
-    }
-    ctx.restore();
+    looks.drawGrenadeBelt(ctx, this.owner, this.capacity, this.grenades, (x, y, r) => drawGrenade(ctx, x, y, r, false));
   }
 }
 
@@ -418,8 +475,7 @@ const STEEL = '#d6dbe0';
 export class Bayonet extends GunTransformation {
   static id = 'bayonet';
   static displayName = 'Bayonet';
-  static description =
-    "A bayonet on the end of the barrel: a short blade that stabs an enemy who comes close for half your bullet damage, at most once every 2 s. Stabs go straight through weapons and shields, but the bayonet can't block anything either.";
+  static description = 'A blade on the end of your gun stabs enemies up close for half damage.';
 
   constructor(weapon) {
     super(weapon);
@@ -440,14 +496,19 @@ export class Bayonet extends GunTransformation {
   // The gun keeps the bayonet pointed at the enemy, so it would stab again
   // the moment the usual hit cooldown ran out: give it a longer one of its
   // own. Bullets don't wait on hit cooldowns.
-  onHit(target) {
-    if (!this.weapon.striking) target.hitCooldowns.set(this.weapon, this.stabCooldown);
+  onHit(target, sim, damage, point, hit = {}) {
+    if (!this.weapon.striking && !hit.secondary) target.hitCooldowns.set(this.weapon, this.stabCooldown);
   }
 
   // The gun always faces its target, so a bayonet that blocked would sit
   // between the two balls as a perfect guard. Bullets keep the usual rules.
   get unblockable() {
     return !this.weapon.striking;
+  }
+
+  // A steel infantry helmet.
+  drawOver(ctx) {
+    looks.drawInfantryHelmet(ctx, this.owner);
   }
 
   drawBlade(ctx, start) {
@@ -486,8 +547,7 @@ const FIRE = '#ff8a3d';
 export class Hotshot extends GunTransformation {
   static id = 'hotshot';
   static displayName = 'Hotshot';
-  static description =
-    'Incendiary rounds: your bullets leave a trail of fire for 0.5 s that sets enemies who touch it burning for 0.5 damage every 0.5 s for 1.5 s, and deal 20% more damage to burning enemies.';
+  static description = 'Bullets leave a trail of fire, and deal 20% more damage to burning enemies.';
 
   constructor(weapon) {
     super(weapon);
@@ -502,7 +562,13 @@ export class Hotshot extends GunTransformation {
   }
 
   apply() {
+    loadSpecialRound(this, FIRE);
     this.weapon.tracer = FIRE;
+  }
+
+  // The riot helmet (once, with High-Ex too).
+  drawOver(ctx) {
+    drawRiotHelmetOnce(ctx, this);
   }
 
   // Each bullet extends its own piece of the trail.

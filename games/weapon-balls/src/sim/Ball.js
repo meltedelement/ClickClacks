@@ -8,11 +8,18 @@ export class Ball {
   // go first, so the small upgrades build on the weapon they turned it into, and
   // within each group a lower `static order` goes first.
   // `name` (e.g. a team name) replaces the weapon's name on screen.
+  // `highlight` rings the ball, to pick it out of a crowd (see Renderer).
+  // `skin` changes only how it's drawn (src/game/skins.js), and `tag` goes before
+  // the name on screen ("DEV · Ana"). Neither touches the fight.
+  // `size` is the starting size in a royale, in place of 1 (see grow).
   // `arena` ({ width, height }) is the Simulation's, for code that has no sim to hand (drawing).
-  constructor({ position, color, WeaponClass, upgrades = [], name = null, arena = CONFIG.arena }) {
+  constructor({ position, color, WeaponClass, upgrades = [], name = null, highlight = false, skin = null, tag = null, size = 1, arena = CONFIG.arena }) {
     this.pos = { ...position };
     this.arena = arena;
     this.label = name;
+    this.highlight = highlight;
+    this.skin = skin;
+    this.tag = tag;
     // Royale growth (see grow). Always 1 in a normal match.
     this.mass = 1;
     this.size = 1;
@@ -21,10 +28,10 @@ export class Ball {
     this.speed = CONFIG.ball.speed;
     const heading = Math.random() * TAU;
     this.maxHp = CONFIG.ball.maxHp;
-    this.armor = 0; // taken off every weapon hit, but a hit is never reduced below half
     this.dodgeChance = 0; // 0–1 chance a weapon hit misses completely
     this.color = color;
     this.alive = true;
+    this.knockedOutAt = null; // sim time it went down (see Simulation.knockOut)
     this.flash = 0; // seconds left of the white hit flash
 
     // Weapon -> seconds until that weapon may hit this ball again.
@@ -47,6 +54,10 @@ export class Ball {
     // Set last so upgrades to speed or maxHp count from the start.
     this.vel = fromAngle(heading, this.speed);
     this.hp = this.maxHp;
+
+    // Starting another size is having already grown (or shrunk) to it, so everything
+    // that scales with size starts in proportion, and a kill hands over this mass.
+    if (size !== 1) this.grow(Math.pow(size, 1 / CONFIG.royale.sizeExponent) - 1, CONFIG.royale);
   }
 
   get name() {
@@ -60,13 +71,13 @@ export class Ball {
   grow(mass, { sizeExponent, hpScaling, damageScaling }) {
     const before = this.size;
     this.mass += mass;
-    this.size = this.mass ** sizeExponent;
+    this.size = Math.pow(this.mass, sizeExponent);
     const factor = this.size / before;
     this.radius *= factor;
-    const gained = this.maxHp * (factor ** hpScaling - 1);
+    const gained = this.maxHp * (Math.pow(factor, hpScaling) - 1);
     this.maxHp += gained;
     if (this.alive) this.hp += gained;
-    this.power = this.size ** damageScaling;
+    this.power = Math.pow(this.size, damageScaling);
     this.weapon.registerGrow(factor);
     return factor;
   }
@@ -97,18 +108,11 @@ export class Ball {
 
     if (this.statuses.length > 0) {
       for (const status of this.statuses) status.update(dt, sim);
-      if (this.statuses.some((status) => status.expired)) {
-        this.statuses = this.statuses.filter((status) => !status.expired);
-      }
+      if (this.hasExpiredStatus()) this.statuses = this.statuses.filter((status) => !status.expired);
     }
 
     // Most steps there are none; skip making an iterator for an empty map.
-    if (this.hitCooldowns.size > 0) {
-      for (const [weapon, time] of this.hitCooldowns) {
-        if (time - dt <= 0) this.hitCooldowns.delete(weapon);
-        else this.hitCooldowns.set(weapon, time - dt);
-      }
-    }
+    if (this.hitCooldowns.size > 0) this.hitCooldowns.forEach(countDown, dt);
     if (this.flash > 0) this.flash -= dt;
   }
 
@@ -141,13 +145,21 @@ export class Ball {
     status.onApply(sim);
   }
 
+  // These loop rather than call some() with a callback: they're asked several times a step.
   hasStatus(StatusClass) {
-    return this.statuses.some((s) => s instanceof StatusClass);
+    for (const status of this.statuses) if (status instanceof StatusClass) return true;
+    return false;
+  }
+
+  hasExpiredStatus() {
+    for (const status of this.statuses) if (status.expired) return true;
+    return false;
   }
 
   // True if any status stops this ball's weapon and shields from blocking.
   get guardBroken() {
-    return this.statuses.some((status) => status.guardBroken);
+    for (const status of this.statuses) if (status.guardBroken) return true;
+    return false;
   }
 
   // Multiplies all damage this ball deals: its statuses, and its size in a royale.
@@ -159,6 +171,13 @@ export class Ball {
   registerWallBounce(sim) {
     this.weapon.registerWallBounce(sim);
     for (const status of this.statuses) status.onWallBounce(sim);
+  }
+
+  // How much more damage this ball takes from weapon hits because of its
+  // statuses (Vulnerable, Netted...): 0.25 is 25% more, 0 is none. The
+  // Renderer greys the ball by it.
+  get vulnerability() {
+    return Math.max(0, this.statusMultiplier('damageTakenMultiplier') - 1);
   }
 
   // A status modifier multiplied across every status (1 if there are none).
@@ -183,10 +202,10 @@ export class Ball {
     return this.dodgeChance > 0 && Math.random() < this.dodgeChance;
   }
 
-  // Damage actually taken from a weapon hit of `damage`, after armor and modifiers.
+  // Damage actually taken from a weapon hit of `damage`, after modifiers (Armor is one).
   reduceDamage(damage) {
-    const armored = Math.max(damage / 2, damage - this.armor);
-    return armored * this.weapon.damageTakenMultiplier * this.statusMultiplier('damageTakenMultiplier');
+    const scaled = damage * this.weapon.damageTakenMultiplier * this.statusMultiplier('damageTakenMultiplier');
+    return this.weapon.reduceIncoming(scaled);
   }
 
   takeHit(weapon, damage) {
@@ -232,4 +251,11 @@ export class Ball {
   get hpTextColor() {
     return this.flash > 0 ? this.color : '#ffffff';
   }
+}
+
+// Ball.update's hit cooldowns tick: called as a Map's forEach with `this` as
+// dt, which deletes or updates each entry in place as a for...of would.
+function countDown(time, weapon, cooldowns) {
+  if (time - this <= 0) cooldowns.delete(weapon);
+  else cooldowns.set(weapon, time - this);
 }

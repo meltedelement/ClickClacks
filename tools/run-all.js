@@ -224,25 +224,26 @@ if (!gameUp || !tournamentUp || !quizUp) {
   shutdown(1);
 } else {
   const port = built ? QUIZ_PORT : QUIZ_CLIENT_PORT;
-  const lan = await lanAddress();
+  const { lan, funnel } = await joinAddresses(port);
   const key = process.env.ADMIN_KEY || (fs.existsSync(KEY_FILE) ? fs.readFileSync(KEY_FILE, 'utf8').trim() : '');
   console.log(`
   Admin:          http://localhost:${port}/admin
   Big screen:     http://localhost:${port}/screen
   Admin key:      ${key || '(see the quiz output with --verbose)'}
 
-  Teams join at:  http://${lan ?? 'localhost'}:${port}${lan ? '' : '  (no network address found)'}
+  Teams join at:  ${funnel ? `${funnel}\n                  ` : ''}http://${lan ?? 'localhost'}:${port}${lan ? '' : '  (no network address found)'}${funnel ? '' : `\n                  (for teams outside this network: tailscale funnel ${port})`}
 
 Ctrl-C stops all three.`);
 }
 
-// The address phones on the local network reach this machine at, from the quiz
-// server, which puts private ranges first (a VPN address is not the one to show).
-async function lanAddress() {
+// Where teams reach this machine, from the quiz server: its address on the
+// local network (private ranges first, so a VPN address is not the one shown),
+// and a Tailscale Funnel URL to the page's `port`, if one is on.
+async function joinAddresses(port) {
   try {
-    const { addresses } = await (await fetch(`http://127.0.0.1:${QUIZ_PORT}/api/lan`)).json();
-    return addresses[0] ?? null;
+    const { addresses, public: funnels = [] } = await (await fetch(`http://127.0.0.1:${QUIZ_PORT}/api/lan?port=${port}`)).json();
+    return { lan: addresses[0] ?? null, funnel: funnels[0] ?? null };
   } catch {
-    return null;
+    return { lan: null, funnel: null };
   }
 }

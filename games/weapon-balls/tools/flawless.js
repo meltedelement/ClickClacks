@@ -30,7 +30,7 @@
 //   -d, --sudden-death S  simulated seconds before sudden death starts, or "off"
 //                         (default: CONFIG.suddenDeath.after)
 //   -s, --seed N          base seed; the same seed and options find the same matches
-//   -j, --jobs N          worker threads (default: CPU cores - 1)
+//   -j, --jobs N          worker threads (default: one per physical core, see workers.js)
 //   -q, --queue [URL]     queue each find on the game's match API so an open
 //                         ?display page plays it (default http://localhost:5173)
 //   -h, --help
@@ -44,9 +44,9 @@
 //   npm run flawless -- --queue http://localhost:3002
 
 import { readFileSync } from 'node:fs';
-import { availableParallelism } from 'node:os';
 import { parseArgs } from 'node:util';
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
+import { defaultJobs } from './workers.js';
 import { CONFIG } from '../src/config.js';
 import { CHUNK_SIZE, MAX_API_TIME_LIMIT, collect, entryText, matchRequest, parseEntry, runTask } from '../src/flawless/search.js';
 
@@ -200,7 +200,7 @@ function readOptions() {
     timeLimit,
     suddenDeath: readSuddenDeath(values['sudden-death']),
     seed: values.seed !== undefined ? Number(values.seed) >>> 0 : (Math.random() * 2 ** 32) >>> 0,
-    jobs: values.jobs ? positiveInt(values.jobs, 'jobs') : Math.max(1, availableParallelism() - 1),
+    jobs: values.jobs ? positiveInt(values.jobs, 'jobs') : defaultJobs(),
     queue: values.queue?.replace(/\/+$/, ''),
   };
 }

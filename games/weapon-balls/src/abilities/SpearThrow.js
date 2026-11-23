@@ -1,4 +1,5 @@
 import { ChargeDash } from './ChargeDash.js';
+import { reflectDamage, reflectedBy } from '../sim/reflect.js';
 import { add, closestPointOnSegment, distance, fromAngle, normalize, scale, sub, vec } from '../sim/math.js';
 
 // Charge Dash, Olympian style (see the Olympian transformation): wind up and aim
@@ -9,7 +10,7 @@ import { add, closestPointOnSegment, distance, fromAngle, normalize, scale, sub,
 // ramming anyone in the way. The ball is unarmed until it gets there. With the
 // Runner, the spear's path catches fire (see `weapon.fireTrail`).
 //
-// It's a ChargeDash underneath, so Quick Charge still shortens the windup.
+// It's a ChargeDash underneath, so Patient Charge still lengthens the windup.
 export class SpearThrow extends ChargeDash {
   static displayName = 'Spear Throw';
 
@@ -85,6 +86,15 @@ export class SpearThrow extends ChargeDash {
     this.layTrail(before + weapon.length, spear.hilt + weapon.length);
 
     const { a, b } = this.spearSegment();
+    // A parrying ball catches the spear in its guard: the throw stops there and
+    // the damage is dealt back to the thrower.
+    const reflector = sim.over ? null : reflectedBy(sim, owner, a, b);
+    if (reflector) {
+      sim.dealDamage(reflector, owner, reflectDamage(reflector, weapon.getDamage() * this.throwDamageMultiplier), { reason: 'reflect', color: '#bfe6ff' });
+      spear.stuck = spear.hilt;
+      this.stick(sim);
+      return;
+    }
     for (const enemy of sim.aliveBalls) {
       if (enemy === owner || sim.over || this.pierced.has(enemy)) continue;
       const point = closestPointOnSegment(enemy.pos, a, b);

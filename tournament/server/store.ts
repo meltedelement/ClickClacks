@@ -14,7 +14,8 @@ import type { DecidedBy, Entrant, EntrantInput, EntrantPatch, Tournament, Tourna
 import { currentStage, plan } from '../formats/common.ts';
 import { getFormat, resolveOptions } from '../formats/index.ts';
 
-const DATA_DIR = path.join(import.meta.dirname, '..', 'data');
+// DATA_DIR keeps a second service's tournaments apart (a relative path is from where it was started).
+const DATA_DIR = path.resolve(process.env.DATA_DIR ?? path.join(import.meta.dirname, '..', 'data'));
 const DATA_FILE = path.join(DATA_DIR, 'tournaments.json');
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 

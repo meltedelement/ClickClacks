@@ -9,8 +9,10 @@
 // --delay is how long (ms) each match "plays" before its result is sent.
 // Results match a browser display, except that JavaScript engines can differ
 // in the last bit of some math functions (see the README's Match API section).
+// Shared matches (every royale) don't have that problem (src/sim/exactMath.js).
 import { CONFIG } from '../src/config.js';
 import { Simulation } from '../src/sim/Simulation.js';
+import { withExactMath } from '../src/sim/exactMath.js';
 import { mulberry32 } from '../src/sim/random.js';
 
 const arg = (name, fallback) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
@@ -21,11 +23,15 @@ const DT = 1 / CONFIG.physicsHz;
 const played = new Set(); // match ids already played or being played
 
 function play(match) {
+  return match.shared ? withExactMath(() => simulate(match)) : simulate(match);
+}
+
+function simulate(match) {
   const realRandom = Math.random;
   Math.random = mulberry32(match.seed);
   try {
     const fighters = match.characters.map(({ transformations = [], upgrades = [], ...fighter }) => ({ ...fighter, upgrades: [...transformations, ...upgrades] }));
-    const sim = new Simulation(fighters, { tiebreak: match.tiebreak, suddenDeath: match.suddenDeath });
+    const sim = new Simulation(fighters, { tiebreak: match.tiebreak, suddenDeath: match.suddenDeath, royale: match.royale });
     while (!sim.over) {
       sim.step(DT);
       if (!sim.over && sim.time >= match.timeLimit) sim.endOnTime();
@@ -71,7 +77,9 @@ for (;;) {
       while ((end = buffer.indexOf('\n\n')) >= 0) {
         const message = buffer.slice(0, end);
         buffer = buffer.slice(end + 2);
-        const data = message.split('\n').find((line) => line.startsWith('data: '));
+        const lines = message.split('\n');
+        if (lines.some((line) => line.startsWith('event: '))) continue; // the clock ping
+        const data = lines.find((line) => line.startsWith('data: '));
         if (data) await receive(JSON.parse(data.slice(6)).screens);
       }
     }

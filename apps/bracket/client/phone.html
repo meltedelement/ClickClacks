@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171a21">
+  <title>Ball Bracket</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/bracket.css">
+</head>
+<body>
+  <header class="topbar" id="bar" hidden>
+    <span class="dot" id="myColor"></span>
+    <span class="name" id="myName"></span>
+    <span class="spacer"></span>
+    <span class="meta" id="metaText"></span>
+    <span class="live" id="live" title="Connection"></span>
+  </header>
+  <div id="roundBar" hidden></div>
+  <div class="arena" id="arena" hidden></div>
+  <main>
+    <form class="stack" id="joinForm" hidden>
+      <h1 class="title">Ball Bracket</h1>
+      <p class="muted">Draft a weapon, then fight one on one through a bracket. You add an upgrade after every stage.</p>
+      <input class="input" id="name" placeholder="Your name" aria-label="Your name" autocomplete="off" autocapitalize="words" maxlength="20" required>
+      <button class="button primary" id="joinButton">Join</button>
+    </form>
+    <p class="error" id="error" role="alert"></p>
+    <div id="screen"></div>
+    <div id="table"></div>
+  </main>
+  <script type="module">
+    import { eventsUrl, post, subscribe } from '/client/index.ts';
+    import { arena, buildTags, dot, draw, h, lookBackground, tagged } from '/ui.js';
+    import { bracketSection, nowPlaying, roundBanner, winCard, standings, statusText } from '/bracket.js';
+
+    const TOKEN_KEY = 'bracket-token';
+    const $ = (id) => document.getElementById(id);
+    const ARENA = '/game/?display&embed';
+    const stage = arena($('arena'));
+    const winLayer = h('div.win-overlay');
+    $('arena').append(winLayer);
+    let token = null;
+    let stop = null;
+    let busy = false;
+
+    try { token = localStorage.getItem(TOKEN_KEY); } catch { /* private window: only this visit */ }
+
+    function remember(value) {
+      token = value;
+      try {
+        if (value) localStorage.setItem(TOKEN_KEY, value);
+        else localStorage.removeItem(TOKEN_KEY);
+      } catch { /* as above */ }
+    }
+
+    function showError(message) {
+      $('error').textContent = message ?? '';
+    }
+
+    // One action at a time, so a double tap can't take the next offer too.
+    async function act(path, body) {
+      if (busy) return;
+      busy = true;
+      try {
+        await post(path, body, { token });
+        showError('');
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        busy = false;
+      }
+    }
+
+    function choice(item, kind, onPick) {
+      return h(`button.choice.${kind}`, { type: 'button', onclick: onPick },
+        h('span.choice-name', item.name),
+        h('span.choice-text', item.description));
+    }
+
+    // Choosing a weapon, or taking the pick on offer. Null when there is nothing to choose.
+    function drafting(draft, eyebrow) {
+      if (!draft.weapon) {
+        return h('.stack', {},
+          h('.eyebrow', eyebrow),
+          h('h1.title', 'Pick your weapon'),
+          h('p.muted', 'You keep it all tournament, and add one pick after every stage.'),
+          draft.weapons.map((w) => choice(w, 'weapon', () => act('/api/weapon', { weapon: w.id }))));
+      }
+      if (draft.finished) return null;
+      const transforming = draft.kind === 'transformation';
+      return h('.stack', {},
+        h('.eyebrow', `${eyebrow} · Pick ${draft.pickNumber}`),
+        h('h1.title', draft.bonus ? 'Bonus: a second transformation' : transforming ? `Transform your ${draft.weapon.name}` : 'Take an upgrade'),
+        draft.bonus ? h('p.muted', 'You made the top half. Pick a second transformation, then your upgrade for this stage.') : null,
+        draft.offer.map((item) => choice(item, draft.kind, () => act('/api/pick', { id: item.id }))),
+        h('.section', {}, buildTags(draft)));
+    }
+
+    function lobbyScreen(view) {
+      return drafting(view.draft, 'Before the tournament') ?? h('.stack', {},
+        h('h1.title', 'You\'re in'),
+        h('p.muted', 'The tournament starts when the host is ready.'),
+        buildTags(view.draft));
+    }
+
+    // Someone who joined after the tournament started drafts for the next one.
+    function spectatorScreen(view) {
+      return h('.stack', {},
+        h('p.notice', 'This tournament started before you joined, so you\'re watching. You\'ll be in the next one.'),
+        drafting(view.draft, 'For the next tournament'),
+        view.bracket ? nowPlaying(view.bracket) : null,
+        view.bracket ? bracketSection(view.bracket, view.you.id) : null);
+    }
+
+    function tournamentScreen(view) {
+      const { progress, bracket, draft } = view;
+      const picking = view.phase === 'picking' && progress.state !== 'out' ? drafting(draft, `Before stage ${bracket.stage}`) : null;
+      const waitingFor = view.lobby.filter((p) => p.entered && !p.out && !p.ready).map((p) => p.name);
+      return h('.stack', {},
+        h(`p.notice${progress.state === 'champion' ? '.won' : ''}`, statusText(progress, view.format)),
+        picking,
+        view.phase === 'picking' && !picking && waitingFor.length > 0
+          ? h('p.muted', `Waiting for ${waitingFor.join(', ')} to pick.`)
+          : null,
+        view.phase === 'playing' ? nowPlaying(bracket) : null,
+        picking ? null : h('.section', {}, h('.eyebrow', 'Your build'), buildTags(draft)),
+        bracketSection(bracket, view.you.id));
+    }
+
+    function doneScreen(view) {
+      const { bracket } = view;
+      const won = bracket.champion?.id === view.you.id;
+      return h('.stack', {},
+        h('.eyebrow', `${bracket.format} · over`),
+        won ? h('div.big-place.won', 'You won the tournament!') : h('div.stack', {}, h('p.muted', 'Champion'), h('div.champion-name', bracket.champion?.name ?? '?')),
+        standings(bracket, view.you.id),
+        h('p.muted', 'The host starts the next tournament, with new builds for everyone.'));
+    }
+
+    function table(view) {
+      const rows = view.lobby;
+      const status = (p) => {
+        if (view.phase === 'lobby') return p.ready ? 'Ready' : 'Drafting';
+        if (!p.entered) return 'Watching';
+        if (p.out) return 'Out';
+        if (view.phase === 'picking') return p.ready ? 'Ready' : 'Picking';
+        return null;
+      };
+      return h('.section', {},
+        h('.eyebrow', `Players (${rows.length})`),
+        h('ul.rows', {}, rows.map((p) =>
+          h(`li.row${p.id === view.you.id ? '.you' : ''}`, {},
+            dot(lookBackground(p)),
+            h('span.grow', tagged(p)),
+            p.titles > 0 ? h('span.side', `${p.titles} ${p.titles === 1 ? 'title' : 'titles'}`) : null,
+            status(p) ? h(`span.side${p.ready && !p.out ? '.good' : ''}`, status(p)) : null))));
+    }
+
+    function render(view) {
+      $('bar').hidden = false;
+      $('myColor').style.background = view.you.color;
+      $('myName').textContent = view.you.name;
+      $('metaText').textContent = view.you.titles > 0 ? `${view.you.titles} ${view.you.titles === 1 ? 'title' : 'titles'}` : view.bracket ? `Stage ${view.bracket.stage}` : '';
+      // The arena stays loaded and connected all night, and is only shown while a
+      // stage plays. Loading it when a stage starts took a second or two, and the
+      // fight's shared clock was already running by then: phones joined it late.
+      stage.set(ARENA);
+      $('arena').hidden = !view.arena;
+      const won = view.bracket?.justWon ?? null;
+      draw(winLayer, won, () => (won ? winCard(won, view.you.id) : []));
+      const showRound = view.bracket && view.phase !== 'lobby';
+      $('roundBar').hidden = !showRound;
+      if (showRound) draw($('roundBar'), { phase: view.phase, b: [view.bracket.round, view.bracket.roundMatch, view.bracket.stage, view.bracket.stages, view.bracket.champion] }, () => roundBanner(view.bracket, view.phase));
+
+      const screen = () => {
+        if (view.phase === 'lobby') return lobbyScreen(view);
+        if (view.phase === 'done') return doneScreen(view);
+        if (!view.progress) return spectatorScreen(view);
+        return tournamentScreen(view);
+      };
+      draw($('screen'), { phase: view.phase, draft: view.draft, progress: view.progress, bracket: view.bracket, notice: view.notice, lobby: view.lobby, format: view.format }, () => [
+        view.notice ? h('p.notice', view.notice) : null,
+        screen(),
+      ]);
+      draw($('table'), { lobby: view.lobby, phase: view.phase }, () => [
+        table(view),
+        view.phase === 'lobby' ? h('.section', {}, h('button.button.quiet', { type: 'button', onclick: leave }, 'Leave the game')) : null,
+      ]);
+    }
+
+    async function leave() {
+      if (!confirm('Leave the game?')) return;
+      await act('/api/leave', {});
+    }
+
+    function start() {
+      stop?.();
+      stop = null;
+      $('joinForm').hidden = Boolean(token);
+      if (!token) {
+        $('bar').hidden = true;
+        stage.set(null);
+        draw($('screen'), null, () => []);
+        draw($('table'), null, () => []);
+        $('name').focus();
+        return;
+      }
+      stop = subscribe(eventsUrl({ token }), {
+        onData(view) {
+          if (view === null) {
+            // The host removed this player, or the server restarted and forgot them.
+            remember(null);
+            showError('You\'re not in this game any more. Join again.');
+            start();
+            return;
+          }
+          render(view);
+        },
+        onConnected(live) {
+          $('live').classList.toggle('on', live);
+          $('live').title = live ? 'Connected' : 'Reconnecting';
+        },
+      });
+    }
+
+    $('joinForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('joinButton').disabled = true;
+      try {
+        const answer = await post('/api/join', { name: $('name').value });
+        remember(answer.token);
+        showError('');
+        start();
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        $('joinButton').disabled = false;
+      }
+    });
+
+    start();
+  </script>
+</body>
+</html>

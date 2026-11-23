@@ -212,7 +212,7 @@ const LOADOUTS = [
   { weapon: 'sword', name: 'BRAVO', color: '#4d8ce5', upgrades: ['piercer', 'wildling', 'thorns', 'crit'] },
   { weapon: 'spear', name: 'CHARLIE', color: '#e5c04d', upgrades: ['hoplite', 'tackler', 'dancer', 'health'] },
   { weapon: 'mace', name: 'DELTA', color: '#4de58c', upgrades: ['portaler', 'kamikaze', 'pilot', 'armor'] },
-  { weapon: 'daggers', name: 'ECHO', color: '#c04de5', upgrades: ['rogue', 'trickster', 'saw', 'multidexterous'] },
+  { weapon: 'daggers', name: 'ECHO', color: '#c04de5', upgrades: ['rogue', 'trickster', 'saw', 'ambidextrous'] },
 ];
 
 let matchId = 0;

@@ -10,8 +10,8 @@ export class Spear extends Weapon {
 
   constructor(owner) {
     super(owner);
-    this.damage = 3;
-    this.spinSpeed = 2.6;
+    this.damage = 3.5;
+    this.spinSpeed = 2.8;
     this.length = 110;
     this.thickness = 4;
     this.reachPerHit = 6; // px of length gained per hit

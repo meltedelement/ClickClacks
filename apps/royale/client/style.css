@@ -1,0 +1,612 @@
+:root {
+  color-scheme: dark;
+  --bg: #171a21;
+  --panel: #222733;
+  --panel-hover: #2b3140;
+  --line: #3a4150;
+  --text: #f2f4f8;
+  --muted: #a3acbd;
+  --accent: #ffd23f;
+  --danger: #ff6b6b;
+  --good: #4cc38a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---- Page frame --------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar .name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+.topbar .meta {
+  color: var(--muted);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.dot {
+  flex: none;
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+}
+
+.live {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.live.on {
+  background: var(--good);
+}
+
+main {
+  width: 100%;
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.stack {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+}
+
+.section {
+  margin-top: 1.5rem;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.notice {
+  padding: 0.625rem 0.75rem;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.error:empty {
+  display: none;
+}
+
+/* ---- Controls ----------------------------------------------------------- */
+
+.button {
+  min-height: 3rem;
+  padding: 0.625rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font-weight: 600;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--panel-hover);
+}
+
+.button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #1b1c20;
+}
+
+.button.primary:hover:not(:disabled) {
+  background: #ffdf70;
+}
+
+.button.quiet {
+  min-height: 2.25rem;
+  padding: 0.25rem 0.625rem;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.input {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+/* The draft's choices. */
+.choice {
+  display: block;
+  width: 100%;
+  min-height: 3.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  text-align: left;
+}
+
+.choice:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--panel-hover);
+}
+
+.choice-name {
+  display: block;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.choice-text {
+  display: block;
+  margin-top: 0.125rem;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.choice.transformation .choice-name {
+  color: var(--accent);
+}
+
+/* ---- Lists -------------------------------------------------------------- */
+
+.rows {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0;
+}
+
+.row .grow {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.row .side {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.row .side.good {
+  color: var(--good);
+}
+
+.row.you .grow {
+  font-weight: 700;
+}
+
+.place {
+  flex: none;
+  width: 2rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.build {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tags li {
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 0.875rem;
+}
+
+.tags li.lead {
+  background: var(--panel-hover);
+  font-weight: 700;
+}
+
+.tags li.has-detail {
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px transparent;
+}
+
+.tags li.has-detail:hover,
+.tags li.pinned {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.tag-detail {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.tag-detail strong {
+  color: var(--text);
+}
+
+/* ---- The arena ---------------------------------------------------------- */
+
+.arena {
+  position: relative;
+  width: min(100vw, calc(100dvh - 7.5rem));
+  aspect-ratio: 1;
+  margin: 0 auto;
+  background: #101218;
+}
+
+.arena iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.25rem;
+  background: #101218;
+  text-align: center;
+  pointer-events: none;
+}
+
+.countdown-number {
+  font-size: 5rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.big-place {
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.big-place.won {
+  color: var(--accent);
+}
+
+/* ---- Host page ---------------------------------------------------------- */
+
+.host {
+  display: grid;
+  grid-template-columns: minmax(19rem, 24rem) 1fr;
+  height: 100dvh;
+}
+
+.host-side {
+  overflow-y: auto;
+  padding: 1rem;
+  border-right: 1px solid var(--line);
+}
+
+.host-stage {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.host-stage .arena {
+  width: min(100%, calc(100dvh - 2rem));
+}
+
+.join-address {
+  font-size: clamp(1.75rem, 4.5vw, 3.5rem);
+  font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  color: var(--accent);
+}
+
+.join-other {
+  color: var(--muted);
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.host-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.field select {
+  max-width: 14rem;
+  min-height: 2.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+}
+
+.field input {
+  width: 5rem;
+  min-height: 2.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  text-align: right;
+}
+
+@media (max-width: 52rem) {
+  .host {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .host-side {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .host-stage {
+    padding: 1rem 0;
+  }
+
+  .host-stage .arena {
+    width: min(100vw, 100dvh);
+  }
+}
+
+/* The host page's style button beside each player: gold, so it stands out from the plain ones. */
+.button.look-button {
+  flex: none;
+  min-height: 2rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid #d9a21b;
+  border-radius: 999px;
+  background: transparent;
+  color: #ffd23f;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.button.look-button:hover:not(:disabled) {
+  background: rgba(255, 210, 63, 0.12);
+}
+
+.button.look-button.on,
+.button.look-button.on:hover:not(:disabled) {
+  border-color: #ffd94a;
+  background: linear-gradient(135deg, #fff3b0, #ffd94a 45%, #d9a21b);
+  color: #3d2b00;
+}
+
+/* The style picker. */
+.look-dialog {
+  width: min(100% - 2rem, 26rem);
+  max-height: calc(100dvh - 2rem);
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.look-dialog::backdrop {
+  background: rgba(10, 12, 16, 0.7);
+}
+
+.look-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.look-ball {
+  width: 4rem;
+  height: 4rem;
+  border: 3px solid rgba(0, 0, 0, 0.35);
+  border-radius: 50%;
+}
+
+.look-name {
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.look-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.look-swatch,
+.look-custom {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.look-swatch.on {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--bg) inset;
+}
+
+.look-custom {
+  border-color: var(--line);
+  background: none;
+}
+
+.look-skins {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.5rem;
+}
+
+.look-skin {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font-weight: 600;
+  text-align: left;
+}
+
+.look-skin .dot {
+  width: 1rem;
+  height: 1rem;
+}
+
+.look-skin.on {
+  border-color: var(--accent);
+  background: var(--panel-hover);
+}
+
+.look-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.look-field {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.look-field > span {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.look-custom::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.look-custom::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.look-custom::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
+}

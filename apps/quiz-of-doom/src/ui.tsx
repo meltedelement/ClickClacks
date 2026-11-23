@@ -74,16 +74,18 @@ export function battleViewUrl(displayUrl: string, { embed = false } = {}): strin
 }
 
 // The address teams type in to join. A page opened on localhost would show
-// "localhost", which no phone can reach, so it asks the server for its
-// address on the local network and keeps this page's port.
+// "localhost", which no phone can reach, so it asks the server: a Tailscale
+// Funnel URL to this page's port if there is one (it works from anywhere),
+// otherwise its address on the local network with this page's port.
 export function useJoinAddress(): string {
   const [address, setAddress] = useState(location.host);
   useEffect(() => {
     if (!['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) return;
-    fetch('/api/lan')
+    fetch(`/api/lan?port=${location.port || (location.protocol === 'https:' ? 443 : 80)}`)
       .then((res) => res.json())
-      .then(({ addresses }: { addresses: string[] }) => {
-        if (addresses[0]) setAddress(location.port ? `${addresses[0]}:${location.port}` : addresses[0]);
+      .then(({ addresses, public: funnels = [] }: { addresses: string[]; public?: string[] }) => {
+        if (funnels[0]) setAddress(new URL(funnels[0]).host);
+        else if (addresses[0]) setAddress(location.port ? `${addresses[0]}:${location.port}` : addresses[0]);
       })
       .catch(() => {}); // keep showing location.host
   }, []);

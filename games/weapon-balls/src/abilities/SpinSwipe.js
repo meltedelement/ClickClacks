@@ -15,6 +15,7 @@ export class SpinSwipe extends Ability {
     this.swipeDamageMultiplier = 2;
     this.turns = 1; // full rotations per swipe
     this.triggerMargin = 30; // px beyond weapon reach at which it's worth swinging (grows with the ball in a royale)
+    this.reachBonus = 0; // share of the blade's length it grows by during the swipe (Wide Swipe), so it swings from that much further out
 
     this.rotated = 0;
   }
@@ -31,7 +32,7 @@ export class SpinSwipe extends Ability {
     const enemy = this.nearestEnemy(sim);
     if (!enemy) return false;
     const { owner, weapon } = this;
-    const reach = owner.radius + weapon.gap + weapon.length + enemy.radius + this.triggerMargin * owner.size;
+    const reach = owner.radius + weapon.gap + weapon.length * (1 + this.reachBonus) + enemy.radius + this.triggerMargin * owner.size;
     return distance(owner.pos, enemy.pos) < reach;
   }
 

@@ -34,8 +34,9 @@ another out it takes the loser's mass and grows: its ball, blades and shields ge
 (size is mass^⅓), and its max HP and damage go up with its size. It plays down to the
 last two and then a winner. The numbers are in `CONFIG.royale` (`src/config.js`). A
 hundred balls run comfortably; a few hundred work, but the first seconds get heavy
-(`node tools/bench-render.js --royale=300` measures it). Royale is only on the main
-page: the match API and display page play normal matches.
+(`node tools/bench-render.js --royale=300` measures it). The match API plays royales too
+(`settings.royale`), on any number of display pages at once, which is how
+[`apps/royale`](../../apps/royale/README.md) puts one on everyone's phone.
 
 Shortcuts: **Space** pause, **R** restart, **H** hitboxes, **M** mute, **F** fullscreen, **Esc** close menu.
 
@@ -77,10 +78,12 @@ src/
     broadphase.js      Which balls are near each other, so a royale's pair loops stay fast
     math.js            Vector + segment geometry helpers
     random.js          Seeded Math.random replacement for reproducible matches
+    exactMath.js       Math functions that give the same bits in every browser, for royales
   weapons/
     Weapon.js          Base class every weapon extends
-    Sword.js, Spear.js, Mace.js, Daggers.js, Drone.js, Gun.js
+    Sword.js, Spear.js, Mace.js, Daggers.js, Drone.js, Gun.js, Wand.js, Tome.js
                        One file per weapon: stats, scaling, and how it's drawn
+    projectile.js      What stops a shot (blades, shields, drones), shared by Gun and Wand
     Shield.js          Off-hand shield that blocks enemy weapons
     OffhandSword.js    A shield shaped like a short sword (Dual Wielder)
     index.js           Registry of selectable weapons
@@ -90,8 +93,9 @@ src/
     ChargeDash.js      Spear: stop, aim, lunge for bonus damage
     SpearThrow.js      Spear (Olympian): stop, aim, throw the spear into the wall, dash after it
     DropSlam.js        Mace: from high up, plunge to the floor; damage grows with the fall
-    DashFlurry.js      Daggers: gather both blades, then three rapid dashes
-    Buzzsaw.js         Daggers (Saw): launch the blades as a saw that chases the enemy
+    Parry.js           (unused since the money-bag rework) cross the blades, stop a hit, answer with a swipe
+    Sawblade.js        Daggers (Saw): Backstab that latches on and saws
+    CutlassWave.js     Daggers (Swashbuckler): a slash that sends a wave, crit on every enemy it passes (with Saw: a sawing wave)
     Swarm.js           Drone: every drone attacks straight away, and they fly faster
   upgrades/
     Upgrade.js         Base class for roguelike upgrades applied from a loadout
@@ -110,6 +114,8 @@ src/
                        Big upgrades that reshape the Drone (Ace, Legion...)
     gun-transformations.js
                        Big upgrades that reshape the Gun (Shotgun, Grenadier...)
+    wand-transformations.js
+                       Big upgrades that reshape the Wand's orbs (Merlin, Pyromancer...)
     index.js           Registry of upgrades (menu order), plus loadout validation
   game/                Browser-only
     Game.js            Fixed-timestep loop, pause/speed/hitstop, sim events -> effects
@@ -126,8 +132,10 @@ src/
     search.js          The search, pure like the sim; shared by the page and the CLI
     worker.js          Web Worker that runs the search for the page
     main.js            The finder page: search form, finds, an arena to watch them in
+  art/                 The Art Lab (art.html, dev only): every look, drawn by the real Renderer
 server/
   matches.js           Match API: queue matches over HTTP, get results back
+  records.js           appends every finished match to data/records/ (read by tools/stats.js)
   index.js             Serves the built game + the match API (npm start)
 api/
   game.d.ts            The Game API contract: types for programs calling the match API
@@ -157,7 +165,7 @@ match with the real sim.
 
 ```sh
 npm run dev                  # API at http://localhost:5173/api, display at http://localhost:5173/?display
-npm run build && npm start   # API at http://localhost:3002/api, display at http://localhost:3002/?display (PORT=... to change)
+npm run build && npm start   # API at http://localhost:3002/api, display at http://localhost:3002/?display (PORT=... to change, HOST=127.0.0.1 to stay off the network)
 ```
 
 Open the display page on the screen everyone watches and leave it open. The
@@ -168,7 +176,9 @@ by side, and three or four make a 2×2 grid. Each screen has a mute button in
 its corner, and keys **1** to **4** do the same. **M** or the menu's Sound box
 mutes all screens. The menu's pause, speed and hitbox settings apply to all
 screens. `?display&embed` hides the menu, for a page that embeds the display
-(the quiz's big screen). Such a page can post the message
+(the quiz's big screen). `?display&follow=3` keeps the view on the fighter in that
+slot during a royale, with a ring around it, and tapping the arena zooms out and back
+(`apps/royale` gives each phone its own ball). Such a page can post the message
 `'weapon-balls:unlock-audio'` to the frame after its own first click, so the
 arena plays sound without a click inside it.
 Matches only play while at least one display page is connected. Browsers slow
@@ -230,7 +240,10 @@ The settings (`MatchSettings`):
 | --- | --- | --- |
 | `timeLimit` | number | Optional, sim seconds above 0 and at most 600. Default 180. |
 | `tiebreak` | `'hp'` \| `null` | Optional. With `'hp'` the match never ends in a draw: at `timeLimit`, or after a double KO, the fighter with the larger share of its max HP left wins. An exact tie is a coin flip from the match seed, so it is the same on every display. The banner says "WINS ON HP". Default `null`. |
-| `suddenDeath` | number \| `null` | Optional, sim seconds from 0 to 600 before sudden death starts: from then on both fighters lose HP every second, a little more each second (`CONFIG.suddenDeath`), until one drops. It ignores armor, dodging and upgrades. The one with more HP outlasts the other; only fighters level on HP go down together (a draw, or the `hp` tiebreak). A sudden-death knockout is `reason: 'ko'`. `null` turns it off. Default 120. |
+| `suddenDeath` | number \| `null` | Optional, sim seconds from 0 to 600 before sudden death starts: from then on both fighters lose HP every second, a little more each second (`CONFIG.suddenDeath`), until one drops. It ignores armor, dodging and upgrades. The one with more HP outlasts the other; only fighters level on HP go down together (a draw, or the `hp` tiebreak). A sudden-death knockout is `reason: 'ko'`. `null` turns it off. Default 120, or in a royale `CONFIG.royale.suddenDeath` for the size of the crowd. |
+| `royale` | boolean | Optional. A battle royale: the arena grows to fit the crowd, balls spawn spread over it, and a kill hands the victim's mass to the killer. See [Lifecycle](#lifecycle) for how it differs on display pages. Default `false`. |
+| `shared` | boolean | Optional. Plays like a royale on display pages (see [Lifecycle](#lifecycle)): to the server's clock, with the same math in every browser, so any number of devices show it at the same moment. Without hitstop. Always `true` for a royale. Default `false`. |
+| `startDelay` | number | Optional, shared matches only, 0 to 30. Seconds between a display putting the match up and its clock starting; every display counts them down, so a display that's still loading, or whose arena was hidden, starts with the others instead of joining late and skipping ahead. Default 3; always 0 when not shared. |
 
 A fighter (`FighterInput`):
 
@@ -239,6 +252,10 @@ A fighter (`FighterInput`):
 | `weapon` | string | Required. A weapon id from `/api/catalog`. |
 | `name` | string | Optional. Shown above the ball and in the winner banner. `team` is accepted in its place. |
 | `color` | string | Optional. The ball colour as `"#rrggbb"`, e.g. a team colour. Without it, the ball takes the colour of its weapon. Another format is a 400. |
+| `highlight` | boolean | Optional, default `false`. Draws a ring in the ball's colour around it, to pick it out of a crowd. Display only: the fight plays out the same. |
+| `skin` | `'gold'` \| `'birthday'` \| `'rainbow'` \| `'galaxy'` \| `'diamond'` \| `'fire'` \| `null` | Optional, default `null`. How the ball is drawn (`src/game/skins.js`): `'gold'` is the shiny gold "dev orb" (a sweeping glint and sparkles), `'birthday'` the ball's colour with sprinkles, a party hat and confetti, `'rainbow'` turning colours, `'galaxy'` twinkling stars, `'diamond'` pale blue facets, `'fire'` flames. The name above the ball takes the skin's colour. Display only. Anything else is a 400. |
+| `tag` | `string` \| `null` | Optional, default `null`. Up to 12 characters shown before the name, as in `DEV · Ana`. Display only. |
+| `size` | number | Optional, default `1`, from 0.25 to 4; another value is a 400. The ball's starting size in a royale, ignored otherwise. Radius, blades, max HP and damage scale as if it had grown or shrunk to that size, and a kill hands over the mass that goes with it. |
 | `upgrades` | `string[]` or `{ [id]: count }` | Optional. A list of upgrade ids (repeat an id to stack it) or a map of id to copies, 0 to 100 each. `['damage', 'damage']` and `{ damage: 2 }` are the same. Upgrades are applied in the order given. A transformation here is a 400. |
 | `transformations` | `string[]` or `{ [id]: count }` | Optional. Transformation ids from `transformations` in `/api/catalog`, in the same forms. They are applied before the upgrades. An upgrade that is not a transformation here is a 400. |
 
@@ -252,13 +269,16 @@ Success is a **201** with the new `Match`:
   "ref": null,
   "status": "queued",
   "characters": [
-    { "name": "Alpha", "color": "#e5484d", "weapon": "sword", "upgrades": ["damage", "damage", "lifesteal"], "transformations": ["captain"] },
-    { "name": "Beta", "color": null, "weapon": "mace", "upgrades": ["health", "health"], "transformations": [] }
+    { "name": "Alpha", "color": "#e5484d", "highlight": false, "size": 1, "weapon": "sword", "upgrades": ["damage", "damage", "lifesteal"], "transformations": ["captain"] },
+    { "name": "Beta", "color": null, "highlight": false, "size": 1, "weapon": "mace", "upgrades": ["health", "health"], "transformations": [] }
   ],
   "seed": 2894113750,
   "timeLimit": 180,
   "tiebreak": null,
   "suddenDeath": 120,
+  "royale": false,
+  "shared": false,
+  "startDelay": 0,
   "screen": null,
   "queuedAt": "2026-09-28T14:03:11.204Z",
   "startedAt": null,
@@ -268,7 +288,7 @@ Success is a **201** with the new `Match`:
 ```
 
 The stored `characters` are normalised: `team` is folded into `name` (`null` when
-neither was given), `color` is `null` when not given, and `upgrades` and `transformations` are always flat lists of ids.
+neither was given), `color` is `null`, `highlight` is `false` and `size` is `1` when not given, and `upgrades` and `transformations` are always flat lists of ids.
 
 #### The `Match` object
 
@@ -277,14 +297,17 @@ neither was given), `color` is `null` when not given, and `upgrades` and `transf
 | `id` | string | UUID. |
 | `ref` | string \| `null` | Your tag from the request. |
 | `status` | `'queued'` \| `'playing'` \| `'done'` \| `'cancelled'` | See the lifecycle below. |
-| `characters` | `Fighter[]` | `{ name: string \| null, color: string \| null, weapon: string, upgrades: string[], transformations: string[] }`. |
+| `characters` | `Fighter[]` | `{ name: string \| null, color: string \| null, highlight: boolean, skin: string \| null, tag: string \| null, size: number, weapon: string, upgrades: string[], transformations: string[] }`. |
 | `seed` | integer | The seed the fight is played with, whether you passed it or not. |
 | `timeLimit` | number | Sim seconds before a draw is called. |
 | `tiebreak` | `'hp'` \| `null` | As requested. |
 | `suddenDeath` | number \| `null` | Sim seconds before sudden death starts, or `null` for none. |
+| `royale` | boolean | As requested. |
+| `shared` | boolean | As requested, or `true` for a royale. |
+| `startDelay` | number | As requested (default 3) for a shared match, else 0. |
 | `screen` | integer \| `null` | The display screen (0 to `screens` − 1) the match plays on. `null` while it waits for a free screen. It keeps the number after the match ends. |
 | `queuedAt` | ISO timestamp | |
-| `startedAt` | ISO timestamp \| `null` | When a display started it. Reset to `null` if it goes back to `queued`. |
+| `startedAt` | ISO timestamp \| `null` | When a display started it; for a shared match, when its clock starts, `startDelay` seconds after that (so for a moment it's in the future). Reset to `null` if it goes back to `queued`. |
 | `finishedAt` | ISO timestamp \| `null` | Set when `done` or `cancelled`. |
 | `result` | `MatchResult` \| `null` | Only set when `status` is `done`. A cancelled match has no result. |
 
@@ -393,7 +416,7 @@ Every error is `{ "error": "message" }` with one of these statuses:
 
 | Status | When |
 | --- | --- |
-| 400 | Invalid request. The message names the field, e.g. `characters[1]: Unknown weapon: axe` or `characters[0]: Upgrade "quick-drop" can't go on weapon "sword"`. Also a body that isn't a JSON object. |
+| 400 | Invalid request. The message names the field, e.g. `characters[1]: Unknown weapon: axe` or `characters[0]: Upgrade "slow-drop" can't go on weapon "sword"`. Also a body that isn't a JSON object. |
 | 404 | Unknown route, or no match with that id. |
 | 405 | The route exists but not for that method. |
 | 409 | Cancelling a match that already finished, or (display side) reporting on a match that is not on a screen. |
@@ -407,7 +430,7 @@ calling program. They are listed for anyone writing another display.
 
 | Route | |
 | --- | --- |
-| `GET /api/display` | A server-sent event stream. Each message's `data` is `{ screens: (Match \| null)[] }`: the match on each screen, or `null` for a free screen. One is sent on connecting and another whenever a screen changes. A `: ping` comment goes out every 20 seconds. |
+| `GET /api/display` | A server-sent event stream. Each message's `data` is `{ screens: (Match \| null)[], now: number }`: the match on each screen, or `null` for a free screen, and the server's clock in ms. One is sent on connecting and another whenever a screen changes or a match starts. A `: ping` comment goes out every 20 seconds. |
 | `POST /api/matches/:id/start` | The display started playing the match. Moves it to `playing`. Only a match on a screen is accepted (409 otherwise). Safe to repeat. |
 | `POST /api/matches/:id/result` | Body `{ winner: number \| null, time: number, hp: number[], decidedBy?: 'ko' \| 'hp', ranking?: number[] }`. Without `ranking`, the server ranks the winner first and the rest by HP left. Marks the match `done` and builds `result` (the server works out `winnerName` and `reason`). `decidedBy: 'hp'` needs a winner and a match with the `hp` tiebreak. The first result in wins: a later one for a finished match just returns it. 409 if the match is not on a screen, 400 for a malformed body. |
 
@@ -424,12 +447,24 @@ Each match has a seed (random unless you pass one), so every display page shows
 the same fights on the same screens. If the last display disconnects, the
 matches on screen go back to `queued` and restart from the beginning when a
 display reconnects. It's the same seed, so it's the same fight. The server keeps
-matches in memory only.
+matches in memory only, but writes each finished one to a record file (see
+[Match records](#match-records)).
 
 Use the same browser on every display. JavaScript engines can differ in the
 last bit of some math functions (`Math.atan2` differs between Node 22 and
 Chrome 151), so over a long fight a seed can play out differently in another
 browser, or when rerun in Node.
+
+A shared match (every royale, and any match queued with `settings.shared`) has
+none of these limits, so that any number of devices of any kind can show one
+together. It runs on math that is the same in every browser
+(`src/sim/exactMath.js`), and to the server's clock from `startedAt` rather than the
+page's own: a display that opens late or wakes up fast-forwards to the same moment.
+The clock starts `startDelay` seconds (default 3) after a display first puts it up,
+with a countdown on every display, so displays that are a moment behind (still
+loading, or with the arena hidden) start it together rather than skipping its opening.
+For the same reason it has no End button, and it stays `playing` on its clock when the last
+display disconnects, instead of going back to `queued`.
 
 ## Adding a new weapon
 
@@ -477,6 +512,7 @@ That's it. It appears in the fighter dropdowns and the balance script.
 | ------------------------------ | ---------------------------------------------- |
 | `onHit(target, sim)`           | After this weapon damages a ball (scaling goes here) |
 | `onParry(otherWeapon, sim)`    | When this weapon clashes with another          |
+| `onWallBounce(sim)`            | When this weapon's ball bounces off a wall (the Tome opens its portals here) |
 | `canParry(otherWeapon)`        | Whether a clash right now parries (default: not within the parry cooldown) |
 | `clashesWith(otherWeapon)`     | Return false to swing straight through that weapon: it isn't blocked, but the other one still is. The Daggers do this against other Daggers while they can't parry |
 | `update(dt, sim)`              | Every physics step (call `super.update(dt, sim)`) |
@@ -566,8 +602,8 @@ Upgrades stack: listing an id twice gives one upgrade with `stacks = 2`. An
 unknown id, one that doesn't fit the weapon, one over its `maxStacks`, or one
 missing an upgrade it `requires` throws. `upgradesFor(weaponId, owned)` in
 `src/upgrades/index.js` lists what could be added next; it also leaves out an
-upgrade while the fighter has one of its `excludedBy` (Long Dash once Olympian
-or Runner has replaced the dash), though a loadout with both is still valid.
+upgrade while the fighter has one of its `excludedBy` (e.g. an upgrade for an
+ability another one has replaced), though a loadout with both is still valid.
 
 To add one, write the class in `src/upgrades/common.js` (any weapon) or the
 weapon's own file, and add it to `UPGRADES` in `src/upgrades/index.js`:
@@ -607,13 +643,13 @@ filled to `maxHp`. An upgrade can do any mix of these:
 | What                       | How                                                           |
 | -------------------------- | ------------------------------------------------------------- |
 | Change starting stats      | `apply()`: `this.weapon.blades += 1`, `this.owner.maxHp += 20`, `this.ability.windup *= 0.5` |
-| Combat stats               | `weapon.critChance`, `weapon.critMultiplier`, `owner.armor`, `owner.dodgeChance`, `contactDamage` on each of `weapon.shields`, `weapon.widthScale` (draw width, set it with `thickness`) |
+| Combat stats               | `weapon.critChance`, `weapon.critMultiplier`, `owner.dodgeChance`, `contactDamage` on each of `weapon.shields`, `weapon.widthScale` (draw width, set it with `thickness`) |
 | Change behaviour live      | The same modifier getters as abilities. Multipliers multiply together, `bonusDamage` adds up (use it for "+N damage on your next hit", not a multiplier, or two such bonuses multiply each other); flags are on if anything turns them on |
 | React to things            | `onUpdate`, `onHit(target, sim, damage, point)`, `onParry`, `onOwnerHit(attacker, sim, damage)`, `onBlock(attacker, sim)`, `onWallBounce(sim)`, `onBump(otherBall, sim)` (the balls' bodies touched, every step they do), `onAbilityStart`, `onAbilityEnd` |
 | Care where a hit landed    | `critsAt(point)`: return true to make that hit always crit. `damageMultiplierAt(point)`: scale its damage. `point` is on the blade, e.g. `Spear.headHit(point)` tells the head from the shaft |
 | Hold an ability back       | `allowsAbilityStart(ability, sim)`: return false and that ability of this weapon won't start this step (Dancer keeps its dance and Charge Dash from overlapping) |
 | Cancel a hit               | `preventHit(attacker, sim)`: return true and a weapon hit on this ball does nothing (after dodge, before crit) |
-| Deal extra damage          | `sim.dealDamage(this.owner, target, amount, { reason, color })`: no knockback, ignores armor and dodge |
+| Deal extra damage          | `sim.dealDamage(this.owner, target, amount, { reason, color })`: no knockback, ignores Armor, dodge and Vulnerable |
 | Put an effect on a ball    | `target.addStatus(new Burning({ source: this.owner, ... }), sim)`: see `src/sim/Status.js` |
 | Replace the ability        | `apply()`: `this.weapon.ability = new OtherAbility(this.weapon)` |
 | Show that it's there       | `drawUnder(ctx)`, `drawBlade(ctx, start)`, `drawOver(ctx)` (browser only) |
@@ -628,7 +664,7 @@ first cooldown was already worked out. If an upgrade emits a new phase and shoul
 
 A status is a timed effect on a ball, usually put there by an enemy's upgrade: Fire
 Eater's `Burning` deals damage over time and Gladiator's `Netted` slows the ball and
-makes it take more damage. Tackler's `GuardBroken` sets `guardBroken`, so the ball's weapon and
+makes it take more damage. Anti-materiel's `GuardBroken` sets `guardBroken`, so the ball's weapon and
 shields stop blocking, and Poseidon's `Impaled` pins the ball to the trident's tip. Crusher's
 `Stunned` sets `damageDealtMultiplier`, which scales both the ball's weapon hits and the damage
 `sim.dealDamage` credits to it, and Rubber Mace's `Bouncing` uses `onWallBounce(sim)`
@@ -643,8 +679,8 @@ Transformations are big upgrades that reshape a weapon, like the Sword's Stalwar
 second shield) or Dual Wielder (the shield becomes a short sword), and the Spear's Poseidon
 (a trident that skewers) or Olympian (swaps Charge Dash for Spear Throw), and the Mace's
 Portaler (Drop Slam falls through the floor and out of the ceiling) or Devil (a pillar of fire
-where the slam lands), and the Daggers' Rogue (teleport away from a hit) or Saw (swaps Dash
-Flurry for Buzzsaw). Mark one with
+where the slam lands), and the Daggers' Rogue (teleport away from a hit) or Saw (Backstab latches on
+and saws). Mark one with
 `static transformation = true`; they usually have `maxStacks = 1`. They combine freely with
 each other and with small upgrades, are listed in their own group in the menu, and are
 applied before every small upgrade, so e.g. Big Shield widens both of Stalwart's shields
@@ -662,6 +698,18 @@ hooks it asks its upgrades, where they have them: `onShot`, `onBulletMove`, `onB
 `onBulletBlocked` and `onBulletNearMiss` (see `Gun.js`). While a bullet is being dealt with,
 `weapon.striking` is that bullet, so a per-hit modifier can tell shots from bayonet stabs.
 
+The Wand's work through its orb fields (see `Wand.js`): `elements` (fire, air, water, earth,
+wild: any mix, and the orbs, pops and ring of fire are drawn as the blend),
+`orbsTouch` (false for Pyromancer, whose orbs feed a ring of fire instead of popping; `ring` is
+that upgrade, and the other elements change its ring through `onRingBurn(enemy, sim)` and,
+for Geomancer, a wider band),
+`spikeLength` (Geomancer's spikes), `wander` (Wild Magic's wriggle), plus the usual `popDamage`,
+`popKnockback`, `blastRadius`, `maxOrbs` and `orbInterval`. Each orb is an object with its own
+`scale` and damage `share` (Evoker's small orbs); upgrades with `onOrbPop(orb, i, pos, sim)` hear
+about every pop, and `weapon.blast(pos, scale, share, sim)` is a pop without an orb (Artificer's
+dropped ones). A pop's hits are weapon hits made while `weapon.popping` is true, so `onHit` can
+tell them from the stick's (Aeromancer's `Airborne` and Hydromancer's `Soaked` go on that way).
+
 A weapon can hold several shields (`weapon.shields`). Code that adds or replaces shields
 should keep that in mind, and a thrown shield sets `shield.away` so it can't block while
 it's gone (`weapon.heldShields` skips it).
@@ -669,7 +717,7 @@ it's gone (`weapon.heldShields` skips it).
 ## Balancing
 
 Runs a batch of headless matches between every pair of weapons, spread across
-all CPU cores.
+the CPU's cores (one worker thread per physical core; `-j` sets another number).
 
 ```sh
 npm run balance                          # 500 matches per pairing
@@ -734,6 +782,21 @@ best and worst builds, and a sorted list of outliers: cells more than
 Single-tier cells are noisier than the all-tier ones, so treat a lone flagged
 tier as a lead to check with `npm run balance`.
 
+### Art Lab
+
+For checking how things look: with `npm run dev` running, open
+`http://localhost:5173/art.html`. Pick a weapon and click transformations and
+upgrades into a build (the numbers are pick order, which decides which hat is
+drawn on top). The Gallery shows the build, every transformation on its own,
+the build plus each other transformation, and optionally every pair, each
+drawn by the game's own `Renderer` and animated by the weapon's real update
+against a stand-in sim with no enemies. Click a card to make it the build. The
+Live arena tab plays the build against chosen opponents in a real `Game`, with
+slow motion, pause and step (Space, `.`), hitboxes, and an endless mode that
+keeps everyone's HP full. Colour, skin and royale size apply to both. The
+view is kept in the URL hash, so a reload or a shared link opens the same
+build. The page is dev only: it isn't part of `npm run build`.
+
 ### Flawless finder
 
 There's a page for it: with `npm run dev` running, open
@@ -764,6 +827,38 @@ npm run flawless -- -w sword+damage:5,daggers,spear # only these fighters
 npm run flawless -- -w '*sword,any'                 # a plain sword beating a random build
 npm run flawless -- --queue                         # play finds on localhost:5173/?display
 npm run flawless -- --hits-only -f 4                # weapon hits only, four-way free-for-alls
+```
+
+### Match records
+
+Every match the match API finishes (royales, brackets, Letter Brawl, the quiz's
+tournaments, anything queued by hand) is appended as one JSON line to
+`data/records/<YYYY-MM-DD>.jsonl` by `server/records.js`. A record has the
+match's id, `ref` (which tells the app that queued it apart), the game's
+`build` (`git describe --always --dirty` when the server started, to split stats
+around a balance change), its times, `seed`, `settings` (including `shared`,
+which picks the exact math), each fighter's `name`, `size`, `weapon`,
+`transformations` and `upgrades`, and the result (`winner`, `reason`, `time`,
+`hp`, `ranking`). The seed, fighters and settings are a `POST /api/matches` body
+that replays the fight. Cosmetics (colour, skin, tag) are left out. The folder is
+gitignored. `RECORDS=off` turns recording off, and `RECORDS_DIR` moves it.
+
+`npm run stats` reads them. Duels (two fighters) and royales (three or more) are
+counted apart: for duels, weapon win rates (leaving out mirror matches) with a
+95% margin and a weapon-against-weapon matrix. For royales, win rate against the
+1/n a fighter gets by chance, and placing (100% first, 0% first out). For both,
+how often each upgrade and transformation is picked, its average copies, and
+its Δ: how much better fighters with it did than fighters of the same weapon
+without it. Royale bots (unnamed fighters) aren't counted unless `--bots`.
+
+```sh
+npm run stats                                  # everything recorded
+npm run stats -- --mode duel --min 20          # duels only, hide rows under 20 fighters
+npm run stats -- --weapon sword                # upgrade tables for the sword only
+npm run stats -- --since 2026-11-01 --build eaa87e9
+npm run stats -- --source royale               # royale, letter-brawl, tournament or direct
+npm run stats -- --matches 10                  # the last 10 matches with their seeds
+npm run stats -- --csv fighters.csv --json stats.json   # one row per fighter per match, for a spreadsheet
 ```
 
 Weapon numbers live in each weapon's file; everything shared lives in `src/config.js`.

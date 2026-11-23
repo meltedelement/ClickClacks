@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzer</title>
+  <style>
+    body { font: 18px system-ui, sans-serif; margin: 0; padding: 16px; max-width: 480px; margin-inline: auto; background: #111; color: #eee; }
+    input, button { font: inherit; padding: 12px; border-radius: 8px; border: 1px solid #555; background: #222; color: inherit; }
+    input { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+    button { cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    #buzz { width: 100%; height: 40vh; font-size: 48px; font-weight: bold; background: #c62828; border: none; border-radius: 24px; margin: 16px 0; }
+    #buzz.won { background: #2e7d32; }
+    .error { color: #ff8a80; min-height: 1.4em; }
+    .live { font-size: 14px; opacity: 0.8; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #c62828; margin-right: 6px; }
+    .dot.on { background: #43a047; }
+    .row { display: flex; justify-content: space-between; align-items: center; }
+  </style>
+</head>
+<body>
+  <div id="join" hidden>
+    <h1>Join</h1>
+    <form id="joinForm">
+      <input id="name" placeholder="Your name" autocomplete="off" maxlength="20">
+      <button id="joinButton">Join</button>
+    </form>
+  </div>
+
+  <div id="game" hidden>
+    <div class="row">
+      <h1 id="me"></h1>
+      <span class="live"><span id="dot" class="dot"></span><span id="liveText">connecting</span></span>
+    </div>
+    <div id="status"></div>
+    <button id="buzz">BUZZ</button>
+    <button id="forget">Forget my token</button>
+  </div>
+
+  <p class="error" id="error"></p>
+
+  <script type="module">
+    import { eventsUrl, post, subscribe } from '/client/index.ts';
+
+    const TOKEN_KEY = 'party-demo-token';
+    const $ = (id) => document.getElementById(id);
+    let stop = null;
+    let token = localStorage.getItem(TOKEN_KEY);
+
+    function showError(message) { $('error').textContent = message ?? ''; }
+
+    function start() {
+      stop?.();
+      $('join').hidden = !!token;
+      $('game').hidden = !token;
+      if (!token) return;
+      stop = subscribe(eventsUrl({ token }), {
+        onData(view) {
+          if (view === null) { // the admin removed this player
+            forget('You were removed. Join again.');
+            return;
+          }
+          $('me').textContent = view.name;
+          $('status').textContent = view.buzzed ? `${view.buzzed} buzzed first` : `${view.players} player(s). Nobody has buzzed.`;
+          $('buzz').disabled = !!view.buzzed;
+          $('buzz').classList.toggle('won', view.buzzed === view.name);
+        },
+        onConnected(live) {
+          $('dot').classList.toggle('on', live);
+          $('liveText').textContent = live ? 'live' : 'reconnecting';
+        },
+      });
+    }
+
+    function forget(message) {
+      stop?.();
+      stop = null;
+      localStorage.removeItem(TOKEN_KEY);
+      token = null;
+      showError(message);
+      start();
+    }
+
+    $('joinForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('joinButton').disabled = true;
+      try {
+        ({ token } = await post('/api/join', { name: $('name').value }));
+        localStorage.setItem(TOKEN_KEY, token);
+        showError('');
+        start();
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        $('joinButton').disabled = false;
+      }
+    });
+
+    $('buzz').addEventListener('click', async () => {
+      try { await post('/api/buzz', {}, { token }); showError(''); }
+      catch (err) { showError(err.message); }
+    });
+
+    $('forget').addEventListener('click', () => forget(''));
+
+    start();
+  </script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#171a21">
+  <title>Ball Royale: host</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main id="login" class="stack" hidden>
+    <h1 class="title">Host a Ball Royale</h1>
+    <p class="muted">The key is printed in the terminal that started the server.</p>
+    <form class="stack" id="loginForm">
+      <input class="input" id="key" placeholder="Host key" aria-label="Host key" autocomplete="off" required>
+      <button class="button primary">Open</button>
+    </form>
+    <p class="error" id="loginError" role="alert"></p>
+  </main>
+
+  <div class="host" id="host" hidden>
+    <aside class="host-side stack">
+      <div id="controls"></div>
+      <p class="error" id="error" role="alert"></p>
+      <div id="players"></div>
+    </aside>
+    <section class="host-stage" aria-label="Arena">
+      <div class="stack" id="welcome"></div>
+      <div class="arena" id="arena" hidden></div>
+      <div class="stack" id="results"></div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { eventsUrl, post, subscribe } from '/client/index.ts';
+    import { arena, dot, draw, h, lookBackground, lookButton, tagged, ordinal } from '/ui.js';
+
+    const KEY_STORE = 'royale-admin-key';
+    const $ = (id) => document.getElementById(id);
+    const stage = arena($('arena'));
+    let key = null;
+    let stop = null;
+    let confirmedKey = false;
+
+    // This page's clicks can unlock audio for the arena inside it (see the game's Sound).
+    stage.onLoad((frame) => frame.contentWindow?.postMessage('weapon-balls:unlock-audio', '*'));
+
+    function loadKey() {
+      const fromUrl = new URLSearchParams(location.search).get('key');
+      if (fromUrl) {
+        history.replaceState(null, '', location.pathname); // keep it out of the address bar and history
+        return fromUrl;
+      }
+      try { return localStorage.getItem(KEY_STORE); } catch { return null; }
+    }
+
+    function saveKey(value) {
+      try {
+        if (value) localStorage.setItem(KEY_STORE, value);
+        else localStorage.removeItem(KEY_STORE);
+      } catch { /* private window: only this visit */ }
+    }
+
+    async function act(path, body = {}) {
+      try {
+        await post(path, body, { adminKey: key });
+        $('error').textContent = '';
+      } catch (err) {
+        $('error').textContent = err.message;
+      }
+    }
+
+    // Either way, this clears what people have picked, so ask if there's anything to lose.
+    function changeMode(select, view) {
+      const anyPicks = view.players.some((p) => p.picksDone > 0);
+      if (anyPicks && !confirm('Changing this clears everyone\'s builds. Change it?')) {
+        select.value = view.mode;
+        return;
+      }
+      void act('/api/settings', { mode: select.value });
+    }
+
+    function restartBuilds() {
+      if (confirm('Clear everyone\'s builds and start from one pick again? Wins are kept.')) void act('/api/restart-builds');
+    }
+
+    function controls(view) {
+      const button = (text, path, primary = true) => h(`button.button${primary ? '.primary' : ''}`, { type: 'button', onclick: () => act(path) }, text);
+      const humans = view.players.length;
+      const ready = view.players.filter((p) => p.ready).length;
+      const bots = Math.max(0, view.minBalls - humans);
+      return h('.stack', {},
+        h('.eyebrow', `Round ${view.round}`),
+        view.notice ? h('p.notice', view.notice) : null,
+        view.phase === 'draft'
+          ? h('.host-actions', {},
+              h('h1.title', humans === 0 ? 'Waiting for players' : `${ready} of ${humans} ready`),
+              humans === 0 ? null : h('p.muted', humans > ready ? 'Starting now finishes the rest of their drafts at random.' : `${bots} ${bots === 1 ? 'bot' : 'bots'} will fill the arena.`),
+              h('button.button.primary', { type: 'button', disabled: !view.ready || humans === 0, onclick: () => act('/api/start') }, view.ready ? 'Drop everyone in' : 'Waiting for the game'),
+              h('label.field', {},
+                h('span', 'Builds'),
+                h('select', { onchange: (e) => changeMode(e.target, view) },
+                  h('option', { value: 'fresh', selected: view.mode === 'fresh' }, 'New build each round'),
+                  h('option', { value: 'buildup', selected: view.mode === 'buildup' }, 'Build up: one pick each round'))),
+              view.mode === 'buildup' && view.buildPicks > 1
+                ? h('button.button.quiet', { type: 'button', onclick: restartBuilds }, 'Restart everyone\'s builds')
+                : null,
+              h('label.field', {},
+                h('span', 'Balls in the arena, with bots'),
+                h('input', { type: 'number', min: 2, max: 100, inputMode: 'numeric', value: view.minBalls, onchange: (e) => act('/api/settings', { minBalls: Number(e.target.value) }) })),
+              h('label.field', {},
+                h('span', 'Bot size, % of a player'),
+                h('input', { type: 'number', min: 25, max: 100, inputMode: 'numeric', value: view.botSize, onchange: (e) => act('/api/settings', { botSize: Number(e.target.value) }) })))
+          : null,
+        view.phase === 'countdown' || view.phase === 'fight'
+          ? h('.host-actions', {},
+              h('h1.title', view.phase === 'countdown' ? 'Dropping in' : 'Fighting'),
+              h('p.muted', `${view.fight.balls} balls, ${view.fight.bots} of them bots.`),
+              button('Cancel the round', '/api/abort', false))
+          : null,
+        view.phase === 'results'
+          ? h('.host-actions', {},
+              h('h1.title', `${view.results.winner} won`),
+              view.mode === 'buildup' ? h('p.muted', 'Everyone keeps their build and adds one pick.') : null,
+              button('Next round', '/api/next'))
+          : null);
+    }
+
+    function players(view) {
+      const status = (p) => {
+        if (view.phase !== 'draft') return p.online ? null : 'Offline';
+        if (!p.online) return 'Offline';
+        return p.ready ? 'Ready' : `${p.picksDone} of ${p.picksTotal}`;
+      };
+      return h('.section', {},
+        h('.eyebrow', `Players (${view.players.length})`),
+        view.players.length === 0 ? h('p.muted', 'Nobody yet.') : null,
+        h('ul.rows', {}, view.players.map((p) =>
+          h('li.row', {},
+            dot(lookBackground(p)),
+            h('span.grow', tagged(p)),
+            p.wins > 0 ? h('span.side', `${p.wins} ${p.wins === 1 ? 'win' : 'wins'}`) : null,
+            status(p) ? h(`span.side${p.ready ? '.good' : ''}`, status(p)) : null,
+            lookButton(p, (look) => act('/api/look', { id: p.id, ...look })),
+            h('button.button.quiet', { type: 'button', 'aria-label': `Remove ${p.name}`, onclick: () => { if (confirm(`Remove ${p.name}?`)) act('/api/remove', { id: p.id }); } }, 'Remove')))));
+    }
+
+    function welcome(view) {
+      return h('.stack', { style: { textAlign: 'center' } },
+        h('p.muted', 'Join on your phone at'),
+        h('.join-address', view.join[0] ?? `http://localhost:${location.port}/`),
+        // Private addresses come first; the others (a VPN's, say) only help people on that network.
+        view.join.length > 1 ? h('.join-other', `Also ${view.join.slice(1).join(', ')}`) : null);
+    }
+
+    function results(view) {
+      const { results: r } = view;
+      return h('.stack', { style: { width: 'min(100%, 40rem)' } },
+        h('.eyebrow', `Round ${r.round} · ${r.balls} balls · ${Math.round(r.seconds)}s`),
+        h('.big-place.won', `${r.winner} won`),
+        h('ul.rows', {}, r.places.filter((p) => !p.bot || p.place === 1).map((p) =>
+          h('li.row', {},
+            h('span.place', ordinal(p.place)),
+            dot(p.color),
+            h('span.grow', p.name, h('span.build', [p.weapon, ...p.picks].join(' · ')))))));
+    }
+
+    function render(view) {
+      if (!confirmedKey) {
+        confirmedKey = true;
+        saveKey(key);
+      }
+      $('login').hidden = true;
+      $('host').hidden = false;
+      const controlsContent = { phase: view.phase, round: view.round, mode: view.mode, buildPicks: view.buildPicks, ready: view.ready, minBalls: view.minBalls, botSize: view.botSize, notice: view.notice, winner: view.results?.winner, players: view.players.map((p) => [p.ready, p.picksDone]), fight: view.fight && { balls: view.fight.balls, bots: view.fight.bots } };
+      draw($('controls'), controlsContent, () => controls(view));
+      draw($('players'), { phase: view.phase, players: view.players }, () => players(view));
+
+      const fighting = view.fight !== null;
+      stage.set(fighting ? `${view.fight.arena}&round=${view.round}` : null, { countdownMs: fighting ? view.fight.countdownMs : 0, text: 'Dropping in' });
+      $('welcome').hidden = view.phase !== 'draft';
+      $('results').hidden = view.phase !== 'results';
+      if (view.phase === 'draft') draw($('welcome'), view.join, () => welcome(view));
+      if (view.phase === 'results') draw($('results'), view.results, () => results(view));
+    }
+
+    function showLogin(message = '') {
+      stop?.();
+      stop = null;
+      key = null;
+      confirmedKey = false;
+      saveKey(null);
+      $('host').hidden = true;
+      $('login').hidden = false;
+      $('loginError').textContent = message;
+    }
+
+    // The event stream answers a wrong key with a 401, which EventSource only
+    // reports as a closed connection. Asking a route first gets the real answer.
+    async function open(candidate) {
+      key = candidate;
+      const res = await fetch('/api/settings-check', { method: 'POST', headers: { 'x-admin-key': key } }).catch(() => null);
+      if (res?.status === 401) return showLogin('That key is wrong.');
+      stop?.();
+      stop = subscribe(eventsUrl({ adminKey: key }), { onData: render });
+    }
+
+    $('loginForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      void open($('key').value.trim());
+    });
+
+    const saved = loadKey();
+    if (saved) void open(saved);
+    else showLogin();
+  </script>
+</body>
+</html>

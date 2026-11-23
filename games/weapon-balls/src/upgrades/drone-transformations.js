@@ -1,5 +1,7 @@
 import { Upgrade } from './Upgrade.js';
 import { Burning } from './sword-transformations.js';
+import { reflectDamage, reflectedBy } from '../sim/reflect.js';
+import * as looks from './drone-looks.js';
 import { TAU, add, angleOf, clamp, closestPointOnSegment, closestPointsBetweenSegments, distance, dot, fromAngle, length, normalize, scale, sub } from '../sim/math.js';
 
 // Transformations for the Drone: big upgrades that change how the swarm
@@ -22,8 +24,7 @@ const PORTAL_TIME = 0.35; // s a portal ring stays where a drone went through a 
 export class NonEuclidean extends DroneTransformation {
   static id = 'non-euclidean';
   static displayName = 'Non-Euclidean';
-  static description =
-    'Attacking drones fly out through a wall and back in through the opposite one instead of turning back, and go through the walls to reach the enemy when that way is shorter. A drone that came through a wall lands a critical hit.';
+  static description = 'Drones can attack through the walls. A drone that comes through a wall always crits.';
 
   constructor(weapon) {
     super(weapon);
@@ -33,33 +34,22 @@ export class NonEuclidean extends DroneTransformation {
 
   apply() {
     this.weapon.wrapsWalls = true;
+    this.weapon.hull = this;
   }
 
-  // A drone that came through a wall on this attack.
-  critsAt() {
-    return this.weapon.striker?.warped ?? false;
+  // Impossible triangles.
+  drawHull(ctx, start) {
+    looks.drawImpossibleDrone(ctx, start, this.weapon.length, this.owner.color);
   }
 
-  // The Drone does the wrapping; this marks where it happened, and which
-  // drones are on an attack that went through a wall.
-  onUpdate(dt, sim) {
-    for (const portal of this.portals) portal.timeLeft -= dt;
-    if (this.portals.length > 0) this.portals = this.portals.filter((portal) => portal.timeLeft > 0);
-    const { width, height } = sim.arena;
-    for (const drone of this.weapon.drones) {
-      const last = this.last.get(drone);
-      if (!this.weapon.wraps(drone)) drone.warped = false;
-      if (last && (Math.abs(drone.pos.x - last.x) > width / 2 || Math.abs(drone.pos.y - last.y) > height / 2)) {
-        drone.warped = true;
-        this.portals.push({ pos: last, timeLeft: PORTAL_TIME }, { pos: { ...drone.pos }, timeLeft: PORTAL_TIME });
-        this.emit(sim, 'wrap', { pos: drone.pos, burst: { color: PORTAL, count: 6, speed: 120, life: 0.25, size: 2 } });
-      }
-      this.last.set(drone, { ...drone.pos });
-    }
+  // In a flat world, a photoreal sphere (see drawPhotoSphere).
+  drawOver(ctx) {
+    looks.drawPhotoSphere(ctx, this.owner);
   }
 
-  // A violet core in each drone.
+  // A violet core in each drone (when another transformation's hull is drawn).
   drawBlade(ctx, start) {
+    if (this.weapon.hull === this) return;
     ctx.save();
     ctx.fillStyle = PORTAL;
     ctx.strokeStyle = '#f4f1e8';
@@ -71,8 +61,9 @@ export class NonEuclidean extends DroneTransformation {
     ctx.restore();
   }
 
-  // A ring opening where a drone left and where it came back in.
+  // The sphere's shadow, and a ring opening where a drone left and where it came back in.
   drawUnder(ctx) {
+    looks.drawSphereShadow(ctx, this.owner);
     if (this.portals.length === 0) return;
     ctx.save();
     ctx.strokeStyle = PORTAL;
@@ -90,14 +81,12 @@ export class NonEuclidean extends DroneTransformation {
 
 // ---- Ace ------------------------------------------------------------------------
 
-const THRUST = '#6fd3ff';
-const THRUST_CORE = '#e8f8ff';
+const THRUST = 'rgba(232, 248, 255, 0.7)';
 
 export class Ace extends DroneTransformation {
   static id = 'ace';
   static displayName = 'Ace';
-  static description =
-    'Instead of guarding when an enemy comes within reach, your drones in formation turn their thrusters on it and pull you away. They no longer take anything off hits.';
+  static description = 'Instead of guarding you, drones near an enemy pull you away from it.';
 
   constructor(weapon) {
     super(weapon);
@@ -112,6 +101,12 @@ export class Ace extends DroneTransformation {
     const { weapon } = this;
     weapon.guardPerDrone = 0;
     weapon.scatters = false;
+    weapon.hull = this;
+  }
+
+  // Biplanes.
+  drawHull(ctx, start) {
+    looks.drawBiplane(ctx, start, this.weapon.length, this.owner.color, this.weapon.clock);
   }
 
   onUpdate(dt, sim) {
@@ -124,58 +119,28 @@ export class Ace extends DroneTransformation {
     owner.vel = add(owner.vel, scale(away, this.pull * this.towing * dt));
   }
 
-  // Each pulling drone's thruster fires out of its nose, at the enemy.
+  // A flying cap and goggles, and propwash streaming off each pulling drone's nose.
   drawOver(ctx) {
-    this.drawGoggles(ctx);
+    looks.drawAviatorCap(ctx, this.owner);
     if (this.towing === 0) return;
     const { weapon } = this;
     ctx.save();
-    for (const [color, width, reach] of [[THRUST, 5, 1], [THRUST_CORE, 2.5, 0.6]]) {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width * weapon.widthScale;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      weapon.guardingDrones.forEach((drone, i) => {
-        const nose = add(drone.pos, fromAngle(drone.heading, weapon.length / 2 + 2));
-        const flame = (10 + 4 * Math.sin(this.time * 40 + i * 1.7)) * reach;
-        const tip = add(nose, fromAngle(drone.heading, flame));
+    ctx.strokeStyle = THRUST;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 1.5 * weapon.widthScale;
+    ctx.setLineDash([5, 4]);
+    ctx.lineDashOffset = -this.time * 120;
+    ctx.beginPath();
+    for (const drone of weapon.guardingDrones) {
+      for (const side of [-1, 1]) {
+        const off = fromAngle(drone.heading + Math.PI / 2, side * 3.5 * weapon.widthScale);
+        const nose = add(add(drone.pos, off), fromAngle(drone.heading, weapon.length / 2 + 3));
+        const tip = add(nose, fromAngle(drone.heading, 16));
         ctx.moveTo(nose.x, nose.y);
         ctx.lineTo(tip.x, tip.y);
-      });
-      ctx.stroke();
+      }
     }
-    ctx.restore();
-  }
-
-  // Leather flying goggles pushed up on the head.
-  drawGoggles(ctx) {
-    const { pos, radius } = this.owner;
-    const { x, y } = pos;
-    const top = y - 30;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(x, y, radius + 1, 0, TAU);
-    ctx.clip();
-    ctx.fillStyle = '#6b4a2b';
-    ctx.fillRect(x - radius - 1, top, (radius + 1) * 2, 6);
-    ctx.restore();
-
-    ctx.save();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#8a8f96';
-    for (const dir of [-1, 1]) {
-      const cx = x + dir * 11;
-      const cy = top + 3;
-      ctx.fillStyle = '#9fd3e8';
-      ctx.beginPath();
-      ctx.arc(cx, cy, 7, 0, TAU);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-      ctx.beginPath();
-      ctx.arc(cx - 2, cy - 2, 2, 0, TAU);
-      ctx.fill();
-    }
+    ctx.stroke();
     ctx.restore();
   }
 }
@@ -185,7 +150,7 @@ export class Ace extends DroneTransformation {
 export class Legion extends DroneTransformation {
   static id = 'legion';
   static displayName = 'Legion';
-  static description = 'Twice as many drones, built twice as fast up to twice as many, but each one is smaller and deals and guards only 60% as much.';
+  static description = 'Twice as many smaller drones, each dealing 60% damage.';
 
   apply() {
     const { weapon } = this;
@@ -197,10 +162,24 @@ export class Legion extends DroneTransformation {
     weapon.widthScale *= 0.7;
     weapon.damage *= 0.6;
     weapon.guardPerDrone *= 0.6;
+    weapon.bulletAbsorb *= 0.6;
+    weapon.hull = this;
   }
 
-  // A legion-red stripe down each drone.
+  // Little insect bots.
+  drawHull(ctx, start, drone) {
+    const { weapon } = this;
+    looks.drawBug(ctx, start, weapon.length, this.owner.color, weapon.clock, drone ? weapon.drones.indexOf(drone) * 1.7 : 0);
+  }
+
+  // Antennae.
+  drawOver(ctx) {
+    looks.drawAntennae(ctx, this.owner, this.weapon.clock);
+  }
+
+  // A legion-red stripe down each drone (when another transformation's hull is drawn).
   drawBlade(ctx, start) {
+    if (this.weapon.hull === this) return;
     ctx.save();
     ctx.strokeStyle = '#c8262c';
     ctx.lineWidth = 2;
@@ -221,8 +200,7 @@ const MUZZLE_TIME = 0.06; // s a muzzle flash shows for
 export class Fighters extends DroneTransformation {
   static id = 'fighters';
   static displayName = 'Fighters';
-  static description =
-    'Launched drones no longer ram: they circle the enemy, shooting it (each shot deals 60% of a hit) until an enemy blade or drone swats them or 3 s pass. Blades, shields and enemy drones stop the shots.';
+  static description = 'Drones circle enemies and shoot them instead of ramming them.';
   // A fighter never touches the enemy, so it would never latch on.
   static excludedBy = ['slicers'];
 
@@ -242,6 +220,15 @@ export class Fighters extends DroneTransformation {
 
     this.bullets = []; // { pos, vel, life }
     this.shooting = false; // true while a shot's hit is dealt
+  }
+
+  apply() {
+    this.weapon.hull = this;
+  }
+
+  // Sleek dark jets.
+  drawHull(ctx, start) {
+    looks.drawJet(ctx, start, this.weapon.length, this.owner.color);
   }
 
   get damageMultiplier() {
@@ -336,6 +323,19 @@ export class Fighters extends DroneTransformation {
   // lifesteal...), scaled down by `bulletDamage`.
   strike(bullet, from, sim) {
     const { owner, weapon } = this;
+    if (bullet.reflector) {
+      this.strikeReflected(bullet, from, sim);
+      return;
+    }
+    // A parrying ball sends the shot back at the drones' owner.
+    const reflector = reflectedBy(sim, owner, from, bullet.pos);
+    if (reflector) {
+      bullet.reflector = reflector;
+      bullet.vel = scale(normalize(sub(owner.pos, bullet.pos)), this.bulletSpeed);
+      bullet.life = this.bulletRange / this.bulletSpeed;
+      bullet.damage = reflectDamage(reflector, weapon.getDamage() * this.bulletDamage);
+      return;
+    }
     for (const enemy of sim.aliveBalls) {
       if (enemy === owner) continue;
       const touch = weapon.touch(from, bullet.pos, enemy, { reach: this.bulletRadius }) ?? this.touchDrone(from, bullet.pos, enemy);
@@ -355,6 +355,18 @@ export class Fighters extends DroneTransformation {
     }
   }
 
+  // A reflected shot hits the first ball but its reflector, as damage from the reflector.
+  strikeReflected(bullet, from, sim) {
+    const { reflector } = bullet;
+    for (const enemy of sim.aliveBalls) {
+      if (enemy === reflector) continue;
+      if (distance(closestPointOnSegment(enemy.pos, from, bullet.pos), enemy.pos) >= enemy.radius + this.bulletRadius) continue;
+      bullet.life = 0;
+      sim.dealDamage(reflector, enemy, bullet.damage, { reason: 'reflect', color: '#bfe6ff' });
+      return;
+    }
+  }
+
   // Where the segment from `a` to `b`, `reach` px thick, touches one of an
   // enemy Drone's drones (they have no blades for touch() to find), as
   // { point }, or null.
@@ -370,8 +382,9 @@ export class Fighters extends DroneTransformation {
     return null;
   }
 
-  // A cockpit canopy on each drone.
+  // A cockpit canopy on each drone (when another transformation's hull is drawn).
   drawBlade(ctx, start) {
+    if (this.weapon.hull === this) return;
     const { length: len } = this.weapon;
     ctx.save();
     ctx.fillStyle = CANOPY;
@@ -384,9 +397,10 @@ export class Fighters extends DroneTransformation {
     ctx.restore();
   }
 
-  // Tracers, and a flash at the nose of each drone that just fired.
+  // A radar sweep on the ball, tracers, and a flash at the nose of each drone that just fired.
   drawOver(ctx) {
     const { weapon } = this;
+    looks.drawRadarSweep(ctx, this.owner, weapon.clock);
     ctx.save();
     ctx.lineCap = 'round';
     if (this.bullets.length > 0) {
@@ -422,8 +436,7 @@ const TRAIL_JUMP = 100; // px; a drone that moved further than this in a step we
 export class Daredevils extends DroneTransformation {
   static id = 'daredevils';
   static displayName = 'Daredevils';
-  static description =
-    'Your drones boost at the enemy and back to you 50% faster, leaving short fire trails that set enemies burning (0.5 damage every 0.5 s for 1 s).';
+  static description = 'Drones fly 50% faster and leave trails of fire.';
 
   constructor(weapon) {
     super(weapon);
@@ -448,6 +461,17 @@ export class Daredevils extends DroneTransformation {
     weapon.attackGrip *= 2;
     weapon.acceleration *= 2;
     weapon.overshoot *= 1.5;
+    weapon.hull = this;
+  }
+
+  // Hot rods.
+  drawHull(ctx, start, drone) {
+    const { weapon } = this;
+    looks.drawHotRod(ctx, start, weapon.length, this.owner.color, weapon.clock, drone ? weapon.drones.indexOf(drone) * 2.3 : 0);
+  }
+
+  drawOver(ctx) {
+    looks.drawBallFlames(ctx, this.owner, this.weapon.clock);
   }
 
   onUpdate(dt, sim) {
@@ -488,8 +512,9 @@ export class Daredevils extends DroneTransformation {
     return this.pieces.some(({ a, b }) => distance(closestPointOnSegment(ball.pos, a, b), ball.pos) < reach);
   }
 
-  // Flame decals down each drone.
+  // Flame decals down each drone (when another transformation's hull is drawn).
   drawBlade(ctx, start) {
+    if (this.weapon.hull === this) return;
     const { length: len } = this.weapon;
     ctx.save();
     ctx.fillStyle = TRAIL_FIRE;
@@ -512,7 +537,9 @@ export class Daredevils extends DroneTransformation {
       ctx.strokeStyle = color;
       ctx.lineWidth = width;
       for (let shade = 1; shade <= TRAIL_SHADES; shade++) {
-        ctx.globalAlpha = (alpha * shade) / TRAIL_SHADES;
+        // Fading thinner as well as fainter, so the old end stays fire-coloured
+        ctx.globalAlpha = alpha * (0.45 + (0.55 * shade) / TRAIL_SHADES);
+        ctx.lineWidth = width * (0.35 + (0.65 * shade) / TRAIL_SHADES);
         ctx.beginPath();
         for (const { a, b, timeLeft } of this.pieces) {
           if (Math.ceil(TRAIL_SHADES * Math.min(1, timeLeft / this.trailDuration)) !== shade) continue;
@@ -533,8 +560,7 @@ const SLICE = '#ff5d73';
 export class Slicers extends DroneTransformation {
   static id = 'slicers';
   static displayName = 'Slicers';
-  static description =
-    'A drone that hits an enemy latches on and grinds, dealing 40% of its damage every 0.25 s. The enemy shakes it off by bouncing off a wall, clashing its weapon with anything, or hitting you.';
+  static description = 'Drones latch on and keep cutting until the enemy hits you, blocks something or touches a wall.';
   // A fighter never touches the enemy, so it would never latch on.
   static excludedBy = ['fighters'];
 
@@ -543,6 +569,19 @@ export class Slicers extends DroneTransformation {
     this.tick = 0.25; // s between grinds
     this.tickDamage = 0.4; // share of a drone hit per grind
     this.depth = 0.25; // share of the drone buried in the enemy
+  }
+
+  apply() {
+    this.weapon.hull = this;
+  }
+
+  // Spinning saw blades.
+  drawHull(ctx, start) {
+    looks.drawSawDisc(ctx, start, this.weapon.length, this.owner.color, this.weapon.clock);
+  }
+
+  drawOver(ctx) {
+    looks.drawSawRing(ctx, this.owner, this.weapon.clock);
   }
 
   onDroneHit(drone, target, sim) {
@@ -595,8 +634,9 @@ export class Slicers extends DroneTransformation {
     this.emit(sim, 'shake-off', { pos: drone.pos, burst: { color: SLICE, count: 4, speed: 160, life: 0.25, size: 1.5 } });
   }
 
-  // Saw teeth along both edges of each drone.
+  // Saw teeth along both edges of each drone (when another transformation's hull is drawn).
   drawBlade(ctx, start) {
+    if (this.weapon.hull === this) return;
     const { length: len } = this.weapon;
     ctx.save();
     ctx.fillStyle = '#d9dee4';
@@ -622,8 +662,7 @@ export class Slicers extends DroneTransformation {
 export class Fortress extends DroneTransformation {
   static id = 'fortress';
   static displayName = 'Fortress';
-  static description =
-    'Your drones are 30% bigger and armored: it takes two swats to knock one away (the first only deflects it), and each guarding drone takes twice as much off a hit. They fly 10% slower and deal 10% less damage.';
+  static description = 'Bigger drones that take two hits to knock away and guard twice as well, but are a little slower and weaker.';
 
   apply() {
     const { weapon } = this;
@@ -634,11 +673,26 @@ export class Fortress extends DroneTransformation {
     weapon.minSpeed *= 0.9;
     weapon.damage *= 0.9;
     weapon.guardPerDrone *= 2;
+    weapon.bulletAbsorb *= 2;
     weapon.toughness += 1;
+    weapon.hull = this;
   }
 
-  // A riveted armor plate on each drone, cracked once it has been deflected.
+  // Heavy armoured drones, cracked once knocked away.
+  drawHull(ctx, start, drone) {
+    const { weapon } = this;
+    looks.drawHeavyDrone(ctx, start, weapon.length, this.owner.color, drone && drone.toughness < weapon.toughness, weapon.clock);
+  }
+
+  // Armour plates round the ball's rim.
+  drawOver(ctx) {
+    looks.drawArmorRim(ctx, this.owner);
+  }
+
+  // A riveted armor plate on each drone, cracked once it has been deflected
+  // (when another transformation's hull is drawn).
   drawBlade(ctx, start, drone) {
+    if (this.weapon.hull === this) return;
     const { length: len, toughness } = this.weapon;
     ctx.save();
     ctx.fillStyle = '#8d949c';
@@ -674,13 +728,10 @@ export class Fortress extends DroneTransformation {
 
 // ---- Wingmen --------------------------------------------------------------------
 
-const BUMPER = '#2b2b30';
-
 export class Wingmen extends DroneTransformation {
   static id = 'wingmen';
   static displayName = 'Wingmen';
-  static description =
-    'Two bumper drones fly on your wings. They never attack or guard: when an enemy closes in on you, one rams it, bouncing it away from you and knocking its weapon into spinning the other way. Enemy blades swat them like your other drones.';
+  static description = 'Gain two extra drones that ram approaching enemies away from you.';
 
   constructor(weapon) {
     super(weapon);
@@ -796,12 +847,14 @@ export class Wingmen extends DroneTransformation {
     this.emit(sim, 'bump', { pos: add(enemy.pos, scale(toWingman, enemy.radius)), burst: { color: owner.color, count: 8, speed: 180, life: 0.3 } });
   }
 
-  // Drawn like the drones, with a rubber bumper on the nose.
+  // Rubber-rimmed pucks, whatever the drones look like, and a radar dish on
+  // the ball keeping track of one.
   // Drawn at size 1 under a canvas scaled to the ball's size (see Weapon.draw).
   drawOver(ctx) {
-    const { weapon } = this;
-    const size = weapon.owner.size;
-    weapon.owner.atUnitSize(() => {
+    const { weapon, owner } = this;
+    looks.drawRadarDish(ctx, owner, this.wingmen[0]?.pos, weapon.clock);
+    const size = owner.size;
+    owner.atUnitSize(() => {
       const start = -weapon.length / 2;
       for (const wingman of this.wingmen) {
         ctx.save();
@@ -809,14 +862,7 @@ export class Wingmen extends DroneTransformation {
         ctx.rotate(wingman.heading + wingman.spin);
         ctx.globalAlpha = wingman.state === 'tumble' ? 0.6 : 1;
         ctx.scale(size, size * weapon.widthScale);
-        weapon.drawLocal(ctx, start);
-        ctx.fillStyle = BUMPER;
-        ctx.strokeStyle = '#f4f1e8';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(start + weapon.length - 1, 0, 4.5, 0, TAU);
-        ctx.fill();
-        ctx.stroke();
+        looks.drawPuck(ctx, start, weapon.length, owner.color);
         ctx.restore();
       }
     });

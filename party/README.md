@@ -4,7 +4,8 @@ Jackbox-style plumbing for any game where people in a room play on their
 phones: players join and act from their phones, an admin runs the game from a
 page, and a big screen shows it to the room. Party owns the connections; the
 app owns the state, the rules and what each person sees. It knows nothing about
-any particular game. The quiz (`apps/quiz-of-doom/`) is built on it.
+any particular game. The quiz (`apps/quiz-of-doom/`) and the royale
+(`apps/royale/`) are built on it.
 
 No dependencies. The server is plain Node (run as TypeScript), the client is
 plain browser TypeScript with no framework, so any UI library can wrap it.
@@ -40,7 +41,11 @@ party/
   message the person sees (400 unless you give a status); anything else is a
   500 and stays in the server log.
 - **The rest.** `GET /api/lan` gives this machine's LAN addresses, private ranges
-  first (for showing the join address on the big screen). Every path outside
+  first, and `public`: the Tailscale Funnel URLs that forward to this server's
+  port (or `?port=`), for showing the join address on the big screen.
+  `publicUrls(port)` gives the same URLs to the server's own views; party reads
+  `tailscale funnel status --json` every 30 s and broadcasts when they change,
+  and without Tailscale there are none. Every path outside
   `/api` serves the built client, with `index.html` for client-side routes.
 
 ## Server
@@ -112,6 +117,7 @@ export default defineConfig({ server: { proxy: { '/api': apiProxy(3001) }, fs: {
 ```sh
 npm test            # the server, against a made-up buzzer game
 npm run typecheck   # borrows the quiz's TypeScript: npm install in apps/quiz-of-doom first
+npm run demo        # the buzzer game in a browser (demo/): phones on /, admin on /admin, port 3100
 ```
 
 ## Not here yet

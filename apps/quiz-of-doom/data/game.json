@@ -26,6 +26,14 @@
     {
       "id": "gun",
       "name": "Gun"
+    },
+    {
+      "id": "wand",
+      "name": "Wand"
+    },
+    {
+      "id": "tome",
+      "name": "Tome"
     }
   ],
   "upgrades": [
@@ -36,128 +44,538 @@
       "weapons": null,
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Deal 40% more damage.",
+        "Deal 60% more damage.",
+        "Deal 80% more damage.",
+        "Deal 100% more damage.",
+        "Deal 120% more damage.",
+        "Deal 140% more damage.",
+        "Deal 160% more damage.",
+        "Deal 180% more damage.",
+        "Deal 200% more damage.",
+        "Deal 220% more damage.",
+        "Deal 240% more damage.",
+        "Deal 260% more damage.",
+        "Deal 280% more damage.",
+        "Deal 300% more damage.",
+        "Deal 320% more damage.",
+        "Deal 340% more damage.",
+        "Deal 360% more damage.",
+        "Deal 380% more damage.",
+        "Deal 400% more damage.",
+        "Deal 420% more damage.",
+        "Deal 440% more damage.",
+        "Deal 460% more damage.",
+        "Deal 480% more damage.",
+        "Deal 500% more damage.",
+        "Deal 520% more damage.",
+        "Deal 540% more damage.",
+        "Deal 560% more damage.",
+        "Deal 580% more damage.",
+        "Deal 600% more damage."
+      ]
     },
     {
       "id": "spin-speed",
       "name": "Quick Spin",
-      "description": "Your weapon spins 20% faster.",
-      "weapons": null,
+      "description": "Your weapon spins 20% faster. On the Wand, its orbs circle faster too.",
+      "weapons": [
+        "sword",
+        "spear",
+        "mace",
+        "daggers",
+        "gun",
+        "wand"
+      ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your weapon spins 40% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 60% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 80% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 100% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 120% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 140% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 160% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 180% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 200% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 220% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 240% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 260% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 280% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 300% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 320% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 340% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 360% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 380% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 400% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 420% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 440% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 460% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 480% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 500% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 520% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 540% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 560% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 580% faster. On the Wand, its orbs circle faster too.",
+        "Your weapon spins 600% faster. On the Wand, its orbs circle faster too."
+      ]
     },
     {
       "id": "length",
       "name": "Long Blade",
-      "description": "Your weapon is 20% longer.",
-      "weapons": null,
+      "description": "Your weapon is 20% longer. On the Wand, its orbs are 20% bigger too.",
+      "weapons": [
+        "sword",
+        "spear",
+        "mace",
+        "daggers",
+        "wand"
+      ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your weapon is 40% longer. On the Wand, its orbs are 40% bigger too.",
+        "Your weapon is 60% longer. On the Wand, its orbs are 60% bigger too.",
+        "Your weapon is 80% longer. On the Wand, its orbs are 80% bigger too.",
+        "Your weapon is 100% longer. On the Wand, its orbs are 100% bigger too.",
+        "Your weapon is 120% longer. On the Wand, its orbs are 120% bigger too.",
+        "Your weapon is 140% longer. On the Wand, its orbs are 140% bigger too.",
+        "Your weapon is 160% longer. On the Wand, its orbs are 160% bigger too.",
+        "Your weapon is 180% longer. On the Wand, its orbs are 180% bigger too.",
+        "Your weapon is 200% longer. On the Wand, its orbs are 200% bigger too.",
+        "Your weapon is 220% longer. On the Wand, its orbs are 220% bigger too.",
+        "Your weapon is 240% longer. On the Wand, its orbs are 240% bigger too.",
+        "Your weapon is 260% longer. On the Wand, its orbs are 260% bigger too.",
+        "Your weapon is 280% longer. On the Wand, its orbs are 280% bigger too.",
+        "Your weapon is 300% longer. On the Wand, its orbs are 300% bigger too.",
+        "Your weapon is 320% longer. On the Wand, its orbs are 320% bigger too.",
+        "Your weapon is 340% longer. On the Wand, its orbs are 340% bigger too.",
+        "Your weapon is 360% longer. On the Wand, its orbs are 360% bigger too.",
+        "Your weapon is 380% longer. On the Wand, its orbs are 380% bigger too.",
+        "Your weapon is 400% longer. On the Wand, its orbs are 400% bigger too.",
+        "Your weapon is 420% longer. On the Wand, its orbs are 420% bigger too.",
+        "Your weapon is 440% longer. On the Wand, its orbs are 440% bigger too.",
+        "Your weapon is 460% longer. On the Wand, its orbs are 460% bigger too.",
+        "Your weapon is 480% longer. On the Wand, its orbs are 480% bigger too.",
+        "Your weapon is 500% longer. On the Wand, its orbs are 500% bigger too.",
+        "Your weapon is 520% longer. On the Wand, its orbs are 520% bigger too.",
+        "Your weapon is 540% longer. On the Wand, its orbs are 540% bigger too.",
+        "Your weapon is 560% longer. On the Wand, its orbs are 560% bigger too.",
+        "Your weapon is 580% longer. On the Wand, its orbs are 580% bigger too.",
+        "Your weapon is 600% longer. On the Wand, its orbs are 600% bigger too."
+      ]
     },
     {
       "id": "thickness",
       "name": "Heavy Blade",
-      "description": "Your weapon is 50% thicker, so it hits and blocks more.",
-      "weapons": null,
+      "description": "Your weapon is 50% thicker.",
+      "weapons": [
+        "sword",
+        "spear",
+        "mace",
+        "daggers",
+        "wand"
+      ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your weapon is 100% thicker.",
+        "Your weapon is 150% thicker.",
+        "Your weapon is 200% thicker.",
+        "Your weapon is 250% thicker.",
+        "Your weapon is 300% thicker.",
+        "Your weapon is 350% thicker.",
+        "Your weapon is 400% thicker.",
+        "Your weapon is 450% thicker.",
+        "Your weapon is 500% thicker.",
+        "Your weapon is 550% thicker.",
+        "Your weapon is 600% thicker.",
+        "Your weapon is 650% thicker.",
+        "Your weapon is 700% thicker.",
+        "Your weapon is 750% thicker.",
+        "Your weapon is 800% thicker.",
+        "Your weapon is 850% thicker.",
+        "Your weapon is 900% thicker.",
+        "Your weapon is 950% thicker.",
+        "Your weapon is 1000% thicker.",
+        "Your weapon is 1050% thicker.",
+        "Your weapon is 1100% thicker.",
+        "Your weapon is 1150% thicker.",
+        "Your weapon is 1200% thicker.",
+        "Your weapon is 1250% thicker.",
+        "Your weapon is 1300% thicker.",
+        "Your weapon is 1350% thicker.",
+        "Your weapon is 1400% thicker.",
+        "Your weapon is 1450% thicker.",
+        "Your weapon is 1500% thicker."
+      ]
     },
     {
       "id": "small-ball",
       "name": "Compact",
-      "description": "Your ball is 12% smaller: a harder target.",
+      "description": "Your ball is 12% smaller.",
       "weapons": null,
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 3
+      "maxStacks": 4,
+      "stacked": [
+        "Your ball is 24% smaller.",
+        "Your ball is 36% smaller.",
+        "Your ball is 48% smaller."
+      ]
     },
     {
       "id": "thorns",
       "name": "Thorns",
-      "description": "Whoever hits you takes 30% of the damage back.",
+      "description": "When you're hit, the attacker takes 30% of the damage back.",
       "weapons": null,
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "When you're hit, the attacker takes 51% of the damage back.",
+        "When you're hit, the attacker takes 66% of the damage back.",
+        "When you're hit, the attacker takes 76% of the damage back.",
+        "When you're hit, the attacker takes 83% of the damage back.",
+        "When you're hit, the attacker takes 88% of the damage back.",
+        "When you're hit, the attacker takes 92% of the damage back.",
+        "When you're hit, the attacker takes 94% of the damage back.",
+        "When you're hit, the attacker takes 96% of the damage back.",
+        "When you're hit, the attacker takes 97% of the damage back.",
+        "When you're hit, the attacker takes 98% of the damage back.",
+        "When you're hit, the attacker takes 99% of the damage back.",
+        "When you're hit, the attacker takes 99% of the damage back.",
+        "When you're hit, the attacker takes 99% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back.",
+        "When you're hit, the attacker takes 100% of the damage back."
+      ]
     },
     {
       "id": "health",
       "name": "Vitality",
-      "description": "+25 max HP.",
+      "description": "+20 max HP.",
       "weapons": null,
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "+40 max HP.",
+        "+60 max HP.",
+        "+80 max HP.",
+        "+100 max HP.",
+        "+120 max HP.",
+        "+140 max HP.",
+        "+160 max HP.",
+        "+180 max HP.",
+        "+200 max HP.",
+        "+220 max HP.",
+        "+240 max HP.",
+        "+260 max HP.",
+        "+280 max HP.",
+        "+300 max HP.",
+        "+320 max HP.",
+        "+340 max HP.",
+        "+360 max HP.",
+        "+380 max HP.",
+        "+400 max HP.",
+        "+420 max HP.",
+        "+440 max HP.",
+        "+460 max HP.",
+        "+480 max HP.",
+        "+500 max HP.",
+        "+520 max HP.",
+        "+540 max HP.",
+        "+560 max HP.",
+        "+580 max HP.",
+        "+600 max HP."
+      ]
     },
     {
-      "id": "move-speed",
-      "name": "Swift",
-      "description": "Your ball moves 15% faster.",
+      "id": "sabotage",
+      "name": "Sabotage",
+      "description": "Your hits make the enemy take more damage: +1% per damage dealt, up to +20%. Wears off 4s after your last hit.",
       "weapons": null,
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your hits make the enemy take more damage: +2% per damage dealt, up to +40%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +3% per damage dealt, up to +60%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +4% per damage dealt, up to +80%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +5% per damage dealt, up to +100%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +6% per damage dealt, up to +120%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +7% per damage dealt, up to +140%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +8% per damage dealt, up to +160%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +9% per damage dealt, up to +180%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +10% per damage dealt, up to +200%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +11% per damage dealt, up to +220%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +12% per damage dealt, up to +240%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +13% per damage dealt, up to +260%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +14% per damage dealt, up to +280%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +15% per damage dealt, up to +300%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +16% per damage dealt, up to +320%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +17% per damage dealt, up to +340%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +18% per damage dealt, up to +360%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +19% per damage dealt, up to +380%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +20% per damage dealt, up to +400%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +21% per damage dealt, up to +420%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +22% per damage dealt, up to +440%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +23% per damage dealt, up to +460%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +24% per damage dealt, up to +480%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +25% per damage dealt, up to +500%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +26% per damage dealt, up to +520%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +27% per damage dealt, up to +540%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +28% per damage dealt, up to +560%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +29% per damage dealt, up to +580%. Wears off 4s after your last hit.",
+        "Your hits make the enemy take more damage: +30% per damage dealt, up to +600%. Wears off 4s after your last hit."
+      ]
     },
     {
       "id": "cooldown",
       "name": "Focus",
-      "description": "Your ability cooldown is 25% shorter, or a Gun's reload 15% (each copy shortens what is left).",
-      "weapons": null,
+      "description": "Your ability cooldown is 25% shorter. On the Gun, reloading is 15% shorter instead, and on the Wand, a new orb takes 15% less time to appear.",
+      "weapons": [
+        "sword",
+        "spear",
+        "mace",
+        "daggers",
+        "drone",
+        "gun",
+        "wand"
+      ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your ability cooldown is 44% shorter. On the Gun, reloading is 28% shorter instead, and on the Wand, a new orb takes 28% less time to appear.",
+        "Your ability cooldown is 58% shorter. On the Gun, reloading is 39% shorter instead, and on the Wand, a new orb takes 39% less time to appear.",
+        "Your ability cooldown is 68% shorter. On the Gun, reloading is 48% shorter instead, and on the Wand, a new orb takes 48% less time to appear.",
+        "Your ability cooldown is 76% shorter. On the Gun, reloading is 56% shorter instead, and on the Wand, a new orb takes 56% less time to appear.",
+        "Your ability cooldown is 82% shorter. On the Gun, reloading is 62% shorter instead, and on the Wand, a new orb takes 62% less time to appear.",
+        "Your ability cooldown is 87% shorter. On the Gun, reloading is 68% shorter instead, and on the Wand, a new orb takes 68% less time to appear.",
+        "Your ability cooldown is 90% shorter. On the Gun, reloading is 73% shorter instead, and on the Wand, a new orb takes 73% less time to appear.",
+        "Your ability cooldown is 92% shorter. On the Gun, reloading is 77% shorter instead, and on the Wand, a new orb takes 77% less time to appear.",
+        "Your ability cooldown is 94% shorter. On the Gun, reloading is 80% shorter instead, and on the Wand, a new orb takes 80% less time to appear.",
+        "Your ability cooldown is 96% shorter. On the Gun, reloading is 83% shorter instead, and on the Wand, a new orb takes 83% less time to appear.",
+        "Your ability cooldown is 97% shorter. On the Gun, reloading is 86% shorter instead, and on the Wand, a new orb takes 86% less time to appear.",
+        "Your ability cooldown is 98% shorter. On the Gun, reloading is 88% shorter instead, and on the Wand, a new orb takes 88% less time to appear.",
+        "Your ability cooldown is 98% shorter. On the Gun, reloading is 90% shorter instead, and on the Wand, a new orb takes 90% less time to appear.",
+        "Your ability cooldown is 99% shorter. On the Gun, reloading is 91% shorter instead, and on the Wand, a new orb takes 91% less time to appear.",
+        "Your ability cooldown is 99% shorter. On the Gun, reloading is 93% shorter instead, and on the Wand, a new orb takes 93% less time to appear.",
+        "Your ability cooldown is 99% shorter. On the Gun, reloading is 94% shorter instead, and on the Wand, a new orb takes 94% less time to appear.",
+        "Your ability cooldown is 99% shorter. On the Gun, reloading is 95% shorter instead, and on the Wand, a new orb takes 95% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 95% shorter instead, and on the Wand, a new orb takes 95% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 96% shorter instead, and on the Wand, a new orb takes 96% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 97% shorter instead, and on the Wand, a new orb takes 97% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 97% shorter instead, and on the Wand, a new orb takes 97% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 98% shorter instead, and on the Wand, a new orb takes 98% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 98% shorter instead, and on the Wand, a new orb takes 98% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 98% shorter instead, and on the Wand, a new orb takes 98% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 99% shorter instead, and on the Wand, a new orb takes 99% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 99% shorter instead, and on the Wand, a new orb takes 99% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 99% shorter instead, and on the Wand, a new orb takes 99% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 99% shorter instead, and on the Wand, a new orb takes 99% less time to appear.",
+        "Your ability cooldown is 100% shorter. On the Gun, reloading is 99% shorter instead, and on the Wand, a new orb takes 99% less time to appear."
+      ]
     },
     {
       "id": "armor",
       "name": "Armor",
-      "description": "Take 1 less damage from every hit (but never less than half).",
+      "description": "Take 12% less damage from hits.",
       "weapons": null,
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": 5,
+      "stacked": [
+        "Take 24% less damage from hits.",
+        "Take 36% less damage from hits.",
+        "Take 48% less damage from hits.",
+        "Take 60% less damage from hits."
+      ]
     },
     {
       "id": "lifesteal",
       "name": "Lifesteal",
-      "description": "Hits heal you for 25% of the damage dealt.",
+      "description": "Heal for 20% of the damage your hits deal.",
       "weapons": null,
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Heal for 40% of the damage your hits deal.",
+        "Heal for 60% of the damage your hits deal.",
+        "Heal for 80% of the damage your hits deal.",
+        "Heal for 100% of the damage your hits deal.",
+        "Heal for 120% of the damage your hits deal.",
+        "Heal for 140% of the damage your hits deal.",
+        "Heal for 160% of the damage your hits deal.",
+        "Heal for 180% of the damage your hits deal.",
+        "Heal for 200% of the damage your hits deal.",
+        "Heal for 220% of the damage your hits deal.",
+        "Heal for 240% of the damage your hits deal.",
+        "Heal for 260% of the damage your hits deal.",
+        "Heal for 280% of the damage your hits deal.",
+        "Heal for 300% of the damage your hits deal.",
+        "Heal for 320% of the damage your hits deal.",
+        "Heal for 340% of the damage your hits deal.",
+        "Heal for 360% of the damage your hits deal.",
+        "Heal for 380% of the damage your hits deal.",
+        "Heal for 400% of the damage your hits deal.",
+        "Heal for 420% of the damage your hits deal.",
+        "Heal for 440% of the damage your hits deal.",
+        "Heal for 460% of the damage your hits deal.",
+        "Heal for 480% of the damage your hits deal.",
+        "Heal for 500% of the damage your hits deal.",
+        "Heal for 520% of the damage your hits deal.",
+        "Heal for 540% of the damage your hits deal.",
+        "Heal for 560% of the damage your hits deal.",
+        "Heal for 580% of the damage your hits deal.",
+        "Heal for 600% of the damage your hits deal."
+      ]
     },
     {
       "id": "crit",
       "name": "Critical Hits",
-      "description": "15% chance for a hit to deal double damage.",
+      "description": "+10% crit chance, and crits deal 50% more damage.",
       "weapons": null,
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "+20% crit chance, and crits deal 100% more damage.",
+        "+30% crit chance, and crits deal 150% more damage.",
+        "+40% crit chance, and crits deal 200% more damage.",
+        "+50% crit chance, and crits deal 250% more damage.",
+        "+60% crit chance, and crits deal 300% more damage.",
+        "+70% crit chance, and crits deal 350% more damage.",
+        "+80% crit chance, and crits deal 400% more damage.",
+        "+90% crit chance, and crits deal 450% more damage.",
+        "+100% crit chance, and crits deal 500% more damage.",
+        "+110% crit chance, and crits deal 550% more damage.",
+        "+120% crit chance, and crits deal 600% more damage.",
+        "+130% crit chance, and crits deal 650% more damage.",
+        "+140% crit chance, and crits deal 700% more damage.",
+        "+150% crit chance, and crits deal 750% more damage.",
+        "+160% crit chance, and crits deal 800% more damage.",
+        "+170% crit chance, and crits deal 850% more damage.",
+        "+180% crit chance, and crits deal 900% more damage.",
+        "+190% crit chance, and crits deal 950% more damage.",
+        "+200% crit chance, and crits deal 1000% more damage.",
+        "+210% crit chance, and crits deal 1050% more damage.",
+        "+220% crit chance, and crits deal 1100% more damage.",
+        "+230% crit chance, and crits deal 1150% more damage.",
+        "+240% crit chance, and crits deal 1200% more damage.",
+        "+250% crit chance, and crits deal 1250% more damage.",
+        "+260% crit chance, and crits deal 1300% more damage.",
+        "+270% crit chance, and crits deal 1350% more damage.",
+        "+280% crit chance, and crits deal 1400% more damage.",
+        "+290% crit chance, and crits deal 1450% more damage.",
+        "+300% crit chance, and crits deal 1500% more damage."
+      ]
     },
     {
       "id": "shield-bash",
       "name": "Shield Bash",
-      "description": "Blocking a hit with your shield deals 1 damage back.",
+      "description": "When your shield blocks a blade, bullet or drone, hit back for 1 damage.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "When your shield blocks a blade, bullet or drone, hit back for 2 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 3 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 4 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 5 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 6 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 7 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 8 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 9 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 10 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 11 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 12 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 13 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 14 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 15 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 16 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 17 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 18 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 19 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 20 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 21 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 22 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 23 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 24 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 25 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 26 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 27 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 28 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 29 damage.",
+        "When your shield blocks a blade, bullet or drone, hit back for 30 damage."
+      ]
     },
     {
       "id": "wide-swipe",
       "name": "Wide Swipe",
-      "description": "Your sword is 40% longer during Spin Swipe.",
+      "description": "Your sword is 40% longer during Spin Swipe, so it starts swiping from further away.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your sword is 80% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 120% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 160% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 200% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 240% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 280% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 320% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 360% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 400% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 440% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 480% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 520% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 560% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 600% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 640% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 680% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 720% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 760% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 800% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 840% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 880% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 920% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 960% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 1000% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 1040% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 1080% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 1120% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 1160% longer during Spin Swipe, so it starts swiping from further away.",
+        "Your sword is 1200% longer during Spin Swipe, so it starts swiping from further away."
+      ]
     },
     {
       "id": "shield-spikes",
@@ -168,18 +586,80 @@
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your shield deals 4 damage to enemies it touches.",
+        "Your shield deals 6 damage to enemies it touches.",
+        "Your shield deals 8 damage to enemies it touches.",
+        "Your shield deals 10 damage to enemies it touches.",
+        "Your shield deals 12 damage to enemies it touches.",
+        "Your shield deals 14 damage to enemies it touches.",
+        "Your shield deals 16 damage to enemies it touches.",
+        "Your shield deals 18 damage to enemies it touches.",
+        "Your shield deals 20 damage to enemies it touches.",
+        "Your shield deals 22 damage to enemies it touches.",
+        "Your shield deals 24 damage to enemies it touches.",
+        "Your shield deals 26 damage to enemies it touches.",
+        "Your shield deals 28 damage to enemies it touches.",
+        "Your shield deals 30 damage to enemies it touches.",
+        "Your shield deals 32 damage to enemies it touches.",
+        "Your shield deals 34 damage to enemies it touches.",
+        "Your shield deals 36 damage to enemies it touches.",
+        "Your shield deals 38 damage to enemies it touches.",
+        "Your shield deals 40 damage to enemies it touches.",
+        "Your shield deals 42 damage to enemies it touches.",
+        "Your shield deals 44 damage to enemies it touches.",
+        "Your shield deals 46 damage to enemies it touches.",
+        "Your shield deals 48 damage to enemies it touches.",
+        "Your shield deals 50 damage to enemies it touches.",
+        "Your shield deals 52 damage to enemies it touches.",
+        "Your shield deals 54 damage to enemies it touches.",
+        "Your shield deals 56 damage to enemies it touches.",
+        "Your shield deals 58 damage to enemies it touches.",
+        "Your shield deals 60 damage to enemies it touches."
+      ]
     },
     {
       "id": "long-swipe",
       "name": "Long Swipe",
-      "description": "Spin Swipe keeps spinning for an extra half turn.",
+      "description": "Spin Swipe spins an extra half turn.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Spin Swipe spins 1 extra turn.",
+        "Spin Swipe spins 1.5 extra turns.",
+        "Spin Swipe spins 2 extra turns.",
+        "Spin Swipe spins 2.5 extra turns.",
+        "Spin Swipe spins 3 extra turns.",
+        "Spin Swipe spins 3.5 extra turns.",
+        "Spin Swipe spins 4 extra turns.",
+        "Spin Swipe spins 4.5 extra turns.",
+        "Spin Swipe spins 5 extra turns.",
+        "Spin Swipe spins 5.5 extra turns.",
+        "Spin Swipe spins 6 extra turns.",
+        "Spin Swipe spins 6.5 extra turns.",
+        "Spin Swipe spins 7 extra turns.",
+        "Spin Swipe spins 7.5 extra turns.",
+        "Spin Swipe spins 8 extra turns.",
+        "Spin Swipe spins 8.5 extra turns.",
+        "Spin Swipe spins 9 extra turns.",
+        "Spin Swipe spins 9.5 extra turns.",
+        "Spin Swipe spins 10 extra turns.",
+        "Spin Swipe spins 10.5 extra turns.",
+        "Spin Swipe spins 11 extra turns.",
+        "Spin Swipe spins 11.5 extra turns.",
+        "Spin Swipe spins 12 extra turns.",
+        "Spin Swipe spins 12.5 extra turns.",
+        "Spin Swipe spins 13 extra turns.",
+        "Spin Swipe spins 13.5 extra turns.",
+        "Spin Swipe spins 14 extra turns.",
+        "Spin Swipe spins 14.5 extra turns.",
+        "Spin Swipe spins 15 extra turns."
+      ]
     },
     {
       "id": "big-shield",
@@ -190,155 +670,364 @@
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your shield is 100% wider.",
+        "Your shield is 150% wider.",
+        "Your shield is 200% wider.",
+        "Your shield is 250% wider.",
+        "Your shield is 300% wider.",
+        "Your shield is 350% wider.",
+        "Your shield is 400% wider.",
+        "Your shield is 450% wider.",
+        "Your shield is 500% wider.",
+        "Your shield is 550% wider.",
+        "Your shield is 600% wider.",
+        "Your shield is 650% wider.",
+        "Your shield is 700% wider.",
+        "Your shield is 750% wider.",
+        "Your shield is 800% wider.",
+        "Your shield is 850% wider.",
+        "Your shield is 900% wider.",
+        "Your shield is 950% wider.",
+        "Your shield is 1000% wider.",
+        "Your shield is 1050% wider.",
+        "Your shield is 1100% wider.",
+        "Your shield is 1150% wider.",
+        "Your shield is 1200% wider.",
+        "Your shield is 1250% wider.",
+        "Your shield is 1300% wider.",
+        "Your shield is 1350% wider.",
+        "Your shield is 1400% wider.",
+        "Your shield is 1450% wider.",
+        "Your shield is 1500% wider."
+      ]
     },
     {
-      "id": "long-dash",
-      "name": "Long Dash",
-      "description": "Charge Dash travels 40% further.",
-      "weapons": [
-        "spear"
-      ],
-      "requires": [],
-      "excludedBy": [
-        "olympian",
-        "runner"
-      ],
-      "maxStacks": null
-    },
-    {
-      "id": "quick-charge",
-      "name": "Quick Charge",
-      "description": "Charge Dash winds up twice as fast (each copy halves what is left).",
+      "id": "patient-charge",
+      "name": "Patient Charge",
+      "description": "Charge Dash holds still and aims 50% longer before it lunges.",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Charge Dash holds still and aims 100% longer before it lunges.",
+        "Charge Dash holds still and aims 150% longer before it lunges.",
+        "Charge Dash holds still and aims 200% longer before it lunges.",
+        "Charge Dash holds still and aims 250% longer before it lunges.",
+        "Charge Dash holds still and aims 300% longer before it lunges.",
+        "Charge Dash holds still and aims 350% longer before it lunges.",
+        "Charge Dash holds still and aims 400% longer before it lunges.",
+        "Charge Dash holds still and aims 450% longer before it lunges.",
+        "Charge Dash holds still and aims 500% longer before it lunges.",
+        "Charge Dash holds still and aims 550% longer before it lunges.",
+        "Charge Dash holds still and aims 600% longer before it lunges.",
+        "Charge Dash holds still and aims 650% longer before it lunges.",
+        "Charge Dash holds still and aims 700% longer before it lunges.",
+        "Charge Dash holds still and aims 750% longer before it lunges.",
+        "Charge Dash holds still and aims 800% longer before it lunges.",
+        "Charge Dash holds still and aims 850% longer before it lunges.",
+        "Charge Dash holds still and aims 900% longer before it lunges.",
+        "Charge Dash holds still and aims 950% longer before it lunges.",
+        "Charge Dash holds still and aims 1000% longer before it lunges.",
+        "Charge Dash holds still and aims 1050% longer before it lunges.",
+        "Charge Dash holds still and aims 1100% longer before it lunges.",
+        "Charge Dash holds still and aims 1150% longer before it lunges.",
+        "Charge Dash holds still and aims 1200% longer before it lunges.",
+        "Charge Dash holds still and aims 1250% longer before it lunges.",
+        "Charge Dash holds still and aims 1300% longer before it lunges.",
+        "Charge Dash holds still and aims 1350% longer before it lunges.",
+        "Charge Dash holds still and aims 1400% longer before it lunges.",
+        "Charge Dash holds still and aims 1450% longer before it lunges.",
+        "Charge Dash holds still and aims 1500% longer before it lunges."
+      ]
     },
     {
       "id": "dash-guard",
       "name": "Braced",
-      "description": "Take 60% less damage while charging and dashing (each copy cuts what is left).",
+      "description": "Take 60% less damage while charging and dashing.",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Take 84% less damage while charging and dashing.",
+        "Take 94% less damage while charging and dashing.",
+        "Take 97% less damage while charging and dashing.",
+        "Take 99% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing.",
+        "Take 100% less damage while charging and dashing."
+      ]
     },
     {
       "id": "rapid-growth",
       "name": "Rapid Growth",
-      "description": "Your spear grows 50% more with every hit.",
+      "description": "Your spear grows 50% more with each hit.",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
-    },
-    {
-      "id": "crit-damage",
-      "name": "Deadly Crits",
-      "description": "Critical hits deal +100% damage (triple instead of double).",
-      "weapons": [
-        "spear"
-      ],
-      "requires": [
-        "crit"
-      ],
-      "excludedBy": [],
-      "maxStacks": null
-    },
-    {
-      "id": "quick-recovery",
-      "name": "Quick Recovery",
-      "description": "Your daggers can parry the same weapon again twice as soon (each copy halves what is left).",
-      "weapons": [
-        "daggers"
-      ],
-      "requires": [],
-      "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your spear grows 100% more with each hit.",
+        "Your spear grows 150% more with each hit.",
+        "Your spear grows 200% more with each hit.",
+        "Your spear grows 250% more with each hit.",
+        "Your spear grows 300% more with each hit.",
+        "Your spear grows 350% more with each hit.",
+        "Your spear grows 400% more with each hit.",
+        "Your spear grows 450% more with each hit.",
+        "Your spear grows 500% more with each hit.",
+        "Your spear grows 550% more with each hit.",
+        "Your spear grows 600% more with each hit.",
+        "Your spear grows 650% more with each hit.",
+        "Your spear grows 700% more with each hit.",
+        "Your spear grows 750% more with each hit.",
+        "Your spear grows 800% more with each hit.",
+        "Your spear grows 850% more with each hit.",
+        "Your spear grows 900% more with each hit.",
+        "Your spear grows 950% more with each hit.",
+        "Your spear grows 1000% more with each hit.",
+        "Your spear grows 1050% more with each hit.",
+        "Your spear grows 1100% more with each hit.",
+        "Your spear grows 1150% more with each hit.",
+        "Your spear grows 1200% more with each hit.",
+        "Your spear grows 1250% more with each hit.",
+        "Your spear grows 1300% more with each hit.",
+        "Your spear grows 1350% more with each hit.",
+        "Your spear grows 1400% more with each hit.",
+        "Your spear grows 1450% more with each hit.",
+        "Your spear grows 1500% more with each hit."
+      ]
     },
     {
       "id": "momentum",
       "name": "Momentum",
-      "description": "Your daggers gain 50% more spin speed per hit.",
+      "description": "Your dagger gains 50% more spin speed with each hit.",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your dagger gains 100% more spin speed with each hit.",
+        "Your dagger gains 150% more spin speed with each hit.",
+        "Your dagger gains 200% more spin speed with each hit.",
+        "Your dagger gains 250% more spin speed with each hit.",
+        "Your dagger gains 300% more spin speed with each hit.",
+        "Your dagger gains 350% more spin speed with each hit.",
+        "Your dagger gains 400% more spin speed with each hit.",
+        "Your dagger gains 450% more spin speed with each hit.",
+        "Your dagger gains 500% more spin speed with each hit.",
+        "Your dagger gains 550% more spin speed with each hit.",
+        "Your dagger gains 600% more spin speed with each hit.",
+        "Your dagger gains 650% more spin speed with each hit.",
+        "Your dagger gains 700% more spin speed with each hit.",
+        "Your dagger gains 750% more spin speed with each hit.",
+        "Your dagger gains 800% more spin speed with each hit.",
+        "Your dagger gains 850% more spin speed with each hit.",
+        "Your dagger gains 900% more spin speed with each hit.",
+        "Your dagger gains 950% more spin speed with each hit.",
+        "Your dagger gains 1000% more spin speed with each hit.",
+        "Your dagger gains 1050% more spin speed with each hit.",
+        "Your dagger gains 1100% more spin speed with each hit.",
+        "Your dagger gains 1150% more spin speed with each hit.",
+        "Your dagger gains 1200% more spin speed with each hit.",
+        "Your dagger gains 1250% more spin speed with each hit.",
+        "Your dagger gains 1300% more spin speed with each hit.",
+        "Your dagger gains 1350% more spin speed with each hit.",
+        "Your dagger gains 1400% more spin speed with each hit.",
+        "Your dagger gains 1450% more spin speed with each hit.",
+        "Your dagger gains 1500% more spin speed with each hit."
+      ]
     },
     {
       "id": "close-quarters",
       "name": "Close Quarters",
-      "description": "Your hits knock enemies back 40% less, keeping them in reach (each copy cuts what is left).",
+      "description": "Your hits knock enemies back 40% less, keeping them in reach.",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your hits knock enemies back 64% less, keeping them in reach.",
+        "Your hits knock enemies back 78% less, keeping them in reach.",
+        "Your hits knock enemies back 87% less, keeping them in reach.",
+        "Your hits knock enemies back 92% less, keeping them in reach.",
+        "Your hits knock enemies back 95% less, keeping them in reach.",
+        "Your hits knock enemies back 97% less, keeping them in reach.",
+        "Your hits knock enemies back 98% less, keeping them in reach.",
+        "Your hits knock enemies back 99% less, keeping them in reach.",
+        "Your hits knock enemies back 99% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach.",
+        "Your hits knock enemies back 100% less, keeping them in reach."
+      ]
     },
     {
       "id": "dodge",
       "name": "Evasion",
-      "description": "+12% chance to dodge a hit completely.",
+      "description": "+12% chance to dodge a hit.",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 5
+      "maxStacks": 5,
+      "stacked": [
+        "+24% chance to dodge a hit.",
+        "+36% chance to dodge a hit.",
+        "+48% chance to dodge a hit.",
+        "+60% chance to dodge a hit."
+      ]
     },
     {
-      "id": "rebound",
-      "name": "Rebound",
-      "description": "Bouncing off a wall makes you 40% faster for a moment.",
-      "weapons": [
-        "daggers"
-      ],
-      "requires": [],
-      "excludedBy": [],
-      "maxStacks": null
-    },
-    {
-      "id": "quick-drop",
-      "name": "Quick Drop",
-      "description": "Drop Slam gains 12.5% more damage from the height it falls.",
+      "id": "slow-drop",
+      "name": "Slow Drop",
+      "description": "Drop Slam falls 20% slower, so it lines up better. It hits just as hard.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": 3,
+      "stacked": [
+        "Drop Slam falls 36% slower, so it lines up better. It hits just as hard.",
+        "Drop Slam falls 49% slower, so it lines up better. It hits just as hard."
+      ]
     },
     {
       "id": "heavy-impact",
       "name": "Heavy Impact",
-      "description": "Drop Slam gains 50% more damage from the height it falls.",
+      "description": "Drop Slam gets 50% more bonus damage from the height it falls.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Drop Slam gets 100% more bonus damage from the height it falls.",
+        "Drop Slam gets 150% more bonus damage from the height it falls.",
+        "Drop Slam gets 200% more bonus damage from the height it falls.",
+        "Drop Slam gets 250% more bonus damage from the height it falls.",
+        "Drop Slam gets 300% more bonus damage from the height it falls.",
+        "Drop Slam gets 350% more bonus damage from the height it falls.",
+        "Drop Slam gets 400% more bonus damage from the height it falls.",
+        "Drop Slam gets 450% more bonus damage from the height it falls.",
+        "Drop Slam gets 500% more bonus damage from the height it falls.",
+        "Drop Slam gets 550% more bonus damage from the height it falls.",
+        "Drop Slam gets 600% more bonus damage from the height it falls.",
+        "Drop Slam gets 650% more bonus damage from the height it falls.",
+        "Drop Slam gets 700% more bonus damage from the height it falls.",
+        "Drop Slam gets 750% more bonus damage from the height it falls.",
+        "Drop Slam gets 800% more bonus damage from the height it falls.",
+        "Drop Slam gets 850% more bonus damage from the height it falls.",
+        "Drop Slam gets 900% more bonus damage from the height it falls.",
+        "Drop Slam gets 950% more bonus damage from the height it falls.",
+        "Drop Slam gets 1000% more bonus damage from the height it falls.",
+        "Drop Slam gets 1050% more bonus damage from the height it falls.",
+        "Drop Slam gets 1100% more bonus damage from the height it falls.",
+        "Drop Slam gets 1150% more bonus damage from the height it falls.",
+        "Drop Slam gets 1200% more bonus damage from the height it falls.",
+        "Drop Slam gets 1250% more bonus damage from the height it falls.",
+        "Drop Slam gets 1300% more bonus damage from the height it falls.",
+        "Drop Slam gets 1350% more bonus damage from the height it falls.",
+        "Drop Slam gets 1400% more bonus damage from the height it falls.",
+        "Drop Slam gets 1450% more bonus damage from the height it falls.",
+        "Drop Slam gets 1500% more bonus damage from the height it falls."
+      ]
     },
     {
       "id": "high-bounce",
       "name": "High Bounce",
-      "description": "Drop Slam bounces you back up off the floor at +100% speed, and every other bounce off the floor gets +50% speed upwards.",
+      "description": "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.",
+        "Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner."
+      ]
     },
     {
       "id": "great-mace",
@@ -349,45 +1038,169 @@
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your mace is 80% longer during Drop Slam.",
+        "Your mace is 120% longer during Drop Slam.",
+        "Your mace is 160% longer during Drop Slam.",
+        "Your mace is 200% longer during Drop Slam.",
+        "Your mace is 240% longer during Drop Slam.",
+        "Your mace is 280% longer during Drop Slam.",
+        "Your mace is 320% longer during Drop Slam.",
+        "Your mace is 360% longer during Drop Slam.",
+        "Your mace is 400% longer during Drop Slam.",
+        "Your mace is 440% longer during Drop Slam.",
+        "Your mace is 480% longer during Drop Slam.",
+        "Your mace is 520% longer during Drop Slam.",
+        "Your mace is 560% longer during Drop Slam.",
+        "Your mace is 600% longer during Drop Slam.",
+        "Your mace is 640% longer during Drop Slam.",
+        "Your mace is 680% longer during Drop Slam.",
+        "Your mace is 720% longer during Drop Slam.",
+        "Your mace is 760% longer during Drop Slam.",
+        "Your mace is 800% longer during Drop Slam.",
+        "Your mace is 840% longer during Drop Slam.",
+        "Your mace is 880% longer during Drop Slam.",
+        "Your mace is 920% longer during Drop Slam.",
+        "Your mace is 960% longer during Drop Slam.",
+        "Your mace is 1000% longer during Drop Slam.",
+        "Your mace is 1040% longer during Drop Slam.",
+        "Your mace is 1080% longer during Drop Slam.",
+        "Your mace is 1120% longer during Drop Slam.",
+        "Your mace is 1160% longer during Drop Slam.",
+        "Your mace is 1200% longer during Drop Slam."
+      ]
     },
     {
       "id": "meteor",
       "name": "Meteor",
-      "description": "Drop Slam homes in on the enemy 25% better as it falls.",
+      "description": "Drop Slam steers onto the enemy 25% faster.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Drop Slam steers onto the enemy 50% faster.",
+        "Drop Slam steers onto the enemy 75% faster.",
+        "Drop Slam steers onto the enemy 100% faster.",
+        "Drop Slam steers onto the enemy 125% faster.",
+        "Drop Slam steers onto the enemy 150% faster.",
+        "Drop Slam steers onto the enemy 175% faster.",
+        "Drop Slam steers onto the enemy 200% faster.",
+        "Drop Slam steers onto the enemy 225% faster.",
+        "Drop Slam steers onto the enemy 250% faster.",
+        "Drop Slam steers onto the enemy 275% faster.",
+        "Drop Slam steers onto the enemy 300% faster.",
+        "Drop Slam steers onto the enemy 325% faster.",
+        "Drop Slam steers onto the enemy 350% faster.",
+        "Drop Slam steers onto the enemy 375% faster.",
+        "Drop Slam steers onto the enemy 400% faster.",
+        "Drop Slam steers onto the enemy 425% faster.",
+        "Drop Slam steers onto the enemy 450% faster.",
+        "Drop Slam steers onto the enemy 475% faster.",
+        "Drop Slam steers onto the enemy 500% faster.",
+        "Drop Slam steers onto the enemy 525% faster.",
+        "Drop Slam steers onto the enemy 550% faster.",
+        "Drop Slam steers onto the enemy 575% faster.",
+        "Drop Slam steers onto the enemy 600% faster.",
+        "Drop Slam steers onto the enemy 625% faster.",
+        "Drop Slam steers onto the enemy 650% faster.",
+        "Drop Slam steers onto the enemy 675% faster.",
+        "Drop Slam steers onto the enemy 700% faster.",
+        "Drop Slam steers onto the enemy 725% faster.",
+        "Drop Slam steers onto the enemy 750% faster."
+      ]
     },
     {
       "id": "quick-repair",
       "name": "Quick Repair",
-      "description": "Swatted drones tumble for 30% less time, and once back they can attack again 30% sooner (each copy cuts what is left).",
+      "description": "Knocked-away drones recover 30% faster.",
       "weapons": [
         "drone"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Knocked-away drones recover 51% faster.",
+        "Knocked-away drones recover 66% faster.",
+        "Knocked-away drones recover 76% faster.",
+        "Knocked-away drones recover 83% faster.",
+        "Knocked-away drones recover 88% faster.",
+        "Knocked-away drones recover 92% faster.",
+        "Knocked-away drones recover 94% faster.",
+        "Knocked-away drones recover 96% faster.",
+        "Knocked-away drones recover 97% faster.",
+        "Knocked-away drones recover 98% faster.",
+        "Knocked-away drones recover 99% faster.",
+        "Knocked-away drones recover 99% faster.",
+        "Knocked-away drones recover 99% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster.",
+        "Knocked-away drones recover 100% faster."
+      ]
     },
     {
       "id": "quick-production",
       "name": "Quick Production",
-      "description": "Start with 1 more drone (and build up to 1 more).",
+      "description": "Start with 1 more drone, and build up to 1 more.",
       "weapons": [
         "drone"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 3
+      "maxStacks": null,
+      "stacked": [
+        "Start with 2 more drones, and build up to 2 more.",
+        "Start with 3 more drones, and build up to 3 more.",
+        "Start with 4 more drones, and build up to 4 more.",
+        "Start with 5 more drones, and build up to 5 more.",
+        "Start with 6 more drones, and build up to 6 more.",
+        "Start with 7 more drones, and build up to 7 more.",
+        "Start with 8 more drones, and build up to 8 more.",
+        "Start with 9 more drones, and build up to 9 more.",
+        "Start with 10 more drones, and build up to 10 more.",
+        "Start with 11 more drones, and build up to 11 more.",
+        "Start with 12 more drones, and build up to 12 more.",
+        "Start with 13 more drones, and build up to 13 more.",
+        "Start with 14 more drones, and build up to 14 more.",
+        "Start with 15 more drones, and build up to 15 more.",
+        "Start with 16 more drones, and build up to 16 more.",
+        "Start with 17 more drones, and build up to 17 more.",
+        "Start with 18 more drones, and build up to 18 more.",
+        "Start with 19 more drones, and build up to 19 more.",
+        "Start with 20 more drones, and build up to 20 more.",
+        "Start with 21 more drones, and build up to 21 more.",
+        "Start with 22 more drones, and build up to 22 more.",
+        "Start with 23 more drones, and build up to 23 more.",
+        "Start with 24 more drones, and build up to 24 more.",
+        "Start with 25 more drones, and build up to 25 more.",
+        "Start with 26 more drones, and build up to 26 more.",
+        "Start with 27 more drones, and build up to 27 more.",
+        "Start with 28 more drones, and build up to 28 more.",
+        "Start with 29 more drones, and build up to 29 more.",
+        "Start with 30 more drones, and build up to 30 more."
+      ]
     },
     {
       "id": "defense-matrix",
       "name": "Defense Matrix",
-      "description": "Each guarding drone takes twice as much off a hit, and the guard can take off 10% more of it in all.",
+      "description": "Guarding drones block twice as much damage, and the guard can block 10% more in total.",
       "weapons": [
         "drone"
       ],
@@ -395,51 +1208,179 @@
       "excludedBy": [
         "ace"
       ],
-      "maxStacks": 3
+      "maxStacks": 3,
+      "stacked": [
+        "Guarding drones block 3 times as much damage, and the guard can block 20% more in total.",
+        "Guarding drones block 4 times as much damage, and the guard can block 30% more in total."
+      ]
     },
     {
       "id": "boosters",
       "name": "Boosters",
-      "description": "Your drones fly 40% faster, attacking and catching up with the formation.",
+      "description": "Your drones fly 40% faster.",
       "weapons": [
         "drone"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your drones fly 80% faster.",
+        "Your drones fly 120% faster.",
+        "Your drones fly 160% faster.",
+        "Your drones fly 200% faster.",
+        "Your drones fly 240% faster.",
+        "Your drones fly 280% faster.",
+        "Your drones fly 320% faster.",
+        "Your drones fly 360% faster.",
+        "Your drones fly 400% faster.",
+        "Your drones fly 440% faster.",
+        "Your drones fly 480% faster.",
+        "Your drones fly 520% faster.",
+        "Your drones fly 560% faster.",
+        "Your drones fly 600% faster.",
+        "Your drones fly 640% faster.",
+        "Your drones fly 680% faster.",
+        "Your drones fly 720% faster.",
+        "Your drones fly 760% faster.",
+        "Your drones fly 800% faster.",
+        "Your drones fly 840% faster.",
+        "Your drones fly 880% faster.",
+        "Your drones fly 920% faster.",
+        "Your drones fly 960% faster.",
+        "Your drones fly 1000% faster.",
+        "Your drones fly 1040% faster.",
+        "Your drones fly 1080% faster.",
+        "Your drones fly 1120% faster.",
+        "Your drones fly 1160% faster.",
+        "Your drones fly 1200% faster."
+      ]
     },
     {
       "id": "spiked-drones",
       "name": "Spiked Drones",
-      "description": "Whoever swats one of your drones takes 0.25 damage.",
+      "description": "Enemies take 0.25 damage when they knock one of your drones away.",
       "weapons": [
         "drone"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Enemies take 0.5 damage when they knock one of your drones away.",
+        "Enemies take 0.75 damage when they knock one of your drones away.",
+        "Enemies take 1 damage when they knock one of your drones away.",
+        "Enemies take 1.25 damage when they knock one of your drones away.",
+        "Enemies take 1.5 damage when they knock one of your drones away.",
+        "Enemies take 1.75 damage when they knock one of your drones away.",
+        "Enemies take 2 damage when they knock one of your drones away.",
+        "Enemies take 2.25 damage when they knock one of your drones away.",
+        "Enemies take 2.5 damage when they knock one of your drones away.",
+        "Enemies take 2.75 damage when they knock one of your drones away.",
+        "Enemies take 3 damage when they knock one of your drones away.",
+        "Enemies take 3.25 damage when they knock one of your drones away.",
+        "Enemies take 3.5 damage when they knock one of your drones away.",
+        "Enemies take 3.75 damage when they knock one of your drones away.",
+        "Enemies take 4 damage when they knock one of your drones away.",
+        "Enemies take 4.25 damage when they knock one of your drones away.",
+        "Enemies take 4.5 damage when they knock one of your drones away.",
+        "Enemies take 4.75 damage when they knock one of your drones away.",
+        "Enemies take 5 damage when they knock one of your drones away.",
+        "Enemies take 5.25 damage when they knock one of your drones away.",
+        "Enemies take 5.5 damage when they knock one of your drones away.",
+        "Enemies take 5.75 damage when they knock one of your drones away.",
+        "Enemies take 6 damage when they knock one of your drones away.",
+        "Enemies take 6.25 damage when they knock one of your drones away.",
+        "Enemies take 6.5 damage when they knock one of your drones away.",
+        "Enemies take 6.75 damage when they knock one of your drones away.",
+        "Enemies take 7 damage when they knock one of your drones away.",
+        "Enemies take 7.25 damage when they knock one of your drones away.",
+        "Enemies take 7.5 damage when they knock one of your drones away."
+      ]
     },
     {
       "id": "fire-rate",
       "name": "Fire Rate",
-      "description": "You fire 20% faster, reloading included.",
+      "description": "Fire and reload 20% faster.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Fire and reload 40% faster.",
+        "Fire and reload 60% faster.",
+        "Fire and reload 80% faster.",
+        "Fire and reload 100% faster.",
+        "Fire and reload 120% faster.",
+        "Fire and reload 140% faster.",
+        "Fire and reload 160% faster.",
+        "Fire and reload 180% faster.",
+        "Fire and reload 200% faster.",
+        "Fire and reload 220% faster.",
+        "Fire and reload 240% faster.",
+        "Fire and reload 260% faster.",
+        "Fire and reload 280% faster.",
+        "Fire and reload 300% faster.",
+        "Fire and reload 320% faster.",
+        "Fire and reload 340% faster.",
+        "Fire and reload 360% faster.",
+        "Fire and reload 380% faster.",
+        "Fire and reload 400% faster.",
+        "Fire and reload 420% faster.",
+        "Fire and reload 440% faster.",
+        "Fire and reload 460% faster.",
+        "Fire and reload 480% faster.",
+        "Fire and reload 500% faster.",
+        "Fire and reload 520% faster.",
+        "Fire and reload 540% faster.",
+        "Fire and reload 560% faster.",
+        "Fire and reload 580% faster.",
+        "Fire and reload 600% faster."
+      ]
     },
     {
       "id": "accurate",
       "name": "Accurate",
-      "description": "Your shots stray 40% less from where you aim (each copy cuts what is left).",
+      "description": "Your shots are 50% more accurate.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 3
+      "maxStacks": null,
+      "stacked": [
+        "Your shots are 75% more accurate.",
+        "Your shots are 88% more accurate.",
+        "Your shots are 94% more accurate.",
+        "Your shots are 97% more accurate.",
+        "Your shots are 98% more accurate.",
+        "Your shots are 99% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate.",
+        "Your shots are 100% more accurate."
+      ]
     },
     {
       "id": "motivated-bullets",
@@ -450,421 +1391,914 @@
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": null
+      "maxStacks": null,
+      "stacked": [
+        "Your bullets fly 70% faster.",
+        "Your bullets fly 105% faster.",
+        "Your bullets fly 140% faster.",
+        "Your bullets fly 175% faster.",
+        "Your bullets fly 210% faster.",
+        "Your bullets fly 245% faster.",
+        "Your bullets fly 280% faster.",
+        "Your bullets fly 315% faster.",
+        "Your bullets fly 350% faster.",
+        "Your bullets fly 385% faster.",
+        "Your bullets fly 420% faster.",
+        "Your bullets fly 455% faster.",
+        "Your bullets fly 490% faster.",
+        "Your bullets fly 525% faster.",
+        "Your bullets fly 560% faster.",
+        "Your bullets fly 595% faster.",
+        "Your bullets fly 630% faster.",
+        "Your bullets fly 665% faster.",
+        "Your bullets fly 700% faster.",
+        "Your bullets fly 735% faster.",
+        "Your bullets fly 770% faster.",
+        "Your bullets fly 805% faster.",
+        "Your bullets fly 840% faster.",
+        "Your bullets fly 875% faster.",
+        "Your bullets fly 910% faster.",
+        "Your bullets fly 945% faster.",
+        "Your bullets fly 980% faster.",
+        "Your bullets fly 1015% faster.",
+        "Your bullets fly 1050% faster."
+      ]
     },
     {
       "id": "anti-materiel",
       "name": "Anti-materiel",
-      "description": "A bullet that hits an enemy's weapon or shield breaks their guard for 1 s: their weapon and shields can't block.",
+      "description": "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 1s.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 3
+      "maxStacks": null,
+      "stacked": [
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 2s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 3s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 4s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 5s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 6s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 7s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 8s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 9s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 10s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 11s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 12s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 13s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 14s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 15s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 16s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 17s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 18s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 19s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 20s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 21s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 22s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 23s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 24s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 25s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 26s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 27s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 28s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 29s.",
+        "A bullet that hits an enemy's weapon, shield or drone stops them blocking for 30s."
+      ]
     },
     {
       "id": "pop-pop",
       "name": "Pop Pop",
-      "description": "Each round you fire has a 10% chance to fire a second bullet with it, for free.",
+      "description": "10% chance to fire a free extra bullet with each shot.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 5
+      "maxStacks": null,
+      "stacked": [
+        "20% chance to fire a free extra bullet with each shot.",
+        "30% chance to fire a free extra bullet with each shot.",
+        "40% chance to fire a free extra bullet with each shot.",
+        "50% chance to fire a free extra bullet with each shot.",
+        "60% chance to fire a free extra bullet with each shot.",
+        "70% chance to fire a free extra bullet with each shot.",
+        "80% chance to fire a free extra bullet with each shot.",
+        "90% chance to fire a free extra bullet with each shot.",
+        "100% chance to fire a free extra bullet with each shot.",
+        "110% chance to fire a free extra bullet with each shot.",
+        "120% chance to fire a free extra bullet with each shot.",
+        "130% chance to fire a free extra bullet with each shot.",
+        "140% chance to fire a free extra bullet with each shot.",
+        "150% chance to fire a free extra bullet with each shot.",
+        "160% chance to fire a free extra bullet with each shot.",
+        "170% chance to fire a free extra bullet with each shot.",
+        "180% chance to fire a free extra bullet with each shot.",
+        "190% chance to fire a free extra bullet with each shot.",
+        "200% chance to fire a free extra bullet with each shot.",
+        "210% chance to fire a free extra bullet with each shot.",
+        "220% chance to fire a free extra bullet with each shot.",
+        "230% chance to fire a free extra bullet with each shot.",
+        "240% chance to fire a free extra bullet with each shot.",
+        "250% chance to fire a free extra bullet with each shot.",
+        "260% chance to fire a free extra bullet with each shot.",
+        "270% chance to fire a free extra bullet with each shot.",
+        "280% chance to fire a free extra bullet with each shot.",
+        "290% chance to fire a free extra bullet with each shot.",
+        "300% chance to fire a free extra bullet with each shot."
+      ]
+    },
+    {
+      "id": "thick-orbs",
+      "name": "Thick Orbs",
+      "description": "Your orbs are 25% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null,
+      "stacked": [
+        "Your orbs are 50% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 75% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 100% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 125% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 150% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 175% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 200% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 225% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 250% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 275% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 300% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 325% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 350% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 375% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 400% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 425% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 450% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 475% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 500% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 525% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 550% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 575% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 600% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 625% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 650% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 675% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 700% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 725% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider.",
+        "Your orbs are 750% bigger, so they touch more. With Pyromancer, the ring of fire is that much wider."
+      ]
+    },
+    {
+      "id": "echo",
+      "name": "Echo",
+      "description": "Every orb pops again a moment later in the same place, for 50% damage. With Pyromancer, every burn echoes once instead, for 5% damage.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null,
+      "stacked": [
+        "Every orb echoes 2 more times, a moment apart in the same place, for 50%, then 25% damage. With Pyromancer, every burn echoes once instead, for 11% damage.",
+        "Every orb echoes 3 more times, a moment apart in the same place, for 50%, then 25%, then 13% damage. With Pyromancer, every burn echoes once instead, for 16% damage.",
+        "Every orb echoes 4 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6% damage. With Pyromancer, every burn echoes once instead, for 21% damage.",
+        "Every orb echoes 5 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3% damage. With Pyromancer, every burn echoes once instead, for 26% damage.",
+        "Every orb echoes 6 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2% damage. With Pyromancer, every burn echoes once instead, for 32% damage.",
+        "Every orb echoes 7 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1% damage. With Pyromancer, every burn echoes once instead, for 37% damage.",
+        "Every orb echoes 8 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0% damage. With Pyromancer, every burn echoes once instead, for 42% damage.",
+        "Every orb echoes 9 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 47% damage.",
+        "Every orb echoes 10 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 53% damage.",
+        "Every orb echoes 11 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 58% damage.",
+        "Every orb echoes 12 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 63% damage.",
+        "Every orb echoes 13 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 68% damage.",
+        "Every orb echoes 14 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 74% damage.",
+        "Every orb echoes 15 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 79% damage.",
+        "Every orb echoes 16 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 84% damage.",
+        "Every orb echoes 17 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 89% damage.",
+        "Every orb echoes 18 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 95% damage.",
+        "Every orb echoes 19 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 100% damage.",
+        "Every orb echoes 20 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 105% damage.",
+        "Every orb echoes 21 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 110% damage.",
+        "Every orb echoes 22 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 116% damage.",
+        "Every orb echoes 23 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 121% damage.",
+        "Every orb echoes 24 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 126% damage.",
+        "Every orb echoes 25 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 131% damage.",
+        "Every orb echoes 26 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 137% damage.",
+        "Every orb echoes 27 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 142% damage.",
+        "Every orb echoes 28 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 147% damage.",
+        "Every orb echoes 29 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 152% damage.",
+        "Every orb echoes 30 more times, a moment apart in the same place, for 50%, then 25%, then 13%, then 6%, then 3%, then 2%, then 1%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0%, then 0% damage. With Pyromancer, every burn echoes once instead, for 158% damage."
+      ]
+    },
+    {
+      "id": "magnetism",
+      "name": "Magnetism",
+      "description": "A pop that hits an enemy holds them in your orbit for 1s, where your other orbs come round to them: they can slide along it, but not get away or in close, and take 40% more damage. Once free, they can't be held again for 2.5s. With Pyromancer, the ring's burns hold them in the flames instead, for 0.4s every 5.4s at most, with no extra damage.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [
+        "aeromancer"
+      ],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "panic-button",
+      "name": "Panic Button",
+      "description": "While an enemy is close, new orbs appear 40% faster. With Pyromancer, the ring builds up faster.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null,
+      "stacked": [
+        "While an enemy is close, new orbs appear 80% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 120% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 160% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 200% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 240% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 280% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 320% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 360% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 400% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 440% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 480% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 520% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 560% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 600% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 640% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 680% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 720% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 760% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 800% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 840% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 880% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 920% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 960% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 1000% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 1040% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 1080% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 1120% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 1160% faster. With Pyromancer, the ring builds up faster.",
+        "While an enemy is close, new orbs appear 1200% faster. With Pyromancer, the ring builds up faster."
+      ]
+    },
+    {
+      "id": "big-ring",
+      "name": "Big Ring",
+      "description": "Your orbs circle 25% further out from your ball. With Pyromancer, so does the ring of fire.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null,
+      "stacked": [
+        "Your orbs circle 50% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 75% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 100% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 125% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 150% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 175% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 200% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 225% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 250% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 275% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 300% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 325% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 350% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 375% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 400% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 425% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 450% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 475% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 500% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 525% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 550% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 575% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 600% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 625% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 650% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 675% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 700% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 725% further out from your ball. With Pyromancer, so does the ring of fire.",
+        "Your orbs circle 750% further out from your ball. With Pyromancer, so does the ring of fire."
+      ]
+    },
+    {
+      "id": "more-portals",
+      "name": "More Portals",
+      "description": "You can hold one more portal open at a time.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null,
+      "stacked": [
+        "You can hold 2 more portals open at a time.",
+        "You can hold 3 more portals open at a time.",
+        "You can hold 4 more portals open at a time.",
+        "You can hold 5 more portals open at a time.",
+        "You can hold 6 more portals open at a time.",
+        "You can hold 7 more portals open at a time.",
+        "You can hold 8 more portals open at a time.",
+        "You can hold 9 more portals open at a time.",
+        "You can hold 10 more portals open at a time.",
+        "You can hold 11 more portals open at a time.",
+        "You can hold 12 more portals open at a time.",
+        "You can hold 13 more portals open at a time.",
+        "You can hold 14 more portals open at a time.",
+        "You can hold 15 more portals open at a time.",
+        "You can hold 16 more portals open at a time.",
+        "You can hold 17 more portals open at a time.",
+        "You can hold 18 more portals open at a time.",
+        "You can hold 19 more portals open at a time.",
+        "You can hold 20 more portals open at a time.",
+        "You can hold 21 more portals open at a time.",
+        "You can hold 22 more portals open at a time.",
+        "You can hold 23 more portals open at a time.",
+        "You can hold 24 more portals open at a time.",
+        "You can hold 25 more portals open at a time.",
+        "You can hold 26 more portals open at a time.",
+        "You can hold 27 more portals open at a time.",
+        "You can hold 28 more portals open at a time.",
+        "You can hold 29 more portals open at a time.",
+        "You can hold 30 more portals open at a time."
+      ]
+    },
+    {
+      "id": "thick-tentacles",
+      "name": "Thick Tentacles",
+      "description": "Your tentacles are 75% thicker, so they catch more.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null,
+      "stacked": [
+        "Your tentacles are 150% thicker, so they catch more.",
+        "Your tentacles are 225% thicker, so they catch more.",
+        "Your tentacles are 300% thicker, so they catch more.",
+        "Your tentacles are 375% thicker, so they catch more.",
+        "Your tentacles are 450% thicker, so they catch more.",
+        "Your tentacles are 525% thicker, so they catch more.",
+        "Your tentacles are 600% thicker, so they catch more.",
+        "Your tentacles are 675% thicker, so they catch more.",
+        "Your tentacles are 750% thicker, so they catch more.",
+        "Your tentacles are 825% thicker, so they catch more.",
+        "Your tentacles are 900% thicker, so they catch more.",
+        "Your tentacles are 975% thicker, so they catch more.",
+        "Your tentacles are 1050% thicker, so they catch more.",
+        "Your tentacles are 1125% thicker, so they catch more.",
+        "Your tentacles are 1200% thicker, so they catch more.",
+        "Your tentacles are 1275% thicker, so they catch more.",
+        "Your tentacles are 1350% thicker, so they catch more.",
+        "Your tentacles are 1425% thicker, so they catch more.",
+        "Your tentacles are 1500% thicker, so they catch more.",
+        "Your tentacles are 1575% thicker, so they catch more.",
+        "Your tentacles are 1650% thicker, so they catch more.",
+        "Your tentacles are 1725% thicker, so they catch more.",
+        "Your tentacles are 1800% thicker, so they catch more.",
+        "Your tentacles are 1875% thicker, so they catch more.",
+        "Your tentacles are 1950% thicker, so they catch more.",
+        "Your tentacles are 2025% thicker, so they catch more.",
+        "Your tentacles are 2100% thicker, so they catch more.",
+        "Your tentacles are 2175% thicker, so they catch more.",
+        "Your tentacles are 2250% thicker, so they catch more."
+      ]
+    },
+    {
+      "id": "sticky-tentacles",
+      "name": "Sticky Tentacles",
+      "description": "Enemies your tentacles lash are 30% slower while they're caught in them.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 3,
+      "stacked": [
+        "Enemies your tentacles lash are 51% slower while they're caught in them.",
+        "Enemies your tentacles lash are 66% slower while they're caught in them."
+      ]
+    },
+    {
+      "id": "stretchy-tentacles",
+      "name": "Stretchy Tentacles",
+      "description": "Your tentacles stretch out up to 7px to lash enemies passing close by.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null,
+      "stacked": [
+        "Your tentacles stretch out up to 14px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 21px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 28px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 35px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 42px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 49px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 56px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 63px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 70px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 77px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 84px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 91px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 98px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 105px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 112px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 119px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 126px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 133px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 140px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 147px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 154px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 161px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 168px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 175px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 182px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 189px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 196px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 203px to lash enemies passing close by.",
+        "Your tentacles stretch out up to 210px to lash enemies passing close by."
+      ]
+    },
+    {
+      "id": "quick-lashes",
+      "name": "Quick Lashes",
+      "description": "Your tentacles lash 14% faster.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": null,
+      "stacked": [
+        "Your tentacles lash 29% faster.",
+        "Your tentacles lash 47% faster.",
+        "Your tentacles lash 67% faster.",
+        "Your tentacles lash 89% faster.",
+        "Your tentacles lash 115% faster.",
+        "Your tentacles lash 145% faster.",
+        "Your tentacles lash 178% faster.",
+        "Your tentacles lash 216% faster.",
+        "Your tentacles lash 259% faster.",
+        "Your tentacles lash 308% faster.",
+        "Your tentacles lash 364% faster.",
+        "Your tentacles lash 427% faster.",
+        "Your tentacles lash 499% faster.",
+        "Your tentacles lash 580% faster.",
+        "Your tentacles lash 673% faster.",
+        "Your tentacles lash 779% faster.",
+        "Your tentacles lash 898% faster.",
+        "Your tentacles lash 1035% faster.",
+        "Your tentacles lash 1189% faster.",
+        "Your tentacles lash 1365% faster.",
+        "Your tentacles lash 1565% faster.",
+        "Your tentacles lash 1792% faster.",
+        "Your tentacles lash 2050% faster.",
+        "Your tentacles lash 2343% faster.",
+        "Your tentacles lash 2676% faster.",
+        "Your tentacles lash 3055% faster.",
+        "Your tentacles lash 3485% faster.",
+        "Your tentacles lash 3974% faster.",
+        "Your tentacles lash 4529% faster."
+      ]
     }
   ],
   "transformations": [
     {
       "id": "stalwart",
       "name": "Stalwart",
-      "description": "Gain a second, smaller shield. Both sit behind you in a Y, with your sword as its stem. The weight slows your spin by 15%.",
+      "description": "Gain a second shield, and both move behind your sword.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "wildling",
       "name": "Wildling",
-      "description": "Landing a hit with Spin Swipe wards you: the next hit you take does nothing.",
+      "description": "Landing a hit with Spin Swipe protects you from the next hit you take.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "dizzy",
       "name": "Dizzy",
-      "description": "Spin Swipe spins two extra full turns.",
+      "description": "Spin Swipe spins 3 times.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "captain",
       "name": "Captain",
-      "description": "Every 4 s, throw your shield at the enemy for 2 damage (plus its own contact damage, like spikes). It flies back to you, but can't block while it's away.",
+      "description": "Every 4s, throw your shield at a nearby enemy like a boomerang. With Stalwart, throw both.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "fire-eater",
       "name": "Fire Eater",
-      "description": "Every 3 s your blade catches fire. Your next hit sets the enemy burning for 1 damage every 0.5 s for 3 s.",
+      "description": "Your sword catches fire 3s after its last burning hit. Its next hit sets the enemy alight for 6 damage over 3s.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "piercer",
       "name": "Piercer",
-      "description": "After every Spin Swipe, lunge at the enemy sword-first for a big stab. Spin Swipe's cooldown is 50% longer.",
+      "description": "After each Spin Swipe, aim and lunge at a nearby enemy for 1.5x damage. Spin Swipe takes 50% longer to recharge.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "dual-wielder",
       "name": "Dual Wielder",
-      "description": "Swap your shield for a short second sword. It still blocks, deals 3 damage to enemies it touches (+0.5 each time your sword hits), and gets your shield upgrades.",
+      "description": "Swap your shield for a short second sword. It hurts enemies it touches, gets stronger every time your main sword lands a hit, and keeps your shield upgrades.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "gladiator",
       "name": "Gladiator",
-      "description": "Every 4 s, throw a net at the enemy. If it lands they're 50% slower and take 50% more damage for 2.5 s.",
+      "description": "Every 4s, throw a net at a nearby enemy. For 2.5s they move 50% slower and take 50% more damage.",
       "weapons": [
         "sword"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "hoplite",
       "name": "Hoplite",
-      "description": "Gain a shield like the Sword's, just to the left of your spear. It blocks enemy weapons.",
+      "description": "Gain a bronze shield.",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "poseidon",
       "name": "Poseidon",
-      "description": "Your spear becomes a trident with a big head. Hitting with the head skewers the enemy: they are carried on it for 0.7 s, then take a second hit at half damage and are flung off.",
+      "description": "Hitting with the tip of your trident skewers the enemy, then flings them off with a second hit.",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "dancer",
       "name": "Dancer",
-      "description": "Every 5 s, when the enemy is close, whirl your spear through a fast full turn (like Spin Swipe) for 30% more damage.",
+      "description": "Every 5s, do a quick spin attack.",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "bouncer",
       "name": "Bouncer",
-      "description": "Landing a hit sends out a repelling pulse as far as your spear reaches, dealing 3 damage and throwing enemies straight away from you (at most once a second).",
+      "description": "Your hits send out a shockwave that deals 3 damage and knocks back every enemy in reach (once per second).",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "olympian",
       "name": "Olympian",
-      "description": "Charge Dash becomes Spear Throw: stand still and hurl your spear until it sticks in the wall, piercing every enemy in its path for double damage and huge knockback. Then dash to it, ramming enemies on the way. Unarmed until you pull it out.",
+      "description": "Charge Dash becomes a throw. Your spear flies to the wall, hitting every enemy in its way, then you dash after it.",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "tactician",
       "name": "Tactician",
-      "description": "Your spear head is longer, and hits with it always crit. Hits with the shaft deal 40% less damage.",
+      "description": "Your spear head is longer and always crits. Hits with the shaft deal 40% less damage.",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "tackler",
       "name": "Tackler",
-      "description": "When your spear clashes with a weapon or shield, the enemy's guard breaks for 2.5 s: their weapon and shields can't block, and weapons pass straight through them.",
+      "description": "When Charge Dash hits, dash again a moment later. With Olympian or Runner, a throw or lap that hits goes again.",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "runner",
       "name": "Runner",
-      "description": "Charge Dash becomes Flame Lap: charge along a straight line, out through the wall ahead and back in from the wall behind, until you are back where you started, ramming enemies on the way. The line catches fire from wall to wall, setting enemies burning. With Olympian, your thrown spear sets its path on fire instead.",
+      "description": "Charge Dash becomes a lap of the arena, out through one wall and back in the other, leaving a trail of fire.",
       "weapons": [
         "spear"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "rogue",
       "name": "Rogue",
-      "description": "Every 6th hit you land readies a vanish: the next hit you would take misses completely as you teleport away from the attacker.",
+      "description": "Every 6th hit you land readies a vanish. The next hit on you misses and you teleport away.",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "thief",
       "name": "Thief",
-      "description": "Whenever your ball bumps into an enemy, steal 20% of their next hit's damage (up to 60%). Your next hit deals what you stole on top.",
+      "description": "Bumping into an enemy steals 20% of their next hit on you (up to 60%). Your next hit adds what you stole.",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "saw",
       "name": "Saw",
-      "description": "Dash Flurry becomes Buzzsaw: launch your daggers as a spinning saw that chases the enemy for 2 s, landing a light hit (40% damage) every 0.1 s while it's on them. It grinds through weapons but not shields. Then it flies back. You're unarmed until it returns.",
+      "description": "Backstab becomes a saw that latches on and keeps cutting for up to 3s, until you're hit or parried.",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "trickster",
       "name": "Trickster",
-      "description": "Every 1.5 s, when the enemy is close, throw one of your daggers like a boomerang. It curves out and back, dealing 3 damage to enemies it passes through each way. Throws alternate between your daggers, and you spin one short until it returns.",
+      "description": "Every 1.5s, throw your dagger at a nearby enemy like a boomerang. It hits on the way out and back for half damage, and can crit.",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
-      "id": "multidexterous",
-      "name": "Multidexterous",
-      "description": "Gain a third dagger.",
+      "id": "ambidextrous",
+      "name": "Ambidextrous",
+      "description": "Gain a second dagger.",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "slippery",
       "name": "Slippery",
-      "description": "20% chance for a hit on you to slide right off: no damage, and you squirt away from the attacker. Rolled separately from dodging.",
+      "description": "20% chance for a hit to slide right off you, sending you skidding away.",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "careful",
       "name": "Careful",
-      "description": "Every parry adds +1 damage to your next hit (up to +6).",
+      "description": "Each parry adds +1 damage to your next crit (up to +6).",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
-      "id": "axeman",
-      "name": "Axeman",
-      "description": "Swap your daggers for hatchets: twice as thick, so they hit and block much more, and they deal 25% more damage.",
+      "id": "swashbuckler",
+      "name": "Swashbuckler",
+      "description": "Your dagger becomes a longer cutlass, and Backstab becomes a slash that sends a wave at the enemy. The wave crits everyone it passes through. With Saw, the wave chases its target and saws them.",
       "weapons": [
         "daggers"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "portaler",
       "name": "Portaler",
-      "description": "The first time Drop Slam reaches the floor, it goes through a portal and comes out of the ceiling at full speed for a second fall. It lands the second time. Drop Slam's cooldown is 60% longer.",
+      "description": "Drop Slam falls through the floor and out of the ceiling before it lands. 60% longer cooldown.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "valkyrie",
       "name": "Valkyrie",
-      "description": "While Drop Slam falls you spread a wing on each side, and each one swings a mace: twice the maces for the whole fall. The wings also steer three times as well, towards whichever mace is closer.",
+      "description": "During Drop Slam your mace becomes a wing on each side, and you steer three times as fast.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "metalworker",
       "name": "Metalworker",
-      "description": "Every 0.5 s you go without dealing damage, taking damage or parrying, you hammer your mace: +0.5 damage on your next hit (up to +4).",
+      "description": "Build up to +4 damage while you avoid taking damage. Your next hit uses it all.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "pilot",
       "name": "Pilot",
-      "description": "Drop Slam can also go up: from low down, rocket up to the ceiling instead, gaining damage with height the same way.",
+      "description": "Drop Slam can also rocket upwards into the ceiling.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "crusher",
       "name": "Crusher",
-      "description": "A Drop Slam hit stuns the enemy for 2.5 s: they deal 30% damage and move at 30% speed until it wears off.",
+      "description": "A Drop Slam hit stuns the enemy for 2.5s. Stunned enemies deal 70% less damage, take 30% more and move slower.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "rubber-mace",
       "name": "Rubber Mace",
-      "description": "A Drop Slam hit sends the enemy flying at huge speed for 1.2 s, taking 3 damage every time they hit a wall.",
+      "description": "A Drop Slam hit sends the enemy bouncing around the arena, taking damage every time they hit a wall.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "kamikaze",
       "name": "Kamikaze",
-      "description": "When Drop Slam hits the floor you explode: enemies within 140 px take 40% of the damage the slam would have dealt, and are blown away.",
+      "description": "When Drop Slam lands, you explode, hitting every enemy nearby for 40% of the slam's damage and blasting them away.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "devil",
       "name": "Devil",
-      "description": "When Drop Slam hits the floor, a pillar of fire erupts under your mace for 2.5 s. Enemies in it burn for 1 damage every 0.5 s, and keep burning for 2 s after they leave.",
+      "description": "When Drop Slam lands, a pillar of fire rises from floor to ceiling and burns enemies that touch it.",
       "weapons": [
         "mace"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "non-euclidean",
       "name": "Non-Euclidean",
-      "description": "Attacking drones fly out through a wall and back in through the opposite one instead of turning back, and go through the walls to reach the enemy when that way is shorter. A drone that came through a wall lands a critical hit.",
+      "description": "Drones can attack through the walls. A drone that comes through a wall always crits.",
       "weapons": [
         "drone"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "ace",
       "name": "Ace",
-      "description": "Instead of guarding when an enemy comes within reach, your drones in formation turn their thrusters on it and pull you away. They no longer take anything off hits.",
+      "description": "Instead of guarding you, drones near an enemy pull you away from it.",
       "weapons": [
         "drone"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "legion",
       "name": "Legion",
-      "description": "Twice as many drones, built twice as fast up to twice as many, but each one is smaller and deals and guards only 60% as much.",
+      "description": "Twice as many smaller drones, each dealing 60% damage.",
       "weapons": [
         "drone"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "fighters",
       "name": "Fighters",
-      "description": "Launched drones no longer ram: they circle the enemy, shooting it (each shot deals 60% of a hit) until an enemy blade or drone swats them or 3 s pass. Blades, shields and enemy drones stop the shots.",
+      "description": "Drones circle enemies and shoot them instead of ramming them.",
       "weapons": [
         "drone"
       ],
@@ -872,23 +2306,25 @@
       "excludedBy": [
         "slicers"
       ],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "daredevils",
       "name": "Daredevils",
-      "description": "Your drones boost at the enemy and back to you 50% faster, leaving short fire trails that set enemies burning (0.5 damage every 0.5 s for 1 s).",
+      "description": "Drones fly 50% faster and leave trails of fire.",
       "weapons": [
         "drone"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "slicers",
       "name": "Slicers",
-      "description": "A drone that hits an enemy latches on and grinds, dealing 40% of its damage every 0.25 s. The enemy shakes it off by bouncing off a wall, clashing its weapon with anything, or hitting you.",
+      "description": "Drones latch on and keep cutting until the enemy hits you, blocks something or touches a wall.",
       "weapons": [
         "drone"
       ],
@@ -896,106 +2332,314 @@
       "excludedBy": [
         "fighters"
       ],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "fortress",
       "name": "Fortress",
-      "description": "Your drones are 30% bigger and armored: it takes two swats to knock one away (the first only deflects it), and each guarding drone takes twice as much off a hit. They fly 10% slower and deal 10% less damage.",
+      "description": "Bigger drones that take two hits to knock away and guard twice as well, but are a little slower and weaker.",
       "weapons": [
         "drone"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "wingmen",
       "name": "Wingmen",
-      "description": "Two bumper drones fly on your wings. They never attack or guard: when an enemy closes in on you, one rams it, bouncing it away from you and knocking its weapon into spinning the other way. Enemy blades swat them like your other drones.",
+      "description": "Gain two extra drones that ram approaching enemies away from you.",
       "weapons": [
         "drone"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "six-shooter",
       "name": "Six-Shooter",
-      "description": "Trick shots: your bullets ricochet off walls up to twice, but only hurt anyone once they have bounced. You aim off the walls, and every bullet that hits is a critical hit.",
+      "description": "Every shot is banked off a wall at the nearest enemy. Bullets only hurt after they bounce, but always crit.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "shotgun",
       "name": "Shotgun",
-      "description": "Fire your whole magazine at once, as a very wide spray of pellets, then reload.",
+      "description": "Fire your whole magazine at once in a spread, and reload faster.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "smg",
       "name": "SMG",
-      "description": "A submachine gun: five times the magazine, fired 3.5 times as fast, but each bullet deals a quarter of the damage and barely pushes.",
+      "description": "Swap your gun for an SMG: a 30-round magazine fired 3.5 times as fast, for a quarter of the damage per bullet.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "high-ex",
       "name": "High-Ex",
-      "description": "Explosive rounds: a bullet that passes within 30 px of an enemy, or hits its weapon or shield, explodes, dealing half the bullet's damage to every enemy within 40 px.",
+      "description": "Bullets explode when they pass close to an enemy or get blocked, hitting everyone nearby for half damage.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "grenadier",
       "name": "Grenadier",
-      "description": "Carry 3 grenades, lobbed at enemies within 300 px. Each one blows up 1 s after it is thrown, dealing 6 damage to enemies within 60 px and blowing them back. Once all 3 are gone, restocking takes 7 s.",
+      "description": "Throw grenades at nearby enemies. You carry 3, and get them back 9s after throwing the last.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "bayonet",
       "name": "Bayonet",
-      "description": "A bayonet on the end of the barrel: a short blade that stabs enemies who come close for your bullet damage +2, and blocks and parries like any other blade.",
+      "description": "A blade on the end of your gun stabs enemies up close for half damage.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
     },
     {
       "id": "hotshot",
       "name": "Hotshot",
-      "description": "Incendiary rounds: your bullets leave a trail of fire for 0.5 s that sets enemies who touch it burning for 1 damage every 0.5 s for 2 s, and deal 40% more damage to burning enemies.",
+      "description": "Bullets leave a trail of fire, and deal 20% more damage to burning enemies.",
       "weapons": [
         "gun"
       ],
       "requires": [],
       "excludedBy": [],
-      "maxStacks": 1
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "merlin",
+      "name": "Merlin",
+      "description": "Every few seconds, swing a magical Excalibur in a wide, fast sweep. Every hit it lands conjures a new orb.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "evoker",
+      "name": "Evoker",
+      "description": "When an orb pops, two half-size orbs appear on the far side of your orbit. They pop for 20% damage and don't split again.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [
+        "pyromancer"
+      ],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "pyromancer",
+      "name": "Pyromancer",
+      "description": "Your orbs become a ring of fire around you that rapidly burns anyone touching it, a little at a time, through any guard. The more orbs you have built up, the faster it burns. Other elements change the ring. Damage upgrades (Sharpened, Critical Hits, Sabotage, Echo) add only 35% as much to the ring.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [
+        "evoker"
+      ],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "aeromancer",
+      "name": "Aeromancer",
+      "description": "Your orbs become airballs: they hit a little softer but blast enemies far away, and anyone blasted takes damage when they slam into a wall. With Pyromancer, the ring blasts away whoever it burns.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [
+        "magnetism"
+      ],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "hydromancer",
+      "name": "Hydromancer",
+      "description": "Your orbs become bubbles that hit 15% harder. Anyone a bubble pops on is soaked for 3s: 30% slower and taking 35% more damage from hits. With Pyromancer, the ring scalds: anyone it burns is soaked more lightly (20% slower, 20% more damage).",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "geomancer",
+      "name": "Geomancer",
+      "description": "Your orbs become long stone spikes pointing out from your orbit. They reach much further and hit 25% harder, but shatter in a small burst. With Pyromancer, stone spikes jut from the ring, so it burns further out.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "wild-magic",
+      "name": "Wild Magic",
+      "description": "Your orbs wriggle about like worms, wandering far from the orbit, and you can hold one more. Each pop leaves a random effect on whoever it hits: a burn, a soaking, a gust that slams them into the next wall, or a broken guard. With Pyromancer, the ring flickers with colour and hexes whoever it burns about once a second.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "artificer",
+      "name": "Artificer",
+      "description": "Every few seconds, leave an artificial orb behind you. It hangs in the air for 9s and pops for 60% damage on any enemy that touches it.",
+      "weapons": [
+        "wand"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "abyss-warlock",
+      "name": "Abyss Warlock",
+      "description": "Wherever two tentacles cross, an abyss opens: a circle that hurts anyone in it every 0.4s, for 40% of a lash's damage per tentacle touching it.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "puppeteer",
+      "name": "Puppeteer",
+      "description": "Every 3rd time an enemy bounces off a wall, a portal tears open where they hit it, with a tentacle reaching out of it to your last portal.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "ensnarer",
+      "name": "Ensnarer",
+      "description": "An enemy that comes near one of your portals sets it off: a burst blasts out of it, hitting everyone around it for 4 times a lash's damage and throwing them off the wall. The portal stays open, and can burst again after 2.5s.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "satanist",
+      "name": "Satanist",
+      "description": "Every 10s, a huge red pentagram is drawn across the arena. A moment later it burns: anyone on its lines takes 14 damage.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "priest",
+      "name": "Priest",
+      "description": "Your tome turns holy and your tentacles become beams of light. While you're in one of your beams, it heals you for 25% of a lash's damage every lash.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "bestial-worshipper",
+      "name": "Bestial Worshipper",
+      "description": "When an enemy is close, maul them with quick feral swipes for 2.5 damage each. Every swipe leaves them 10% more vulnerable to damage, up to 30%, for 2.5s.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "arsonist",
+      "name": "Arsonist",
+      "description": "A pool of lava runs along the whole bottom of the arena. Enemies in it take 1.5 damage every 0.5s and are set burning, and keep burning for 2s after they climb out. It doesn't hurt you.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
+    },
+    {
+      "id": "witch",
+      "name": "Witch",
+      "description": "A raven familiar circles you and swoops at the nearest enemy every 1.4s, pecking for 1.8 damage. Weapons and shields can swat it away, sending it back to you to rest a little longer.",
+      "weapons": [
+        "tome"
+      ],
+      "requires": [],
+      "excludedBy": [],
+      "maxStacks": 1,
+      "stacked": []
     }
   ]
 }

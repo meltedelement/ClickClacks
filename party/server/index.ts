@@ -27,6 +27,9 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { ADMIN_HEADER, EVENTS_PATH, LAN_PATH, PING_MS, PLAYER_HEADER } from '../shared/protocol.ts';
 import type { LanBody } from '../shared/protocol.ts';
+import { onPublicUrlsChange, publicUrls, refreshPublicUrls } from './funnel.ts';
+
+export { publicUrls } from './funnel.ts';
 
 const MAX_BODY = 256 * 1024;
 
@@ -121,6 +124,9 @@ export function createParty<P>(options: PartyOptions<P>): Party<P> {
     for (const { res } of connections) res.write('event: ping\ndata: {}\n\n');
   }, PING_MS);
   heartbeat.unref();
+  // An app's views may show its Tailscale Funnel URL (publicUrls): send them
+  // again when a funnel is turned on or off.
+  const stopWatchingFunnels = onPublicUrlsChange(() => broadcast());
 
   function send(connection: Connection) {
     let view: unknown;
@@ -169,7 +175,10 @@ export function createParty<P>(options: PartyOptions<P>): Party<P> {
   async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
     const method = req.method ?? 'GET';
     if (method === 'GET' && url.pathname === EVENTS_PATH) return openEvents(req, res, url);
-    if (method === 'GET' && url.pathname === LAN_PATH) return json(res, 200, { addresses: lanAddresses() } satisfies LanBody);
+    if (method === 'GET' && url.pathname === LAN_PATH) {
+      await refreshPublicUrls(); // read now: this is often asked once, right after the server comes up
+      return json(res, 200, { addresses: lanAddresses(), public: publicUrls(Number(url.searchParams.get('port')) || req.socket.localPort || 0) } satisfies LanBody);
+    }
 
     const route = routes.get(`${method} ${url.pathname}`);
     if (!route) return json(res, 404, { error: 'Not found' });
@@ -208,6 +217,7 @@ export function createParty<P>(options: PartyOptions<P>): Party<P> {
     },
     close() {
       clearInterval(heartbeat);
+      stopWatchingFunnels();
       for (const { res } of connections) res.end();
       connections.clear();
     },

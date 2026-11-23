@@ -2,6 +2,7 @@ import { Game } from '../game/Game.js';
 
 const RESULT_PAUSE = 4000; // ms a winner stays on its screen before the next match there starts
 const MAX_SCREENS = 4; // a 2×2 grid; the server's SCREENS setting is at most this
+const SILENCE_LIMIT = 40_000; // ms without a message (the server sends one every 15 s) before reconnecting
 
 // Display mode (open the game with `?display`): plays the matches queued
 // through the match API (server/matches.js) and reports each result back.
@@ -12,11 +13,20 @@ const MAX_SCREENS = 4; // a 2×2 grid; the server's SCREENS setting is at most t
 // many screens as are in use: it grows as soon as a match needs another
 // screen, and shrinks only when a new set of matches starts after every screen
 // has finished, so a finished match's banner never jumps to another place.
+//
+// A shared match (every royale, and 1v1s queued with `settings.shared`) plays to
+// the server's clock, measured from when it started, and with math that's the
+// same in every browser. So any number of devices can show the
+// same fight at the same moment, and one that opens late or wakes up catches up.
+// `follow` is the slot of a fighter to keep the first screen's view on (`&follow=3`),
+// for someone watching their own ball; tapping the arena zooms out and back.
 export class TournamentDisplay {
-  constructor(stage) {
+  constructor(stage, { follow = null } = {}) {
     this.grid = el('div', 'screens');
     stage.replaceChildren(this.grid);
-    this.screens = Array.from({ length: MAX_SCREENS }, (_, i) => new Screen(this.grid, i));
+    this.clockOffset = -Infinity; // the server's clock minus this device's, in ms
+    const serverNow = () => Date.now() + this.clockOffset;
+    this.screens = Array.from({ length: MAX_SCREENS }, (_, i) => new Screen(this.grid, i, serverNow, i === 0 ? follow : null));
     this.visible = 1;
     this.layout();
 
@@ -26,8 +36,36 @@ export class TournamentDisplay {
     });
 
     // EventSource reconnects by itself, and the server sends every screen again
-    // on each connection.
-    new EventSource('/api/display').onmessage = (e) => this.receive(JSON.parse(e.data).screens);
+    // on each connection. The URLs here are relative so that this page also
+    // works from under a path, behind a program that proxies it.
+    this.connect();
+  }
+
+  // EventSource reconnects by itself only when the connection closes. One that
+  // dies without closing (a phone's Wi-Fi napping, a proxy dropping it) just goes
+  // quiet, and a device that misses a shared match's start sits at its first
+  // frame. The server sends a `clock` event every 15 s, so silence means a dead
+  // stream: open a new one, which sends every screen again.
+  connect() {
+    this.events?.close();
+    const events = new EventSource('api/display');
+    this.events = events;
+    let watchdog;
+    const heard = (now) => {
+      // A message arrives late, never early, so the largest reading is the truest.
+      this.clockOffset = Math.max(this.clockOffset, now - Date.now());
+      clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        if (this.events === events) this.connect();
+      }, SILENCE_LIMIT);
+    };
+    heard(-Infinity);
+    events.onmessage = (e) => {
+      const { screens, now } = JSON.parse(e.data);
+      heard(now);
+      this.receive(screens);
+    };
+    events.addEventListener('clock', (e) => heard(JSON.parse(e.data).now));
   }
 
   // Every screen's Game, for the menu's pause, speed and hitbox settings.
@@ -60,8 +98,9 @@ export class TournamentDisplay {
 
 // One arena on the display page and the match the server put on it.
 class Screen {
-  constructor(parent, index) {
+  constructor(parent, index, serverNow, follow) {
     this.index = index;
+    this.serverNow = serverNow;
     this.match = null; // the match on this screen, or the last one played
     this.reported = false; // whether this.match has ended and its result was sent
     this.result = null;
@@ -95,6 +134,13 @@ class Screen {
       soundKey: `screen-${index + 1}`,
     });
     this.game.endHint = '';
+    if (follow !== null) {
+      this.game.follow = follow;
+      this.game.zoomed = true;
+      canvas.addEventListener('click', () => {
+        this.game.zoomed = !this.game.zoomed;
+      });
+    }
     this.game.newMatch();
     this.renderMute();
   }
@@ -125,7 +171,24 @@ class Screen {
     const { match } = this;
     if (!match) return null;
     const fighters = match.characters.map(({ transformations = [], upgrades = [], ...fighter }) => ({ ...fighter, upgrades: [...transformations, ...upgrades] }));
-    return { fighters, seed: match.seed, timeLimit: match.timeLimit, tiebreak: match.tiebreak, suddenDeath: match.suddenDeath };
+    const { royale, shared } = match;
+    return { fighters, seed: match.seed, timeLimit: match.timeLimit, tiebreak: match.tiebreak, suddenDeath: match.suddenDeath, royale, exactMath: shared };
+  }
+
+  // Sim seconds into this shared match by the server's clock. 0 until the server has it started.
+  get elapsed() {
+    const startedAt = this.match?.startedAt;
+    return startedAt ? Math.max(0, (this.serverNow() - Date.parse(startedAt)) / 1000) : 0;
+  }
+
+  // Seconds until this shared match's clock starts (it starts a little after
+  // it's put up, see the server's startDelay), or 0 once it's running. Until the
+  // server has it started, the whole delay.
+  get startsIn() {
+    const { match } = this;
+    if (!match) return 0;
+    if (!match.startedAt) return match.startDelay ?? 0;
+    return Math.max(0, (Date.parse(match.startedAt) - this.serverNow()) / 1000);
   }
 
   toggleMute() {
@@ -145,14 +208,18 @@ class Screen {
   // The server's match for this screen changed (or we just connected).
   receive(match) {
     clearTimeout(this.timer);
-    if (match?.id === this.match?.id) {
-      // Reconnected mid-match: keep playing. If the result never got through, send it again.
+    if (match && match.id === this.match?.id) {
+      // Reconnected mid-match, or it just started: keep playing. If the result
+      // never got through, send it again.
+      this.match = match;
       if (this.reported) this.report();
       return;
     }
     if (!match) {
-      // Nothing for this screen. If the match on it was cancelled, clear it.
-      if (this.live) this.show(null);
+      // Nothing for this screen. If the match on it was cancelled, clear it. A
+      // shared match may just have been finished by another device a moment ahead
+      // of this one, so it plays out to its own ending here.
+      if (this.live && !this.match.shared) this.show(null);
       return;
     }
     // Let the last winner banner stay up for a moment, unless that match was cancelled.
@@ -163,9 +230,18 @@ class Screen {
   show(match) {
     this.match = match;
     this.reported = false;
+    this.game.clock = match?.shared ? () => this.elapsed : null;
+    this.game.startsIn = match?.shared ? () => this.startsIn : null;
     this.game.newMatch();
-    this.endButton.hidden = !match;
-    if (match) post(`/api/matches/${match.id}/start`);
+    // A shared match runs to a clock that everyone shares, so nobody can end it early.
+    this.endButton.hidden = !match || match.shared;
+    if (!match) return;
+    // The reply has the match's start time. Take it from there too, not only from
+    // the event stream's broadcast, so a device that misses that broadcast still
+    // starts the clock instead of waiting at its first frame.
+    post(`api/matches/${match.id}/start`).then((started) => {
+      if (started?.id === this.match?.id && started.startedAt && !this.match.startedAt) this.match.startedAt = started.startedAt;
+    });
   }
 
   // Called by Game when the match on this screen is decided.
@@ -185,7 +261,7 @@ class Screen {
   }
 
   report() {
-    post(`/api/matches/${this.match.id}/result`, this.result);
+    post(`api/matches/${this.match.id}/result`, this.result);
   }
 }
 
@@ -200,10 +276,17 @@ function el(tag, className) {
   return node;
 }
 
+// Resolves to the server's reply, or null when the request failed.
 function post(url, body) {
-  fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) })
+  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) })
     .then(async (res) => {
-      if (!res.ok) console.warn(`${url}: ${(await res.json()).error}`);
+      const reply = await res.json();
+      if (res.ok) return reply;
+      console.warn(`${url}: ${reply.error}`);
+      return null;
     })
-    .catch((err) => console.warn(`${url}: ${err.message}`));
+    .catch((err) => {
+      console.warn(`${url}: ${err.message}`);
+      return null;
+    });
 }

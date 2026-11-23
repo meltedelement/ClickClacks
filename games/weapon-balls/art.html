@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Art Lab</title>
+  </head>
+  <body>
+    <!-- Dev only (npm run dev, /art.html): every weapon, transformation and
+         combination drawn by the real renderer. See src/art/main.js. -->
+    <div class="layout">
+      <aside class="panel">
+        <header>
+          <h1>Art Lab</h1>
+          <p class="muted">Every look, drawn by the game's own renderer.</p>
+        </header>
+
+        <section>
+          <h2>Weapon</h2>
+          <div id="weapons" class="chips"></div>
+        </section>
+
+        <section>
+          <h2>Build <button id="clear" class="small">Clear</button></h2>
+          <p class="muted hint">Click to add or remove. Numbers are pick order, which decides which hat draws on top.</p>
+          <h3>Transformations</h3>
+          <div id="transformations" class="chips"></div>
+          <h3>Upgrades</h3>
+          <div id="upgrades" class="chips"></div>
+        </section>
+
+        <section>
+          <h2>Look</h2>
+          <label class="row">Colour <input id="color" type="color" /> <button id="color-reset" class="small">Weapon's</button></label>
+          <label class="row">Skin <select id="skin"></select></label>
+          <label class="row">Size <input id="size" type="range" min="0.5" max="3" step="0.1" value="1" /> <span id="size-value">1</span></label>
+        </section>
+
+        <section>
+          <h2>Gallery</h2>
+          <label class="row">Card size <input id="card-size" type="range" min="160" max="520" step="10" value="240" /></label>
+          <label class="row"><input id="animate" type="checkbox" checked /> Animate (runs each weapon's real update)</label>
+          <label class="row"><input id="all-pairs" type="checkbox" /> Show every pair of transformations</label>
+        </section>
+
+        <section>
+          <h2>Live arena</h2>
+          <label class="row">Against <select id="opponent"></select> × <input id="opponents" type="number" min="1" max="8" value="1" /></label>
+          <label class="row">Speed <select id="speed">
+            <option value="0.1">0.1×</option>
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+          </select></label>
+          <label class="row"><input id="endless" type="checkbox" checked /> Endless (HP stays full, no sudden death)</label>
+          <label class="row"><input id="hitboxes" type="checkbox" /> Hitboxes</label>
+          <label class="row"><input id="sound" type="checkbox" /> Sound</label>
+          <div class="buttons">
+            <button id="restart">Restart</button>
+            <button id="pause">Pause</button>
+            <button id="step">Step</button>
+          </div>
+          <p class="muted hint">Space pauses, . steps, R restarts.</p>
+        </section>
+      </aside>
+
+      <main>
+        <nav class="tabs">
+          <button data-tab="gallery" class="active">Gallery</button>
+          <button data-tab="live">Live arena</button>
+          <code id="spec" title="This build as a balance/flawless fighter spec"></code>
+        </nav>
+        <div id="gallery" class="tab"></div>
+        <div id="live" class="tab" hidden>
+          <canvas id="arena"></canvas>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/art/main.js"></script>
+  </body>
+</html>

@@ -37,7 +37,7 @@ const HOPLITE_OFFSET = -1.1; // radians: to the left of the spear
 export class Hoplite extends SpearTransformation {
   static id = 'hoplite';
   static displayName = 'Hoplite';
-  static description = 'Gain a shield like the Sword\'s, just to the left of your spear. It blocks enemy weapons.';
+  static description = 'Gain a bronze shield.';
 
   constructor(weapon) {
     super(weapon);
@@ -89,8 +89,7 @@ const IMPALE_COLOR = '#5ec8e5';
 export class Poseidon extends SpearTransformation {
   static id = 'poseidon';
   static displayName = 'Poseidon';
-  static description =
-    'Your spear becomes a trident with a big head. Hitting with the head skewers the enemy: they are carried on it for 0.7 s, then take a second hit at half damage and are flung off.';
+  static description = 'Hitting with the tip of your trident skewers the enemy, then flings them off with a second hit.';
 
   constructor(weapon) {
     super(weapon);
@@ -114,39 +113,8 @@ export class Poseidon extends SpearTransformation {
     this.weapon.headLength += this.headBonus;
   }
 
-  // A sea god's golden crown, spiked, with sea-green gems.
   drawOver(ctx) {
-    const { x, y } = this.owner.pos;
-    const band = y - 28; // bottom of the band
-    const half = 25;
-    const spikes = 5;
-    ctx.save();
-    ctx.fillStyle = '#e8c04a';
-    ctx.strokeStyle = '#8a6a14';
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x - half, band);
-    ctx.lineTo(x - half, band - 8);
-    for (let i = 0; i < spikes; i++) {
-      const left = x - half + (2 * half * i) / spikes;
-      const width = (2 * half) / spikes;
-      const tall = i === 2 ? 24 : i % 2 ? 19 : 15;
-      ctx.lineTo(left + width / 2, band - 8 - tall);
-      ctx.lineTo(left + width, band - 8);
-    }
-    ctx.lineTo(x + half, band);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = IMPALE_COLOR;
-    for (let i = 0; i < spikes; i++) {
-      ctx.beginPath();
-      ctx.arc(x - half + (2 * half * (i + 0.5)) / spikes, band - 4, i === 2 ? 3.5 : 2.5, 0, TAU);
-      ctx.fill();
-      ctx.stroke();
-    }
-    ctx.restore();
+    drawSeaCrown(ctx, this.owner);
   }
 
   // Their weapon would clash with the shaft they're stuck on; let everything pass through.
@@ -220,6 +188,80 @@ export class Poseidon extends SpearTransformation {
   }
 }
 
+const CROWN_GOLD = '#e8c04a';
+const CROWN_EDGE = '#8a6a14';
+
+// A sea god's crown: a gold band curving round the head, three trident prongs
+// rising from it with wave crests between, and a sea-green gem at the front.
+function drawSeaCrown(ctx, { pos }) {
+  const { x, y } = pos;
+  const half = 31; // band's half-width; its ends sit on the ball's edge
+  const ends = y - 25; // bottom of the band at its ends
+  const sag = 6; // how much lower the band's front is than its ends
+  const height = 9;
+  const bandTop = (dx) => ends - height + sag * (1 - (dx / half) ** 2);
+
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 2;
+  ctx.fillStyle = CROWN_GOLD;
+  ctx.strokeStyle = CROWN_EDGE;
+
+  // Prongs, behind the band: the middle one tallest, the side ones leaning out
+  for (const [dx, tall, lean] of [[-18, 22, -4], [18, 22, 4], [0, 31, 0]]) {
+    const base = { x: x + dx, y: bandTop(dx) + 3 };
+    const tip = { x: base.x + lean, y: base.y - tall };
+    const neck = { x: base.x + lean * 0.8, y: tip.y + 10 };
+    ctx.beginPath();
+    ctx.moveTo(base.x - 2.5, base.y);
+    ctx.lineTo(neck.x - 2.5, neck.y);
+    ctx.lineTo(neck.x - 7, neck.y + 3); // barb
+    ctx.lineTo(tip.x, tip.y);
+    ctx.lineTo(neck.x + 7, neck.y + 3);
+    ctx.lineTo(neck.x + 2.5, neck.y);
+    ctx.lineTo(base.x + 2.5, base.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Band: its top follows the same curve as its bottom
+  ctx.beginPath();
+  ctx.moveTo(x - half, ends);
+  ctx.lineTo(x - half, ends - height);
+  ctx.quadraticCurveTo(x, ends - height + sag * 2, x + half, ends - height);
+  ctx.lineTo(x + half, ends);
+  ctx.quadraticCurveTo(x, ends + sag * 2, x - half, ends);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Waves engraved along the band, and the gem at the front
+  ctx.strokeStyle = CROWN_EDGE;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let dx = -half + 3; dx <= half - 3; dx += 1) {
+    const middle = ends - height / 2 + sag * (1 - (dx / half) ** 2);
+    const wy = middle + 1.8 * Math.sin(dx * 0.55);
+    if (dx === -half + 3) ctx.moveTo(x + dx, wy);
+    else ctx.lineTo(x + dx, wy);
+  }
+  ctx.stroke();
+  const gem = { x, y: ends + sag - height / 2 };
+  ctx.fillStyle = IMPALE_COLOR;
+  ctx.strokeStyle = CROWN_EDGE;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(gem.x, gem.y, 4.5, 5.5, 0, 0, TAU);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.beginPath();
+  ctx.arc(gem.x - 1.5, gem.y - 2, 1.5, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
 // On a Poseidon trident. Holds the ball on the tip until the holder lets go.
 export class Impaled extends Status {
   constructor({ source, holder }) {
@@ -289,7 +331,7 @@ const RIBBON = '#e8579a';
 export class Dancer extends SpearTransformation {
   static id = 'dancer';
   static displayName = 'Dancer';
-  static description = 'Every 5 s, when the enemy is close, whirl your spear through a fast full turn (like Spin Swipe) for 30% more damage.';
+  static description = 'Every 5s, do a quick spin attack.';
 
   constructor(weapon) {
     super(weapon);
@@ -333,7 +375,7 @@ export class Dancer extends SpearTransformation {
     const { owner, weapon } = this;
     if (weapon.disarmed) return;
     const reach = owner.radius + weapon.gap + weapon.length;
-    const turnRate = weapon.spinSpeed * weapon.multiplier('spinMultiplier');
+    const turnRate = weapon.spinSpeed * weapon.spinMultiplier;
     const sweep = Math.min(TAU * 0.6, 0.5 + turnRate * 0.25); // radians of trail
     const steps = 28;
     ctx.save();
@@ -388,7 +430,7 @@ const PULSE_TIME = 0.3; // s the ring takes to spread
 export class Bouncer extends SpearTransformation {
   static id = 'bouncer';
   static displayName = 'Bouncer';
-  static description = 'Landing a hit sends out a repelling pulse as far as your spear reaches, dealing 3 damage and throwing enemies straight away from you (at most once a second).';
+  static description = 'Your hits send out a shockwave that deals 3 damage and knocks back every enemy in reach (once per second).';
 
   constructor(weapon) {
     super(weapon);
@@ -498,8 +540,7 @@ export class Bouncer extends SpearTransformation {
 export class Olympian extends SpearTransformation {
   static id = 'olympian';
   static displayName = 'Olympian';
-  static description =
-    'Charge Dash becomes Spear Throw: stand still and hurl your spear until it sticks in the wall, piercing every enemy in its path for double damage and huge knockback. Then dash to it, ramming enemies on the way. Unarmed until you pull it out.';
+  static description = 'Charge Dash becomes a throw. Your spear flies to the wall, hitting every enemy in its way, then you dash after it.';
 
   apply() {
     this.weapon.ability = new SpearThrow(this.weapon);
@@ -574,7 +615,7 @@ function drawLeaf(ctx, base, dir, color) {
 export class Tactician extends SpearTransformation {
   static id = 'tactician';
   static displayName = 'Tactician';
-  static description = 'Your spear head is longer, and hits with it always crit. Hits with the shaft deal 40% less damage.';
+  static description = 'Your spear head is longer and always crits. Hits with the shaft deal 40% less damage.';
 
   constructor(weapon) {
     super(weapon);
@@ -596,40 +637,61 @@ export class Tactician extends SpearTransformation {
     return this.shaftDamage;
   }
 
-  // A general's bicorne hat, worn side to side, with gold trim and a cockade.
+  // A general's bicorne, worn side to side: a half-moon wider than the ball,
+  // pulled down over the head, gold-edged, with a cockade and its gold loop.
   drawOver(ctx) {
     const { x, y } = this.owner.pos;
-    const r = this.owner.radius;
-    const brim = y - r + 12;
-    const wing = r + 14; // how far each point sticks out from the centre
+    const wing = 56; // px from the centre to each point
+    const tips = y - 20; // height of the points, drooping below the middle
+    const sits = y - 30; // bottom edge in the middle, down over the top of the head
+    const crown = y - 64; // top of the hat
     ctx.save();
     ctx.lineJoin = 'round';
-    ctx.fillStyle = '#2b3a67';
+    ctx.lineCap = 'round';
+
+    // The front flap: a round top from point to point, and a shallow curve under it
+    const flap = () => {
+      ctx.beginPath();
+      ctx.moveTo(x - wing, tips);
+      ctx.bezierCurveTo(x - wing + 14, tips - 22, x - 30, crown, x, crown);
+      ctx.bezierCurveTo(x + 30, crown, x + wing - 14, tips - 22, x + wing, tips);
+      ctx.quadraticCurveTo(x, sits + (sits - tips), x - wing, tips);
+      ctx.closePath();
+    };
+    flap();
+    ctx.fillStyle = '#1e2233';
+    ctx.fill();
+    ctx.strokeStyle = '#0d0f17';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Gold braid just inside the top edge
+    ctx.save();
+    flap();
+    ctx.clip();
     ctx.strokeStyle = '#d9b54a';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(x - wing, brim - 4);
-    ctx.quadraticCurveTo(x - wing * 0.55, y - r - 8, x, y - r - 22);
-    ctx.quadraticCurveTo(x + wing * 0.55, y - r - 8, x + wing, brim - 4);
-    ctx.quadraticCurveTo(x, brim + 8, x - wing, brim - 4);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(x - wing + 3, tips + 1);
+    ctx.bezierCurveTo(x - wing + 17, tips - 19, x - 29, crown + 3, x, crown + 3);
+    ctx.bezierCurveTo(x + 29, crown + 3, x + wing - 17, tips - 19, x + wing - 3, tips + 1);
     ctx.stroke();
+    ctx.restore();
 
-    // Cockade: a red rosette with a gold button
-    const cockade = { x, y: y - r - 3 };
-    ctx.fillStyle = '#c62828';
+    // Cockade off to one side, with a gold loop running up from it to the edge
+    const cockade = { x: x + 20, y: y - 42 };
+    ctx.strokeStyle = '#d9b54a';
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(cockade.x, cockade.y, 7, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#f4f4f4';
-    ctx.beginPath();
-    ctx.arc(cockade.x, cockade.y, 4, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#d9b54a';
-    ctx.beginPath();
-    ctx.arc(cockade.x, cockade.y, 2, 0, TAU);
-    ctx.fill();
+    ctx.moveTo(cockade.x, cockade.y);
+    ctx.lineTo(cockade.x + 4, y - 56);
+    ctx.stroke();
+    for (const [color, r] of [['#c62828', 7], ['#f4f4f4', 4.8], ['#2a55c9', 2.8]]) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(cockade.x, cockade.y, r, 0, TAU);
+      ctx.fill();
+    }
     ctx.restore();
   }
 }
@@ -641,19 +703,71 @@ const GUARD_BREAK_COLOR = '#ff9f43';
 export class Tackler extends SpearTransformation {
   static id = 'tackler';
   static displayName = 'Tackler';
-  static description = "When your spear clashes with a weapon or shield, the enemy's guard breaks for 2.5 s: their weapon and shields can't block, and weapons pass straight through them.";
+  static description = 'When Charge Dash hits, dash again a moment later. With Olympian or Runner, a throw or lap that hits goes again.';
 
   constructor(weapon) {
     super(weapon);
-    this.duration = 2.5;
+    this.delay = 0.35; // s after the hit (or the end of a throw or lap) before it aims again
+    this.aimTime = 0.15; // s the second go's windup lasts: a quick re-aim
+    this.striking = false; // the ability was past its windup as of this step (a Charge Dash's own onHit ends it before ours runs)
+    this.landed = false; // a throw or lap under way has hit someone
+    this.followUp = false; // the go under way is the second one, so it doesn't chain again
+    this.startingFollowUp = false; // set just while dashAgain starts it
+    this.waitLeft = 0; // s until the second go; above 0 while one is coming
     this.facing = 1; // which side the helmet's face mask is on: the way the ball last moved
   }
 
-  onParry(otherWeapon, sim) {
-    const enemy = otherWeapon.owner;
-    if (!enemy.alive || sim.over) return;
-    enemy.addStatus(new GuardBroken({ source: this.owner, duration: this.duration }), sim);
-    this.emit(sim, 'tackle', { pos: enemy.pos, text: 'GUARD BROKEN', color: GUARD_BREAK_COLOR, burst: { color: GUARD_BREAK_COLOR, count: 10, speed: 200, life: 0.35 } });
+  // Charge Dash, or the Spear Throw / Flame Lap that replaced it: all wind up the same way.
+  get dash() {
+    return this.ability instanceof ChargeDash ? this.ability : null;
+  }
+
+  onUpdate(dt, sim) {
+    const { dash } = this;
+    if (!dash) return;
+    if (this.waitLeft > 0) {
+      this.waitLeft -= dt;
+      if (this.waitLeft <= 0) this.dashAgain(sim);
+    }
+    this.striking = dash.active && dash.phase !== null && dash.phase !== 'windup';
+  }
+
+  onAbilityStart(ability) {
+    if (ability !== this.dash) return;
+    this.followUp = this.startingFollowUp;
+    this.landed = false;
+  }
+
+  // A throw or lap that hit someone is over: line up the second go.
+  onAbilityEnd(ability, sim) {
+    if (ability !== this.dash) return;
+    if (this.landed && !this.followUp) this.queue(sim, this.owner.pos);
+    this.landed = false;
+  }
+
+  // A blade hit while dashing, throwing or lapping. A Charge Dash stops on
+  // it (already over by now), so its second go is lined up straight away; a
+  // throw or lap carries on, and waits until it's over.
+  onHit(target, sim, damage, point, hit = {}) {
+    if (!this.striking || this.followUp || hit.secondary || sim.over) return;
+    if (this.dash.active) this.landed = true;
+    else this.queue(sim, target.pos);
+  }
+
+  queue(sim, pos) {
+    if (this.waitLeft > 0 || sim.over) return;
+    this.waitLeft = this.delay;
+    this.emit(sim, 'tackle', { pos, text: 'TACKLE', color: GUARD_BREAK_COLOR, burst: { color: GUARD_BREAK_COLOR, count: 10, speed: 200, life: 0.35 } });
+  }
+
+  // Starts the ability again, off cooldown, with a short windup.
+  dashAgain(sim) {
+    const { dash } = this;
+    if (sim.over || dash.active || !dash.nearestEnemy(sim) || !dash.allowedToStart(sim)) return;
+    this.startingFollowUp = true;
+    dash.start(sim);
+    this.startingFollowUp = false;
+    dash.timer = this.aimTime;
   }
 
   // A glossy football helmet with a stripe over the top and a face mask on
@@ -722,7 +836,7 @@ export class Tackler extends SpearTransformation {
   }
 }
 
-// From Tackler: the ball's weapon and shields can't block for a while.
+// The ball's weapon and shields can't block for a while (the Gun's Anti-materiel).
 export class GuardBroken extends Status {
   get guardBroken() {
     return true;
@@ -983,8 +1097,7 @@ function moveTo(ball, pos) {
 export class Runner extends SpearTransformation {
   static id = 'runner';
   static displayName = 'Runner';
-  static description =
-    'Charge Dash becomes Flame Lap: charge along a straight line, out through the wall ahead and back in from the wall behind, until you are back where you started, ramming enemies on the way. The line catches fire from wall to wall, setting enemies burning. With Olympian, your thrown spear sets its path on fire instead.';
+  static description = 'Charge Dash becomes a lap of the arena, out through one wall and back in the other, leaving a trail of fire.';
 
   constructor(weapon) {
     super(weapon);

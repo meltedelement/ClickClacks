@@ -24,7 +24,8 @@ const displayMode = params.has('display');
 if (params.has('embed')) document.documentElement.classList.add('embedded');
 
 if (displayMode) {
-  const display = new TournamentDisplay(document.querySelector('.stage'));
+  const follow = Number.parseInt(params.get('follow') ?? '', 10);
+  const display = new TournamentDisplay(document.querySelector('.stage'), { follow: follow >= 0 ? follow : null });
   new Controls(display.games, { fighters: 2, displayMode });
 } else {
   // One arena to start with; the menu's Arenas setting runs more side by side.

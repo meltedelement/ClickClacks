@@ -30,8 +30,7 @@ const PORTAL_CLOSE_TIME = 0.3; // s the exit portal takes to close behind the ba
 export class Portaler extends MaceTransformation {
   static id = 'portaler';
   static displayName = 'Portaler';
-  static description =
-    'The first time Drop Slam reaches the floor, it goes through a portal and comes out of the ceiling at full speed for a second fall. It lands the second time. Drop Slam\'s cooldown is 60% longer.';
+  static description = 'Drop Slam falls through the floor and out of the ceiling before it lands. 60% longer cooldown.';
 
   constructor(weapon) {
     super(weapon);
@@ -65,8 +64,10 @@ export class Portaler extends MaceTransformation {
 
   // While a slam can still go through: a blue portal ahead of the ball and an
   // orange one on the opposite wall, both following it across.
+  // Also the back half of the ring round the ball (see drawOver).
   drawUnder(ctx) {
     const { ability, owner } = this;
+    drawPortalRing(ctx, owner, this.time, false);
     if (this.exit) drawPortal(ctx, this.exit.x, this.exit.y, owner.radius, PORTAL_OUT, this.time, this.exit.timeLeft / PORTAL_CLOSE_TIME);
     if (!(ability instanceof DropSlam) || !ability.active || ability.wrapsLeft <= 0) return;
     const { height } = owner.arena;
@@ -76,8 +77,14 @@ export class Portaler extends MaceTransformation {
     drawPortal(ctx, owner.pos.x, height - entry, owner.radius, PORTAL_OUT, this.time, opening);
   }
 
+  // The front half of the ring round the ball, over it.
+  drawOver(ctx) {
+    drawPortalRing(ctx, this.owner, this.time, true);
+  }
+
   // A blue and an orange ring on the handle.
   drawBlade(ctx, start) {
+    if (this.weapon.wings) return; // nothing to decorate on a wing (Valkyrie)
     ctx.save();
     ctx.fillStyle = PORTAL_IN;
     ctx.fillRect(start + 12, -4, 4, 8);
@@ -87,56 +94,131 @@ export class Portaler extends MaceTransformation {
   }
 }
 
-// A flat glowing oval lying on the floor or ceiling at (x, y), `size` 0–1 open.
+// A portal ring round the ball like a planet's ring, tilted, blue on one side
+// and orange on the other, with a glint running round it. The back half is
+// drawn under the ball and the front half over it, so the ball sits inside.
+// It hangs low, under the HP number, and is sized from the radius, so a grown
+// ball (royale) keeps it in proportion.
+const RING_TILT = -0.22;
+
+function drawPortalRing(ctx, { pos, radius: r }, time, front) {
+  const rx = r * 1.42;
+  const ry = r * 0.28;
+  ctx.save();
+  ctx.translate(pos.x, pos.y + r * 0.38);
+  ctx.rotate(RING_TILT);
+  ctx.lineCap = 'round';
+  // Front: 0..PI (the near side, below the centre line); back: PI..TAU.
+  const halves = front
+    ? [[PORTAL_OUT, 0, Math.PI / 2], [PORTAL_IN, Math.PI / 2, Math.PI]]
+    : [[PORTAL_IN, Math.PI, Math.PI * 1.5], [PORTAL_OUT, Math.PI * 1.5, TAU]];
+  for (const [color, from, to] of halves) {
+    ctx.strokeStyle = color;
+    for (const [width, alpha] of [[14, 0.12], [9, 0.22], [4, 1]]) {
+      ctx.globalAlpha = front ? alpha : alpha * 0.8;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, from, to);
+      ctx.stroke();
+    }
+  }
+
+  // The glint, going round once a second and a half
+  const glint = (time * (TAU / 1.5)) % TAU;
+  if ((glint < Math.PI) === front) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, glint - 0.35, glint);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// A portal in the floor or ceiling at (x, y), `size` 0–1 open: a hole seen
+// from the side, half of it past the wall, with a glowing rim and a dark
+// swirl inside.
 function drawPortal(ctx, x, y, radius, color, time, size) {
   if (size <= 0) return;
-  const rx = (radius + 14) * size;
+  const rx = (radius + 16) * size;
+  const ry = 22 * size;
   ctx.save();
   ctx.translate(x, y);
+
+  // Soft glow round it
   ctx.strokeStyle = color;
-  ctx.fillStyle = color;
-  ctx.globalAlpha = 0.25;
+  for (const [width, alpha] of [[22, 0.08], [12, 0.16]]) {
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = width * size;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, TAU);
+    ctx.stroke();
+  }
+
+  // The hole: dark, tinted towards the rim, with streaks turning inside it
+  const inside = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+  inside.addColorStop(0, '#05070c');
+  inside.addColorStop(0.7, '#0c1220');
+  inside.addColorStop(1, color);
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = inside;
+  ctx.save();
+  ctx.scale(1, ry / rx);
   ctx.beginPath();
-  ctx.ellipse(0, 0, rx, 18 * size, 0, 0, TAU);
+  ctx.arc(0, 0, rx, 0, TAU);
   ctx.fill();
-  ctx.globalAlpha = 0.9;
-  ctx.lineWidth = 4;
-  ctx.setLineDash([14, 6]);
-  ctx.lineDashOffset = -time * 60;
+  ctx.restore();
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i++) {
+    const from = time * (3 + i) + (i * TAU) / 3;
+    ctx.globalAlpha = 0.5 - i * 0.12;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx * (0.75 - i * 0.18), ry * (0.75 - i * 0.18), 0, from, from + 1.6);
+    ctx.stroke();
+  }
+
+  // Rim: a solid band with a bright inner edge
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 5;
   ctx.beginPath();
-  ctx.ellipse(0, 0, rx, 18 * size, 0, 0, TAU);
+  ctx.ellipse(0, 0, rx, ry, 0, 0, TAU);
+  ctx.stroke();
+  ctx.strokeStyle = '#ffffff';
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx - 2.5, ry - 2.5, 0, 0, TAU);
   ctx.stroke();
   ctx.restore();
 }
 
 // ---- Valkyrie -------------------------------------------------------------------
 
-const WING_OPEN_RATE = 12; // how quickly the wings spread and fold (per second)
-
 export class Valkyrie extends MaceTransformation {
   static id = 'valkyrie';
   static displayName = 'Valkyrie';
-  static description =
-    'While Drop Slam falls you spread a wing on each side, and each one swings a mace: twice the maces for the whole fall. The wings also steer three times as well, towards whichever mace is closer.';
+  static description = 'During Drop Slam your mace becomes a wing on each side, and you steer three times as fast.';
 
   constructor(weapon) {
     super(weapon);
     this.steerBonus = 2; // +200% Drop Slam steering
     this.switchDistance = 20; // px the enemy must be past your centre before steering for the other mace
     this.added = 0; // blades added for the current fall, taken off again when it ends
-    this.open = 0; // 0 folded .. 1 spread, for drawing
   }
 
   apply() {
     if (this.ability instanceof DropSlam) this.ability.steerSpeed *= 1 + this.steerBonus;
   }
 
+  // While falling, the mace is a wing, and there's one on each side (see Mace.wings).
   onUpdate(dt) {
     const { ability } = this;
     const falling = slamming(ability);
     if (falling && !this.added) {
       this.added = this.weapon.blades;
       this.weapon.blades += this.added;
+      this.weapon.wings = true;
     } else if (!falling && this.added) {
       this.fold();
     }
@@ -145,7 +227,6 @@ export class Valkyrie extends MaceTransformation {
       const dx = ability.target.pos.x - this.owner.pos.x;
       if (Math.abs(dx) > this.switchDistance) ability.side = Math.sign(dx);
     }
-    this.open += ((falling ? 1 : 0) - this.open) * Math.min(1, WING_OPEN_RATE * dt);
   }
 
   onAbilityEnd() {
@@ -155,23 +236,25 @@ export class Valkyrie extends MaceTransformation {
   fold() {
     this.weapon.blades -= this.added;
     this.added = 0;
+    this.weapon.wings = false;
   }
 
+  // Small folded wings on the ball between slams; while falling the maces are the wings.
   drawUnder(ctx) {
+    if (this.weapon.wings) return;
     const { owner } = this;
-    for (const side of [-1, 1]) drawWing(ctx, owner.pos, side, owner.radius, this.open);
+    for (const side of [-1, 1]) drawWing(ctx, owner.pos, side, owner.radius);
   }
 }
 
-// A white feathered wing on one side of the ball, pointing up when folded and
-// out to the side when spread.
-function drawWing(ctx, pos, side, radius, open) {
-  const len = radius * (0.8 + 0.9 * open);
+// A small white feathered wing folded up on one side of the ball.
+function drawWing(ctx, pos, side, radius) {
+  const len = radius * 0.8;
   const feathers = 5;
   ctx.save();
   ctx.translate(pos.x + side * radius * 0.55, pos.y - radius * 0.35);
   ctx.scale(side, 1);
-  ctx.rotate(-1.25 + 0.95 * open);
+  ctx.rotate(-1.25);
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
   ctx.lineWidth = 1.5;
   for (let i = feathers - 1; i >= 0; i--) {
@@ -196,8 +279,7 @@ const HOT = '#ff7a1a';
 export class Metalworker extends MaceTransformation {
   static id = 'metalworker';
   static displayName = 'Metalworker';
-  static description =
-    'Every 0.5 s you go without dealing damage, taking damage or parrying, you hammer your mace: +0.5 damage on your next hit (up to +4).';
+  static description = 'Build up to +4 damage while you avoid taking damage. Your next hit uses it all.';
 
   constructor(weapon) {
     super(weapon);
@@ -241,20 +323,46 @@ export class Metalworker extends MaceTransformation {
     this.timer = 0;
   }
 
-  // The hammer's head glows hotter the bigger the bonus.
+  // The hammer heats up the bigger the bonus: red-hot iron, brightest at the
+  // striking faces, with a soft glow round it. Its outline stays, so it still
+  // reads as a hammer.
   drawBlade(ctx, start) {
+    if (this.weapon.wings) return; // nothing to decorate on a wing (Valkyrie)
     if (this.clangs === 0) return;
     const heat = this.clangs / this.maxClangs;
     const x = start + this.weapon.length - HEAD_RADIUS;
-    const glow = 4 + 6 * heat;
     ctx.save();
-    ctx.fillStyle = HOT;
-    ctx.globalAlpha = 0.2 + 0.25 * heat;
-    ctx.beginPath();
-    ctx.roundRect(x - 9 - glow, -18 - glow, 18 + glow * 2, 36 + glow * 2, glow);
-    ctx.fill();
-    ctx.globalAlpha = 0.3 + 0.55 * heat;
-    ctx.fillRect(x - 9, -18, 18, 36);
+
+    // Glow, fading out from the head
+    for (const [grow, alpha] of [[7, 0.1], [3.5, 0.18]]) {
+      const g = grow * (0.5 + heat);
+      ctx.globalAlpha = alpha * (0.4 + heat);
+      ctx.fillStyle = HOT;
+      ctx.beginPath();
+      ctx.roundRect(x - 9 - g, -18 - g, 18 + g * 2, 36 + g * 2, 4 + g);
+      ctx.fill();
+    }
+
+    // The block: dark red in the middle, orange to yellow towards each face
+    const block = ctx.createLinearGradient(0, -15, 0, 15);
+    block.addColorStop(0, '#ffb43a');
+    block.addColorStop(0.3, HOT);
+    block.addColorStop(0.5, '#b8321a');
+    block.addColorStop(0.7, HOT);
+    block.addColorStop(1, '#ffb43a');
+    ctx.globalAlpha = 0.25 + 0.7 * heat;
+    ctx.fillStyle = block;
+    ctx.fillRect(x - 8, -15, 16, 30);
+
+    // Striking faces, white-hot
+    ctx.fillStyle = heat > 0.5 ? '#fff3c4' : '#ffd23f';
+    ctx.fillRect(x - 9, -18, 18, 5);
+    ctx.fillRect(x - 9, 13, 18, 5);
+
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#5a2a10';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x - 8, -15, 16, 30);
     ctx.restore();
   }
 }
@@ -270,7 +378,7 @@ function headPos(weapon) {
 export class Pilot extends MaceTransformation {
   static id = 'pilot';
   static displayName = 'Pilot';
-  static description = 'Drop Slam can also go up: from low down, rocket up to the ceiling instead, gaining damage with height the same way.';
+  static description = 'Drop Slam can also rocket upwards into the ceiling.';
 
   constructor(weapon) {
     super(weapon);
@@ -337,7 +445,7 @@ const STUN_COLOR = '#ffe066';
 export class Crusher extends MaceTransformation {
   static id = 'crusher';
   static displayName = 'Crusher';
-  static description = 'A Drop Slam hit stuns the enemy for 2.5 s: they deal 30% damage and move at 30% speed until it wears off.';
+  static description = 'A Drop Slam hit stuns the enemy for 2.5s. Stunned enemies deal 70% less damage, take 30% more and move slower.';
   // After Rubber Mace, so on the same hit the enemy is already Bouncing and the stun waits for it.
   static order = 1;
 
@@ -346,37 +454,81 @@ export class Crusher extends MaceTransformation {
     this.stunDuration = 2.5;
     this.stunSlow = 0.3;
     this.stunDamage = 0.3; // share of their damage a stunned enemy still deals
+    this.stunVulnerability = 1.3; // damage taken from weapon hits while stunned
   }
 
   onHit(target, sim) {
     if (!slamming(this.ability) || !target.alive || sim.over) return;
-    target.addStatus(new Stunned({ source: this.owner, duration: this.stunDuration, slow: this.stunSlow, damage: this.stunDamage, crusher: this }), sim);
+    target.addStatus(new Stunned({ source: this.owner, duration: this.stunDuration, slow: this.stunSlow, damage: this.stunDamage, vulnerability: this.stunVulnerability, crusher: this }), sim);
   }
 
-  // Heavy iron bands around the head.
+  // Heavy iron hoops round the head, crossing over it with a rivet where they
+  // meet. On Metalworker's hammer, two straps wrapped round the block.
   drawBlade(ctx, start) {
+    if (this.weapon.wings) return; // nothing to decorate on a wing (Valkyrie)
     const x = start + this.weapon.length - HEAD_RADIUS;
     ctx.save();
-    ctx.strokeStyle = '#4a4f57';
-    ctx.lineWidth = 3;
-    for (const dx of [-4, 4]) {
-      ctx.beginPath();
-      ctx.moveTo(x + dx, -HEAD_RADIUS + 1);
-      ctx.lineTo(x + dx, HEAD_RADIUS - 1);
-      ctx.stroke();
-    }
+    if (this.weapon.head === 'hammer') drawHammerStraps(ctx, x);
+    else drawHoops(ctx, x);
     ctx.restore();
   }
 }
 
-// From Crusher: the ball deals much less damage for a while, and is dazed and slow.
+const IRON = '#3f444b';
+const IRON_LIGHT = '#8a929c';
+
+// An iron rim round the head and two straps crossing over it, riveted.
+function drawHoops(ctx, x) {
+  const r = HEAD_RADIUS;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, 0, r, 0, TAU);
+  ctx.clip();
+  ctx.fillStyle = IRON;
+  ctx.fillRect(x - 2, -r, 4, r * 2);
+  ctx.fillRect(x - r, -2, r * 2, 4);
+  ctx.fillStyle = IRON_LIGHT;
+  ctx.fillRect(x - 2, -r, 1, r * 2);
+  ctx.fillRect(x - r, -2, r * 2, 1);
+  ctx.strokeStyle = IRON;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(x, 0, r - 0.5, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = IRON_LIGHT;
+  for (const [dx, dy] of [[0, 0], [0, -6], [0, 6], [-6, 0], [6, 0]]) {
+    ctx.beginPath();
+    ctx.arc(x + dx, dy, 1.1, 0, TAU);
+    ctx.fill();
+  }
+}
+
+// The hammer block is 16 px along the handle and 30 across (see Mace.js).
+function drawHammerStraps(ctx, x) {
+  for (const y of [-8, 5]) {
+    ctx.fillStyle = IRON;
+    ctx.fillRect(x - 9.5, y, 19, 4);
+    ctx.fillStyle = IRON_LIGHT;
+    ctx.fillRect(x - 9.5, y, 19, 1);
+    for (const dx of [-5, 5]) {
+      ctx.beginPath();
+      ctx.arc(x + dx, y + 2, 1.1, 0, TAU);
+      ctx.fill();
+    }
+  }
+}
+
+// From Crusher: the ball deals much less damage for a while, takes more
+// (greyed by the Renderer, see Ball.vulnerability), and is dazed and slow.
 // While Rubber Mace has it Bouncing, the stun waits (and doesn't tick down),
 // then starts in full once the bouncing is over.
 export class Stunned extends Status {
-  constructor({ source, duration, slow, damage, crusher }) {
+  constructor({ source, duration, slow, damage, vulnerability = 1, crusher }) {
     super({ source, duration });
     this.slow = slow;
     this.damage = damage;
+    this.vulnerability = vulnerability;
     this.crusher = crusher; // the Crusher upgrade, to show the stun when it starts
     this.started = false;
   }
@@ -391,6 +543,10 @@ export class Stunned extends Status {
 
   get speedMultiplier() {
     return this.started ? this.slow : 1;
+  }
+
+  get damageTakenMultiplier() {
+    return this.started ? this.vulnerability : 1;
   }
 
   onApply(sim) {
@@ -448,7 +604,7 @@ const RUBBER = '#e0457b';
 export class RubberMace extends MaceTransformation {
   static id = 'rubber-mace';
   static displayName = 'Rubber Mace';
-  static description = 'A Drop Slam hit sends the enemy flying at huge speed for 1.2 s, taking 3 damage every time they hit a wall.';
+  static description = 'A Drop Slam hit sends the enemy bouncing around the arena, taking damage every time they hit a wall.';
 
   constructor(weapon) {
     super(weapon);
@@ -465,18 +621,31 @@ export class RubberMace extends MaceTransformation {
     this.emit(sim, 'launch', { pos: target.pos, shake: 4, text: 'BOING', color: RUBBER });
   }
 
-  // A pink rubber coat on the head.
+  // A pink rubber coat on the head; on Metalworker's hammer, rubber caps on
+  // both striking faces, like a mallet's.
   drawBlade(ctx, start) {
+    if (this.weapon.wings) return; // nothing to decorate on a wing (Valkyrie)
     const x = start + this.weapon.length - HEAD_RADIUS;
     ctx.save();
-    ctx.fillStyle = RUBBER;
-    ctx.beginPath();
-    ctx.arc(x, 0, HEAD_RADIUS + 2, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
-    ctx.beginPath();
-    ctx.arc(x - 3, -4, 3.5, 0, TAU);
-    ctx.fill();
+    if (this.weapon.head === 'hammer') {
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = RUBBER;
+        ctx.beginPath();
+        ctx.roundRect(x - 10, side > 0 ? 12 : -21, 20, 9, side > 0 ? [0, 0, 5, 5] : [5, 5, 0, 0]);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.fillRect(x - 7, side > 0 ? 17 : -19, 6, 2);
+      }
+    } else {
+      ctx.fillStyle = RUBBER;
+      ctx.beginPath();
+      ctx.arc(x, 0, HEAD_RADIUS + 2, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.beginPath();
+      ctx.arc(x - 3, -4, 3.5, 0, TAU);
+      ctx.fill();
+    }
     ctx.restore();
   }
 }
@@ -533,12 +702,11 @@ const BLAST_TIME = 0.35; // s the blast ring takes to spread
 export class Kamikaze extends MaceTransformation {
   static id = 'kamikaze';
   static displayName = 'Kamikaze';
-  static description =
-    'When Drop Slam hits the floor you explode: enemies within 140 px take 40% of the damage the slam would have dealt, and are blown away.';
+  static description = "When Drop Slam lands, you explode, hitting every enemy nearby for 40% of the slam's damage and blasting them away.";
 
   constructor(weapon) {
     super(weapon);
-    this.blastRadius = 140; // px from your centre to the edge of an enemy
+    this.blastRadius = 220; // px from your centre to the edge of an enemy
     this.damageShare = 0.4; // of what a slam hit would do after that fall
     this.blastKnockback = 2; // enemies fly off at their speed x this
     this.time = 0; // for the fuse spark
@@ -557,11 +725,16 @@ export class Kamikaze extends MaceTransformation {
     const landing = ability instanceof DropSlam ? ability.landing : null;
     if (!landing || sim.over) return;
     const { owner } = this;
-    const damage = this.weapon.damage * (1 + landing.fallen * ability.damagePerPx) * this.damageShare;
-    for (const enemy of sim.aliveBalls) {
+    // The mace's own damage (with Metalworker's bonus) at that fall, as a
+    // secondary weapon hit: Sharpened, crits, Armor, Lifesteal... all apply.
+    const { weapon } = this;
+    const damage = (weapon.baseDamage + weapon.sum('bonusDamage')) * (1 + landing.fallen * ability.damagePerPx) * this.damageShare;
+    for (const enemy of [...sim.aliveBalls]) {
       if (enemy === owner || distance(enemy.pos, landing.pos) - enemy.radius > this.blastRadius) continue;
-      enemy.vel = scale(normalize(sub(enemy.pos, landing.pos)), enemy.speed * this.blastKnockback);
-      sim.dealDamage(owner, enemy, damage, { reason: 'explosion', color: BLAST });
+      const away = normalize(sub(enemy.pos, landing.pos));
+      const point = add(enemy.pos, scale(away, -enemy.radius));
+      if (sim.applySecondaryHit(owner, enemy, damage, { reason: 'explosion', color: BLAST, point }) <= 0) continue;
+      if (enemy.alive && !enemy.weapon.controlsMovement) enemy.vel = scale(away, enemy.speed * this.blastKnockback);
     }
     this.blast = { pos: landing.pos, timeLeft: BLAST_TIME };
     this.emit(sim, 'explode', { pos: landing.pos, shake: 8, burst: { color: BLAST, count: 40, speed: 380, life: 0.5, size: 3.5 } });
@@ -587,6 +760,7 @@ export class Kamikaze extends MaceTransformation {
 
   // A lit fuse sticking out of the head.
   drawBlade(ctx, start) {
+    if (this.weapon.wings) return; // nothing to decorate on a wing (Valkyrie)
     const x = start + this.weapon.length;
     ctx.save();
     ctx.strokeStyle = '#3a2a1a';
@@ -612,8 +786,7 @@ const PILLAR_RISE_TIME = 0.15; // s the pillar takes to shoot up across the aren
 export class Devil extends MaceTransformation {
   static id = 'devil';
   static displayName = 'Devil';
-  static description =
-    'When Drop Slam hits the floor, a pillar of fire erupts under your mace for 2.5 s. Enemies in it burn for 1 damage every 0.5 s, and keep burning for 2 s after they leave.';
+  static description = 'When Drop Slam lands, a pillar of fire rises from floor to ceiling and burns enemies that touch it.';
 
   constructor(weapon) {
     super(weapon);

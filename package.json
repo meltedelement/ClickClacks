@@ -3,12 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Runs the modules together. Each folder (games/weapon-balls, tournament, party, apps/quiz-of-doom) is its own project with its own package.json.",
+  "description": "Runs the modules together. Each folder (games/weapon-balls, tournament, party, apps/quiz-of-doom, apps/royale, apps/bracket, apps/letter-brawl) is its own project with its own package.json.",
   "scripts": {
     "dev:all": "node tools/run-all.js",
     "start:all": "node tools/run-all.js --built",
+    "royale": "node tools/run-royale.js",
+    "tournament": "node tools/run-tournament.js",
+    "brawl": "node tools/run-tournament.js --app=letter-brawl",
     "install:all": "node tools/install-all.js",
-    "test": "node --test tournament/formats/*.test.ts party/server/*.test.ts apps/quiz-of-doom/shared/*.test.ts",
-    "typecheck": "cd tournament && npm run typecheck && cd ../party && npm run typecheck && cd ../apps/quiz-of-doom && npm run typecheck"
+    "test": "node --test tournament/formats/*.test.ts party/server/*.test.ts apps/quiz-of-doom/shared/*.test.ts apps/royale/shared/*.test.ts apps/royale/server/*.test.ts apps/bracket/server/*.test.ts apps/letter-brawl/server/*.test.ts apps/letter-brawl/shared/*.test.ts games/weapon-balls/src/sim/*.test.js",
+    "typecheck": "cd tournament && npm run typecheck && cd ../party && npm run typecheck && cd ../apps/quiz-of-doom && npm run typecheck && cd ../royale && npm run typecheck && cd ../bracket && npm run typecheck && cd ../letter-brawl && npm run typecheck"
   }
 }

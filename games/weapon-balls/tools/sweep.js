@@ -32,7 +32,7 @@
 //       --threshold P     win % points an outlier must be off by (default 5)
 //   -t, --time-limit S    simulated seconds before the HP tiebreak (default 180)
 //   -s, --seed N          seed for the builds and matches (default 1)
-//   -j, --jobs N          worker threads (default: CPU cores - 1)
+//   -j, --jobs N          worker threads (default: one per physical core, see workers.js)
 //   -o, --out FILE        results file (default sweeps/sweep-<seed>.jsonl)
 //       --fresh           overwrite the results file instead of resuming it
 //   -n, --dry-run         print the plan's size and exit
@@ -42,16 +42,16 @@
 //
 // Examples:
 //   npm run sweep -- -n                              # how many matches the defaults are
-//   npm run sweep                                    # ~90k matches, ~20 min on 12 cores
+//   npm run sweep                                    # ~184k matches, ~5 min on 6 cores
 //   npm run sweep -- -b 12 -g 4 -o sweeps/big.jsonl  # ~4x the matches, half the noise
 //   npm run sweep -- -w mace -S pick,stack --tiers 2/0,5/0
 //   npm run sweep -- -r sweeps/sweep-1.jsonl --threshold 3
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { availableParallelism } from 'node:os';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
+import { defaultJobs } from './workers.js';
 import { CONFIG } from '../src/config.js';
 import { Simulation } from '../src/sim/Simulation.js';
 import { mulberry32 } from '../src/sim/random.js';
@@ -314,7 +314,7 @@ function readOptions() {
     threshold: Number(values.threshold) / 100,
     timeLimit: positiveInt(values['time-limit'], 'time-limit'),
     seed,
-    jobs: values.jobs ? positiveInt(values.jobs, 'jobs') : Math.max(1, availableParallelism() - 1),
+    jobs: values.jobs ? positiveInt(values.jobs, 'jobs') : defaultJobs(),
     out: values.out ?? `sweeps/sweep-${seed}.jsonl`,
     fresh: values.fresh,
     dryRun: values['dry-run'],
@@ -355,8 +355,9 @@ function printPlan(tasks, matches, opts) {
   for (const [section, s] of Object.entries(bySection)) {
     console.log(`  ${section.padEnd(10)} ${String(s.candidates.size).padStart(5)} candidates  ${String(s.matches).padStart(7)} matches`);
   }
-  // Roughly 7-8 matches a second per core on a desktop CPU.
-  const estimate = matches / (opts.jobs * 7.5);
+  // About 100 matches a second per worker, one worker per physical core (a
+  // 6-core laptop played SIZE=huge's 1.9M at 586 a second on 6 workers).
+  const estimate = matches / (opts.jobs * 95);
   console.log(`  ${'total'.padEnd(10)} ${' '.repeat(18)}${String(matches).padStart(7)} matches, very roughly ${formatDuration(estimate)} on ${opts.jobs} workers\n`);
 }
 

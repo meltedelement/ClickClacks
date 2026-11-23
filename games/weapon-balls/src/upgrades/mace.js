@@ -1,39 +1,51 @@
 import { Upgrade } from './Upgrade.js';
 import { DropSlam } from '../abilities/DropSlam.js';
+import { percent } from '../utils/format.js';
 
 // Small upgrades for the Mace, all about its Drop Slam.
 
-export class QuickDrop extends Upgrade {
-  static id = 'quick-drop';
-  static displayName = 'Quick Drop';
-  static description = 'Drop Slam gains 12.5% more damage from the height it falls.';
+// Damage comes from how far the slam falls, not how fast, so a slower fall
+// hits just as hard and has longer to steer onto the enemy.
+const SLOW_DROP = 0.8; // the fall's gravity and start speed are multiplied by this, per copy
+
+export class SlowDrop extends Upgrade {
+  static id = 'slow-drop';
+  static displayName = 'Slow Drop';
+  static maxStacks = 3; // a slam that takes too long to land gives up (DropSlam's MAX_DROP_TIME)
+  static describe(n) {
+    return `Drop Slam falls ${percent(1 - SLOW_DROP ** n)} slower, so it lines up better. It hits just as hard.`;
+  }
   static weapons = ['mace'];
 
   apply() {
-    if (!(this.ability instanceof DropSlam)) return;
-    this.base ??= this.ability.damagePerPx;
-    this.ability.damagePerPx += this.base * 0.125;
+    const { ability } = this;
+    if (!(ability instanceof DropSlam)) return;
+    ability.gravity *= SLOW_DROP;
+    ability.startSpeed *= SLOW_DROP;
   }
 }
+
+const HEAVY_IMPACT = 0.5; // more damage per px fallen, per copy
 
 export class HeavyImpact extends Upgrade {
   static id = 'heavy-impact';
   static displayName = 'Heavy Impact';
-  static description = 'Drop Slam gains 50% more damage from the height it falls.';
+  static describe(n) {
+    return `Drop Slam gets ${percent(HEAVY_IMPACT * n)} more bonus damage from the height it falls.`;
+  }
   static weapons = ['mace'];
 
   apply() {
     if (!(this.ability instanceof DropSlam)) return;
     this.base ??= this.ability.damagePerPx;
-    this.ability.damagePerPx += this.base * 0.5;
+    this.ability.damagePerPx += this.base * HEAVY_IMPACT;
   }
 }
 
 export class HighBounce extends Upgrade {
   static id = 'high-bounce';
   static displayName = 'High Bounce';
-  static description =
-    'Drop Slam bounces you back up off the floor at +100% speed, and every other bounce off the floor gets +50% speed upwards.';
+  static description = 'Bounce higher after a Drop Slam and off the floor, so you get back up to slam sooner.';
   static weapons = ['mace'];
 
   constructor(weapon) {
@@ -54,20 +66,23 @@ export class HighBounce extends Upgrade {
   }
 }
 
+const GREAT_MACE = 0.4; // more length during Drop Slam, per copy
+
 export class GreatMace extends Upgrade {
   static id = 'great-mace';
   static displayName = 'Great Mace';
-  static description = 'Your mace is 40% longer during Drop Slam.';
+  static describe(n) {
+    return `Your mace is ${percent(GREAT_MACE * n)} longer during Drop Slam.`;
+  }
   static weapons = ['mace'];
 
   constructor(weapon) {
     super(weapon);
-    this.lengthBonus = 0.4;
     this.added = 0; // px added for the current slam, taken off again when it ends
   }
 
   onAbilityStart() {
-    this.added = this.weapon.length * this.lengthBonus * this.stacks;
+    this.added = this.weapon.length * GREAT_MACE * this.stacks;
     this.weapon.length += this.added;
   }
 
@@ -81,15 +96,19 @@ export class GreatMace extends Upgrade {
   }
 }
 
+const METEOR = 0.25; // more steering speed, per copy
+
 export class Meteor extends Upgrade {
   static id = 'meteor';
   static displayName = 'Meteor';
-  static description = 'Drop Slam homes in on the enemy 25% better as it falls.';
+  static describe(n) {
+    return `Drop Slam steers onto the enemy ${percent(METEOR * n)} faster.`;
+  }
   static weapons = ['mace'];
 
   apply() {
     if (!(this.ability instanceof DropSlam)) return;
     this.base ??= this.ability.steerSpeed;
-    this.ability.steerSpeed += this.base * 0.25;
+    this.ability.steerSpeed += this.base * METEOR;
   }
 }
